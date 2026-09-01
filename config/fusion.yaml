@@ -1,0 +1,64 @@
+# Multi-view fusion tuning. CLAUDE.md constraint 2: this module is written from
+# first principles, so every constant that shapes the estimate lives here rather
+# than inside a library's defaults.
+
+calibration:
+  # Fusion refuses to start if any camera's reprojection_rmse_px exceeds this.
+  # Bad extrinsics silently poison every fused pose, so this fails loudly
+  # (INTERFACES.md §4). Matches calib_agent's own target of < 0.5 px.
+  max_reprojection_rmse_px: 0.5
+
+association:
+  # Two per-view estimates of the same class merge into one object instance when
+  # their world-frame translations are within this distance, metres.
+  #
+  # INVARIANT: this must exceed disagreement_gate.max_translation_m, and
+  # LoadFusionConfig enforces it. The two thresholds answer different questions
+  # in sequence -- association asks "could these be the same object?", the gate
+  # then asks "do they agree well enough to average?" -- so a gate wider than
+  # the association radius can never fire: the views it was meant to judge have
+  # already been split into separate objects.
+  #
+  # Upper bound is the closest spacing between two same-class objects in the
+  # benchmark scenes; below that, two distinct instances would merge. If a scene
+  # needs same-class objects closer than this, BOTH numbers must come down.
+  max_distance_m: 0.15
+
+disagreement_gate:
+  # A view whose pose sits further than this from the consensus is treated as an
+  # outlier and dropped from the fuse. Must stay below
+  # association.max_distance_m -- see the invariant noted there.
+  max_translation_m: 0.05
+  max_rotation_deg: 30.0
+  # With only two cameras there is no majority to appeal to, so when exactly two
+  # views disagree beyond the gate the higher-scoring one is kept and the fused
+  # confidence is multiplied by this. It records "we had a conflict and guessed"
+  # rather than pretending to a consensus that does not exist.
+  two_view_conflict_confidence_penalty: 0.5
+
+ekf:
+  # Error-state EKF, constant-velocity position model + orientation random walk.
+  # Process noise: how much the model is allowed to be wrong per second.
+  process_noise_position_m: 0.01
+  process_noise_velocity_mps: 0.10
+  process_noise_orientation_deg: 5.0
+  # Measurement noise at confidence 1.0; scaled by 1/confidence per update, so a
+  # low-confidence fuse moves the filter less.
+  measurement_noise_position_m: 0.01
+  measurement_noise_orientation_deg: 3.0
+  # Initial uncertainty for a newly-seen object.
+  initial_position_sigma_m: 0.10
+  initial_velocity_sigma_mps: 0.50
+  initial_orientation_sigma_deg: 45.0
+  # A track not seen for this long is dropped and its id retired.
+  max_coast_s: 1.0
+
+tracking:
+  # A fused cluster is matched to an existing track within this distance.
+  track_match_max_distance_m: 0.10
+
+views:
+  # Order defines ObjectState::visible_views bit positions and MUST match
+  # config/predicates.yaml. Divergence would silently mislabel which camera saw
+  # what, so FusionConfigMatchesPredicatesConfig asserts the two agree.
+  names: ["cam_front", "cam_over"]

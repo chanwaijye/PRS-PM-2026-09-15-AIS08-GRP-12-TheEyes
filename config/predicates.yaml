@@ -1,0 +1,29 @@
+# Tolerances for scene-graph predicate extraction.
+# INTERFACES.md §6: these are never hard-coded in the scenegraph module.
+#
+# All bounding-volume geometry is world-axis-aligned (ObjectState::extent is
+# world-axis-aligned half-extents), so pose_w rotation does not enter these
+# rules. This is what makes `unknown_object` — whose rotation is meaningless —
+# safe to reason about.
+
+on:
+  # Vertical gap tolerance between a's base and b's top surface, metres.
+  # Absorbs residual fused-pose error; must be re-tuned if the pose error
+  # budget from the depth-noise characterisation changes.
+  surface_tol_m: 0.015
+  # Fraction of a's horizontal footprint that must overlap b's, [0,1].
+  # Stops a cube beside a table from reading as on it.
+  min_overlap_ratio: 0.25
+
+in:
+  # a's centroid must fall inside b's volume inset by this margin, metres.
+  # Inset avoids flapping when a sits exactly on the container rim.
+  containment_margin_m: 0.005
+  # a is only "in" b if it could plausibly fit: vol(a) <= ratio * vol(b).
+  max_volume_ratio: 0.5
+
+views:
+  # Order defines the ObjectState::visible_views bit positions: index 0 -> bit0.
+  # Must match the ViewBit enum in the_eyes/types.hpp and the camera namespaces
+  # in INTERFACES.md §1.
+  names: ["cam_front", "cam_over"]

@@ -1,0 +1,178 @@
+# INTERFACES.md — The Eyes
+
+Data contracts between modules. **Changing anything here requires updating every
+consumer.** `ObjectState` additionally has downstream consumers outside this repo
+(PM1 planner, PM4 world model) — fields may be added, never removed or re-typed.
+
+---
+
+## 1. Camera → Detector
+
+ROS2 topics, one namespace per camera, selected by serial number.
+
+```
+/cam_front/color/image_raw          sensor_msgs/Image
+/cam_front/aligned_depth_to_color/image_raw   sensor_msgs/Image
+/cam_front/color/camera_info        sensor_msgs/CameraInfo
+/cam_over/...                       (same set)
+```
+
+Requirements:
+- Depth **aligned to color** — FoundationPose needs registered RGB-D.
+- Hardware-synced (`inter_cam_sync_mode` 1/2). Frame timestamps across the two
+  namespaces must agree within one frame period; assert this at startup.
+- Camera namespace ↔ serial number mapping lives in the launch file, not in code.
+
+---
+
+## 2. Detector → Pose Estimator
+
+```cpp
+struct Detection {
+  std::string cls;        // YOLO class name, must match a key in the mesh registry
+  float score;            // detector confidence [0,1]
+  cv::Rect2i bbox;        // pixel coords in the color frame
+  uint32_t track_id;      // stable across frames within one camera; 0 = untracked
+};
+
+struct DetectionSet {
+  std::string camera_id;  // "cam_front" | "cam_over"
+  uint64_t stamp_ns;      // source frame timestamp, NOT receive time
+  std::vector<Detection> detections;
+};
+```
+
+Class names are the join key to the CAD mesh registry. A detection whose class has
+no registered mesh is dropped with a warning — it must not reach the pose
+estimator.
+
+The detector consumes **both** the color and the aligned-depth topic (§1): it is a
+4-channel RGB-D network, not RGB-only. If aligned depth is unavailable for a
+frame, the detector must skip that frame rather than substitute zeros — a
+zero-filled depth channel is indistinguishable from "object at zero range" to the
+network.
+
+---
+
+## 3. Pose Estimator → Fusion
+
+```cpp
+struct PoseEstimate {
+  std::string camera_id;
+  std::string cls;
+  uint32_t track_id;
+  uint64_t stamp_ns;
+  Eigen::Isometry3d pose_cam;   // 6-DoF in THIS camera's optical frame
+  double score;                 // FoundationPose hypothesis score [0,1]
+  bool symmetric;               // from mesh registry; fusion must not average
+                                // orientation naively for symmetric objects
+  Eigen::Vector3d extent;       // world-axis-aligned half-extents of the
+                                // bounding volume; zero means "not supplied"
+};
+```
+
+`extent` was added so fusion can populate `ObjectState::extent` (§5), which
+nothing upstream previously supplied. For a known class it is the CAD mesh AABB
+and may instead be looked up by class; for the `unknown_object` clustering path
+it is the cluster bounding volume, which exists only per-estimate and therefore
+has to travel on the estimate itself. Additive change — no existing field moved.
+
+Poses are emitted in the **camera optical frame**. Transformation to the world
+frame is the fusion module's job, using extrinsics from calibration — the pose
+estimator must not know about world frames.
+
+---
+
+## 4. Calibration → Fusion
+
+```yaml
+# config/extrinsics.yaml — produced by calib_agent, consumed by fusion
+world_frame: table_origin
+cameras:
+  cam_front:
+    serial: "XXXXXXXXXXXX"
+    T_world_cam: [16 doubles, row-major 4x4]
+    reprojection_rmse_px: 0.0        # calibration quality gate
+  cam_over:
+    serial: "XXXXXXXXXXXX"
+    T_world_cam: [...]
+    reprojection_rmse_px: 0.0
+```
+
+Fusion refuses to start if `reprojection_rmse_px` exceeds the configured
+threshold — bad extrinsics silently poison every fused pose, so fail loudly.
+
+---
+
+## 5. Fusion → Scene Graph  (and the external contract)
+
+**This is the stable contract. PM1 and PM4 depend on it.**
+
+```cpp
+struct ObjectState {
+  std::string id;              // stable instance id, e.g. "red_cube_01"
+  std::string cls;             // YOLO class, or "unknown_object"
+  Eigen::Isometry3d pose_w;    // fused 6-DoF pose, world frame
+  double confidence;           // fused confidence [0,1]
+  std::vector<std::string> relations;  // filled by scenegraph, empty from fusion
+  uint32_t visible_views;      // bitmask: bit0 = cam_front, bit1 = cam_over
+  Eigen::Vector3d extent;      // bounding volume half-extents (world-axis-aligned)
+  uint64_t stamp_ns;           // fusion output time
+};
+
+struct SceneState {
+  uint64_t stamp_ns;
+  std::vector<ObjectState> objects;
+};
+```
+
+Semantics that matter:
+- `visible_views == 0` is invalid — drop the object rather than emit it.
+- A single-view object is still emitted, with the corresponding single bit set.
+  Downstream consumers use `visible_views` to reason about pose uncertainty.
+- `cls == "unknown_object"` means the DBSCAN path produced it: `pose_w`
+  translation is the cluster centroid, rotation is identity and **meaningless**,
+  `extent` is the cluster bounding volume.
+
+---
+
+## 6. Scene Graph → PDDL / consumers
+
+```
+/scene_state        the_eyes_msgs/SceneState     scene graph as JSON-serialisable msg
+/scene_pddl         std_msgs/String              PDDL (:init ...) block
+```
+
+Predicate vocabulary (must match PM1's domain exactly):
+
+| Predicate | Meaning | Geometric rule |
+|---|---|---|
+| `(on ?a ?b)` | a rests on b | a's base within tolerance of b's top surface AND horizontal overlap |
+| `(in ?a ?b)` | a inside container b | a's centroid within b's interior volume |
+| `(clear ?a)` | nothing on top of a | no object satisfies `(on ?x ?a)` |
+| `(occluded_from ?a ?view)` | a not visible from view | corresponding `visible_views` bit unset |
+
+Tolerances live in `config/predicates.yaml` — never hard-coded. Predicate
+extraction must be deterministic: same `SceneState` in, same fact set out.
+
+---
+
+## 7. Mesh registry
+
+```yaml
+# config/meshes.yaml
+objects:
+  mustard_bottle:
+    mesh: assets/meshes/mustard_bottle.obj   # must be watertight
+    symmetric: false
+    diameter_m: 0.19                          # used to normalise ADD-S
+    extent: [0.048, 0.043, 0.093]             # AABB half-extents, metres
+```
+
+`extent` was added alongside `PoseEstimate::extent` (§3), for the same reason:
+fusion must fill `ObjectState::extent` and this is where a known class's value
+comes from. Derived from the mesh AABB and carried in config so nothing parses
+an OBJ on the critical path. Additive change.
+
+`diameter_m` is required — the ADD-S threshold is a fraction of object diameter,
+so evaluation cannot run without it.

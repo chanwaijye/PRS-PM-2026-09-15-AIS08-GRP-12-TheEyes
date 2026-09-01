@@ -1,0 +1,24 @@
+# Produced by calib_agent, consumed by fusion (INTERFACES.md §4).
+#
+# PLACEHOLDER — these are synthetic values for mock-mode development, not a
+# calibration result. [VERIFY] Replace wholesale after the cameras are rigidly
+# mounted and calib_agent has run; re-running calibration after any mechanical
+# change is required.
+world_frame: table_origin
+cameras:
+  cam_front:
+    serial: "261722073945"
+    # Looking at the table origin from +x, 0.6 m out and 0.4 m up.
+    T_world_cam: [ 0.0,  0.0,  1.0,  0.60,
+                  -1.0,  0.0,  0.0,  0.00,
+                   0.0, -1.0,  0.0,  0.40,
+                   0.0,  0.0,  0.0,  1.00]
+    reprojection_rmse_px: 0.0
+  cam_over:
+    serial: "261822074567"
+    # Looking straight down from 0.9 m above the table origin.
+    T_world_cam: [ 1.0,  0.0,  0.0,  0.00,
+                   0.0, -1.0,  0.0,  0.00,
+                   0.0,  0.0, -1.0,  0.90,
+                   0.0,  0.0,  0.0,  1.00]
+    reprojection_rmse_px: 0.0

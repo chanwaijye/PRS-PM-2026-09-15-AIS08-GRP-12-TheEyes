@@ -1,0 +1,26 @@
+# pose_agent tuning.
+
+roi:
+  # The detector's bbox is tight; FoundationPose wants surrounding context and
+  # tolerance for bbox jitter. Fraction of bbox width/height added on each side.
+  margin_ratio: 0.15
+  # Below this, a crop carries too few depth pixels to constrain 6-DoF at all.
+  # Detections producing a smaller ROI are dropped rather than estimated badly.
+  min_size_px: 24
+
+estimator:
+  # "mock" | "foundationpose"
+  backend: "mock"
+  # Unix domain socket the FoundationPose Python server listens on.
+  # Only used when backend is "foundationpose".
+  socket_path: "/tmp/the_eyes_foundationpose.sock"
+  # A per-request ceiling. FoundationPose registration measured ~1258 ms and
+  # tracking ~17 ms on the RTX 5070 Ti (docs/R1_STATUS.md), so this is generous
+  # for tracking and still catches a hung server rather than stalling the
+  # pipeline forever.
+  request_timeout_ms: 5000
+
+  # Below this hypothesis score the estimate is discarded rather than passed to
+  # fusion. Fusion weights by score, so a very low-confidence pose is not free:
+  # it still drags the fused estimate.
+  min_score: 0.10

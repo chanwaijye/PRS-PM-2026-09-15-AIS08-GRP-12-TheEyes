@@ -1,0 +1,155 @@
+# calib_agent configuration.
+
+board:
+  # ChArUco: a chessboard with ArUco markers in the white squares. Chosen over a
+  # plain chessboard because it tolerates partial views and occlusion -- corners
+  # are identified by their marker, so a board half out of frame still
+  # contributes, which matters when two cameras at very different angles must
+  # see it simultaneously.
+  #
+  # ORDERED 2026-08-26, arriving ~2026-08-28: 324 x 324 mm panel, 8 x 8 squares
+  # at 38 mm = 304 x 304 mm of squares, 49 interior corners, 32 markers.
+  #
+  # Decode reach. A DICT_5X5 marker is 7 modules across (5 bits + a 1-module
+  # quiet border) and stops decoding below ~3 px/module:
+  #
+  #     max distance = fx * marker_length / (3 * marker_modules)
+  #
+  # On this rig the far corner of this board lying on the table sits 884 mm from
+  # the camera, not 700 mm -- the cameras are oblique at 35 deg elevation.
+  # Against the MEASURED factory colour fx (calibration_backup/, worst unit):
+  #
+  #     848 x 480    fx  603    2.8 px/module   FAILS   (reach 0.82 m)
+  #     1280 x 720   fx  905    4.2 px/module   ok      (reach 1.23 m)
+  #     1920 x 1080  fx 1358    6.3 px/module   good    (reach 1.84 m)
+  #
+  # So this board REQUIRES calibration captures at 1920x1080. That is not a
+  # workaround: the recovered camera POSE is resolution-independent (same
+  # projection centre, differently sampled), so it stays valid while the
+  # pipeline streams 848x480. Capture with `calibrate run ... --factory`.
+  # BoardSpec::MaxDecodeDistance computes this, and the CLI prints it before
+  # detecting -- a board that cannot decode returns zero corners from images
+  # that look perfectly good.
+  #
+  # [VERIFY] EVERY VALUE BELOW, on the physical board, before trusting a run:
+  #   squares_x/y      8 x 8 per the listing. COUNT them anyway on arrival: a
+  #                    wrong count maps corner ids to the wrong 3D points -- the
+  #                    classic ChArUco bug. It shows up as a large reprojection
+  #                    RMSE, so the 0.5 px gate catches it, but the message will
+  #                    not say so.
+  #   square_length_m  CALIPERS. 38 mm is nominal; boards are routinely 1-2%
+  #                    off, and this value scales every distance in the system
+  #                    while every reprojection error stays small.
+  #   marker_length_m  CALIPERS. 28.5 mm assumes the usual 0.75 ratio.
+  #   dictionary       Must match what is printed or NOTHING decodes. All of
+  #                    DICT_4X4/5X5/6X6 have margin at 1080p (7.5/6.4/5.6
+  #                    px/module), so this is about matching, not reach.
+  squares_x: 8
+  squares_y: 8
+  square_length_m: 0.038
+  marker_length_m: 0.0285
+  dictionary: "DICT_5X5_250"
+
+world:
+  frame: table_origin
+  # Pose of the board's origin corner in the world frame, row-major 4x4.
+  #
+  # This is what DEFINES the world frame: the board is placed at a known,
+  # measured location on the table, and every camera pose is derived from it.
+  # An error here is a rigid offset applied to every fused pose. It is invisible
+  # to every downstream check, because everything stays self-consistent -- note
+  # in particular that quality.max_round_trip_error_m CANNOT catch it, by
+  # construction: the round trip asks whether the two cameras agree with each
+  # other, and a wrong T_world_board is a rigid transform applied to both
+  # (Report.RoundTripMeasuresTheRigNotTheWorldPlacement pins that).
+  #
+  # WORLD FRAME. Origin at the WORKSPACE CENTRE, on the tabletop.
+  #   +x  along the table's 1180 mm width, to your right
+  #   +y  toward the BACK edge, away from you
+  #   +z  up
+  # Chosen so the recovered camera positions come out as the RIG_BOM.md numbers
+  # directly -- roughly (+-0.369, -0.439, +0.402) -- which is what makes a tape
+  # measure a valid check on the result.
+  #
+  # BOARD PLACEMENT. Pattern-up, the printed image readable from where you sit,
+  # the 304 mm PATTERN (not the 324 mm panel) centred on the workspace centre.
+  # Tape the four pattern corners, not the panel edges: the ~10 mm border may
+  # not be symmetric, and taping by the panel would offset the whole world frame
+  # by however far off-centre it was printed.
+  #
+  # WHY NOT IDENTITY. The ChArUco board frame has +y running DOWN the printed
+  # image and +z INTO the panel -- x cross y goes through the board, away from a
+  # camera viewing the printed face. VERIFIED against OpenCV 4.6
+  # estimatePoseCharucoBoard, which returns identity rotation for a
+  # fronto-parallel board. So a board lying pattern-up has +z pointing DOWN in
+  # world terms, and both y and z flip: R = Rx(180 deg) = diag(1, -1, -1).
+  #
+  # Identity was the shipped value and it is WRONG. Confirmed on a real capture:
+  # with identity, the solve placed the two cameras at world z = -642 mm and
+  # -428 mm while they were plainly above the board looking down. The report
+  # raised no complaint -- the maths is self-consistent, it just describes a
+  # mirrored rig.
+  #
+  # TRANSLATION. The board origin corner is the image top-left of the pattern,
+  # which with this placement is the BACK-LEFT corner:
+  #   x = -(squares_x * square_length_m) / 2 = -0.152
+  #   y = +(squares_y * square_length_m) / 2 = +0.152
+  #   z = board thickness -- the pattern is on the TOP face, and world z = 0 is
+  #       the tabletop, the plane objects actually rest on.
+  #
+  # [VERIFY] 0.152 is 4 x square_length_m. If callipers change square_length_m,
+  # BOTH of these change with it.
+  #
+  # [VERIFY] z is 0.000 because the board thickness has NOT been measured yet.
+  # Callipers on the panel edge, then put the real number here. Left at zero,
+  # world z = 0 is the board's printed surface rather than the tabletop, and
+  # every absolute world height handed to PM1 carries that bias. It does not
+  # affect the round trip, the reprojection RMSE, or the ablation -- those are
+  # all invariant to this matrix -- so it is a bounded error, not a blocking
+  # one. It is still a few millimetres of pure fiction and takes ten seconds to
+  # remove.
+  T_world_board: [ 1,  0,  0, -0.152,
+                   0, -1,  0,  0.152,
+                   0,  0, -1,  0.000,
+                   0,  0,  0,  1]
+
+quality:
+  # calib_agent's own target, and the gate fusion refuses to start above
+  # (INTERFACES.md §4). Keep in step with fusion.yaml's
+  # calibration.max_reprojection_rmse_px.
+  max_reprojection_rmse_px: 0.5
+  # A point seen by both cameras must land in the same world position from
+  # either. This is the number that actually says whether the two views agree,
+  # and it is the one to distrust first if fused poses look wrong.
+  max_round_trip_error_m: 0.005
+  # Intrinsic calibration needs many views at varied angles and distances;
+  # below this the solution is under-constrained and the RMSE is meaninglessly
+  # low because it is fitting noise.
+  min_views_for_intrinsics: 12
+  # Corners shared between the two cameras, needed before extrinsics are trusted.
+  min_shared_corners: 12
+
+# Session re-registration (calibrate reregister).
+#
+# The rig mounts cameras on floor tripods and uses a shared desk as the table,
+# so the tabletop moves relative to the cameras between sessions. That breaks
+# every T_world_cam silently. Re-registration recovers it from one board view
+# per camera -- but ONLY if the cameras did not move relative to each other.
+#
+# T_camA_camB is invariant to the world frame moving, so comparing it against
+# the stored calibration separates the two cases:
+#   unchanged -> the table moved, re-registration is valid
+#   changed   -> a camera moved, re-registration is INVALID, recalibrate
+rigidity:
+  # Must stay below quality.max_round_trip_error_m -- the loader enforces it.
+  # A baseline error of X mm surfaces as roughly X mm of round-trip
+  # disagreement, so a rig this check passes must not fail that one.
+  max_baseline_shift_m: 0.003
+  # Derived, not picked: atan(0.003 / 0.70) = 0.25 deg is the rotation that
+  # induces the same lateral error at the 0.70 m working distance.
+  max_baseline_rotation_deg: 0.25
+  # A warning, not a gate. The table is EXPECTED to move -- that is the point.
+  # But a desk does not slide 20 mm on its own, so a shift this large more
+  # likely means the board was returned to the wrong spot. That silently
+  # redefines the world frame and nothing downstream can detect it.
+  warn_world_shift_m: 0.020

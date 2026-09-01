@@ -1,0 +1,61 @@
+# camera_agent configuration.
+#
+# CLAUDE.md constraint 4: cameras are addressed by SERIAL NUMBER, never by
+# /dev/video* or enumeration order. USB enumeration is not stable across
+# reboots, and an index-based mapping will silently swap the two views during a
+# live demo -- producing fused poses that are wrong in a way nothing downstream
+# can detect, because everything stays internally consistent.
+#
+# The camera_id keys here are the same strings used for
+# ObjectState::visible_views bit order in fusion.yaml and predicates.yaml.
+
+cameras:
+  cam_front:
+    serial: "261722073945"
+    # inter_cam_sync_mode: 0 = free-running, 1 = master, 2 = slave.
+    #
+    # Set to 1 / 2 ONLY once the physical sync cable is connected between the
+    # two units' multi-camera sync connectors. Verified 2026-08-20: with
+    # cam_over set to slave and NO cable, it opens fine and then never delivers
+    # a frame -- a slave captures only when triggered, so the pipeline hangs
+    # until the 5 s timeout. That is the R4b mitigation, and it is not a
+    # software-only setting.
+    #
+    # This value is stored in the camera's NVRAM and PERSISTS ACROSS POWER
+    # CYCLES, so it is written on every open, including 0 -- otherwise a unit
+    # left in slave mode from a previous run stays stuck there.
+    inter_cam_sync_mode: 1
+  cam_over:
+    serial: "261822074567"
+    inter_cam_sync_mode: 2
+
+streams:
+  # 848x480 is the D435i's native depth resolution -- other sizes are scaled on
+  # the ASIC and lose depth quality for nothing.
+  depth_width: 848
+  depth_height: 480
+  color_width: 848
+  color_height: 480
+  fps: 30
+  # Depth must be aligned to colour (INTERFACES.md §1): FoundationPose needs
+  # registered RGB-D on one pixel grid.
+  align_depth_to_color: true
+
+sync:
+  # Frame timestamps across the two cameras must agree within one frame period
+  # (INTERFACES.md §1), asserted at startup and logged.
+  max_skew_ms: 33.0
+  # Frames to sample when checking skew at startup. One frame could agree by
+  # luck; a run of them establishes the streams are actually locked.
+  startup_check_frames: 30
+
+noise_characterisation:
+  # Distances at which to measure a flat wall. The resulting plane-fit RMS per
+  # distance feeds the evaluation error budget -- AGENTS.md calls this a
+  # deliverable, not a debugging step.
+  distances_m: [0.4, 0.6, 0.8, 1.0]
+  # Central image region used for the plane fit, as a fraction of the frame.
+  # The frame edges see the wall most obliquely and carry the worst depth, which
+  # would dominate an RMS taken over the whole image.
+  roi_fraction: 0.5
+  frames_per_distance: 30

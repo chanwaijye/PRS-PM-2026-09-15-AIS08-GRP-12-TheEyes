@@ -1,0 +1,34 @@
+# Mesh registry — INTERFACES.md §7.
+#
+# The class name is the join key from the detector: a Detection whose class has
+# no entry here is dropped with a warning and must never reach the pose
+# estimator. Keep these keys identical to the YOLOv8 class names.
+#
+# `diameter_m` is required — the ADD-S threshold is a fraction of object
+# diameter, so evaluation cannot run without it.
+#
+# `extent` is the mesh AABB half-extents in metres, and is what fusion uses to
+# fill ObjectState::extent for a known class.
+#
+# [VERIFY] Every entry below is a placeholder pending real CAD meshes. The
+# mustard_bottle figures come from FoundationPose's own demo mesh, where the
+# estimator reported diameter 0.19646 m; the rest are nominal.
+
+objects:
+  mustard_bottle:
+    mesh: assets/meshes/mustard_bottle.obj
+    symmetric: false
+    diameter_m: 0.196
+    extent: [0.048, 0.043, 0.093]
+
+  red_cube:
+    mesh: assets/meshes/red_cube.obj
+    symmetric: true            # a cube has a discrete symmetry group
+    diameter_m: 0.087
+    extent: [0.025, 0.025, 0.025]
+
+  bowl:
+    mesh: assets/meshes/bowl.obj
+    symmetric: true            # rotationally symmetric about its axis
+    diameter_m: 0.160
+    extent: [0.075, 0.075, 0.035]

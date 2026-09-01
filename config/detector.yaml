@@ -1,0 +1,70 @@
+# detector_agent configuration.
+
+model:
+  # ONNX exported from the YOLOv8 fine-tune (training/detector/export_onnx.py).
+  # [VERIFY] placeholder path until the first real training run lands.
+  onnx_path: "assets/models/yolov8_the_eyes.onnx"
+  # Network input side. YOLOv8 is trained square; letterboxing preserves aspect
+  # ratio and the transform is inverted when boxes are mapped back.
+  input_size: 640
+  # 4 = RGB-D early fusion (the deployed network, CLAUDE.md); 3 = RGB-only,
+  # retained solely as the modality-ablation control. Checked against the loaded
+  # model's actual input channel count at startup -- the two are not
+  # interchangeable.
+  input_channels: 4
+  # Class index -> name. Order MUST match the training data's class order, and
+  # the names MUST match the keys in config/meshes.yaml -- that string is the
+  # join key all the way through to the pose estimator (INTERFACES.md §2).
+  class_names: ["mustard_bottle", "red_cube", "bowl"]
+
+inference:
+  # "cuda" | "tensorrt" | "cpu". CPU is the parity reference: it is deterministic
+  # across machines, which the GPU execution providers are not.
+  provider: "cuda"
+  # Fall back to CPU rather than failing if the provider will not load. A slow
+  # detector still lets the rest of the pipeline run; a dead one does not.
+  allow_cpu_fallback: true
+  intra_op_threads: 4
+
+# Depth -> input channel 3, SENTINEL encoding (AGENTS.md requires this be decided
+# once and documented; see SystemCode/detector/include/.../depth_encoding.hpp).
+#
+#   valid   d in [min_m, max_m] -> [valid_floor, 1.0]  linear, metric metres
+#   invalid raw 0               -> sentinel, strictly below valid_floor
+#
+# RealSense reports raw 0 for stereo holes. Left as a distance the network reads
+# it as "object at zero range" -- the most confident possible claim about a pixel
+# carrying no information. The gap below valid_floor is what makes "no data"
+# learnable as its own state.
+depth:
+  # Tabletop working range. Readings outside are CLIPPED, not discarded: they are
+  # real observations that saturate, and discarding them would fabricate holes.
+  min_m: 0.20
+  max_m: 1.50
+  valid_floor: 0.1
+  sentinel: 0.0
+  # Depth padding when letterboxing, raw uint8. 114 matches ultralytics, which
+  # pads EVERY channel with 114 -- so a model trained through it has learned the
+  # border as a surface at ~0.70 m, not as missing data. Inference must match
+  # training. Set 0 (the sentinel, semantically correct) only alongside a
+  # training pipeline changed to match.
+  letterbox_pad_u8: 114
+
+postprocess:
+  # Discard boxes below this class score before NMS.
+  score_threshold: 0.25
+  # IoU above which two same-class boxes are considered the same object.
+  iou_threshold: 0.45
+  # Hard cap after NMS, per frame. Guards against a pathological frame turning
+  # into thousands of pose-estimation requests.
+  max_detections: 64
+
+tracking:
+  # Stable track ids matter more here than they look: pose_agent keys
+  # FoundationPose registration on (camera, class, track_id), and registration
+  # measured ~1.3 s against ~11 ms for tracking. An unstable id means paying
+  # registration on every frame.
+  iou_match_threshold: 0.30
+  # Frames a track survives without a matching detection before it is retired
+  # and its id will not be reused for that object.
+  max_age_frames: 15
