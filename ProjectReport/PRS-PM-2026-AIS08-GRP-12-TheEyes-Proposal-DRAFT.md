@@ -201,9 +201,29 @@ Omniverse Replicator scenes with domain randomisation over lighting, textures, c
 
 **Object-frame convention.** A scanned mesh's origin is wherever the scanner left it, and FoundationPose reports the pose of that origin — so `ObjectState::pose_w.translation()` inherits it. Two downstream assumptions require it to be the object's *centre* instead: the scene-graph bounding box is built as `translation() ± extent`, and the `symmetric` flag asserts that rotations about the symmetry axis are equivalent. The raw YCB bowl fails both — its origin lies 43.7 mm off centre, 27% of its own diameter, and off the symmetry axis (rim radius sd 30.5 mm about the mesh-origin axis versus 2.5 mm about the AABB-centre axis). The project therefore defines **the object frame's origin as the mesh AABB centre** and re-centres on ingest, which is a rigid re-parameterisation leaving diameters, extents, ADD/ADD-S and pose accuracy unchanged. `training/prepare_meshes.py` enforces this and two automated tests re-derive it from the mesh files, so `config/meshes.yaml` cannot drift from the geometry it describes.
 
+**Physical instantiation: printed where geometry matters, bought where appearance does.** A mesh is only useful if the physical object it describes is the one in front of the cameras — FoundationPose registers the mesh against observed depth, and ADD/ADD-S is computed over mesh vertices, so any shape mismatch between object and mesh is added to the pose error and cannot afterwards be separated from it. The three classes resolve differently:
+
+| class | sourcing | reasoning |
+|---|---|---|
+| `red_cube` | 3D printed | Authored mesh; the printed part matches by construction |
+| `bowl` | 3D printed | The YCB mesh is watertight and fully manifold (0 boundary edges, 0 non-manifold edges) and slices without repair, so printing reproduces the mesh geometry exactly. A visually similar purchased bowl would not, and the difference would surface as irreducible ADD-S error |
+| `mustard_bottle` | Purchased (French's Classic Yellow, 14 oz) | The printed label is the visual signature the RGB half of the detector learns; a blank printed bottle discards it. YCB selects commodity items precisely so they can be re-acquired |
+
+**Consequence for the synthetic dataset.** Replicator renders training data from each mesh's texture, and for a printed object that texture — a scan of the original YCB item — does not describe the object that will actually be captured. Rather than finishing prints to match a scan, the synthetic renders for printed classes use **the material the object is printed in**, with domain randomisation covering the residual. Both sides of the sim-to-real comparison are under the project's control for these classes, so they are made to agree at the source. The purchased mustard bottle keeps its scanned texture, since there the scan is a record of the real object; its label design should nonetheless be checked against the current retail product, as the YCB scans predate this work by several years.
+
+This divides the object set usefully for §7's modality ablation: two *controlled-appearance* classes whose RGB statistics are matched by construction, and one *real-world-texture* class where they are not.
+
+Printed objects must be sliced at 100% with no bed-fitting rescale, and the printer's dimensional accuracy verified with callipers against a test print before any object is relied upon — a printer 1% out of true reintroduces exactly the mesh/object mismatch that printing is chosen to avoid. Matte mid-tone filament is required: gloss defeats the IR projector and dark surfaces absorb it (§7A, sensor error budget). Layer lines are beneficial rather than harmful, as they add surface texture for active stereo.
+
 ### 6.3 Real Evaluation Data
 
-Manually captured dual-camera RGB-D sequences of tabletop scenes, including staged occlusion cases. Ground-truth poses obtained via fiducial (ArUco) mounts for a quantitative sim-to-real comparison; the fiducials are used only for evaluation, never at inference time.
+Manually captured dual-camera RGB-D sequences of tabletop scenes, including staged occlusion cases. Ground-truth poses obtained via fiducial (ArUco) mounts; the fiducials are used only for evaluation, never at inference time.
+
+**Fiducial mounts are designed into the printed objects rather than attached to them.** A marker glued to a finished object gives a ground-truth pose only as good as the subsequent measurement of the offset between marker and object frame — an error that enters every ADD/ADD-S figure as a constant bias, and one that is invisible because it leaves all results self-consistent. For the printed classes the marker seat is instead modelled into the part at a known offset from the object frame origin, which §6.2 defines as the mesh AABB centre. The offset is then exact by construction rather than measured, and the ground truth is as accurate as the print.
+
+The purchased mustard bottle admits no such mount and requires a measured attachment; its ground-truth uncertainty is correspondingly higher and is reported separately rather than pooled with the printed classes.
+
+Distractor objects used for clutter and false-positive testing require no meshes, as they are never detected classes.
 
 ### 6.4 Benchmark Scenes
 
@@ -400,7 +420,9 @@ of it.
 | Digital angle gauge | [VERIFY actual] | **Acquired** |
 | ChArUco board, 324 × 324 mm, 8 × 8 @ 38 mm | [VERIFY actual] | **Ordered**, due ~2026-09-05 |
 | Work surface | — | **No purchase.** Existing desk reused; 1180 × 440 mm of free surface is sufficient for the derived rig geometry (§7A) |
-| Custom object prints | < S$50 | To produce (50 mm cube; mesh already authored and exact) |
+| Filament for printed objects (`red_cube`, `bowl`, fiducial mounts) | < S$50 | To produce. Matte mid-tone; see §6.2 |
+| `mustard_bottle` physical object (French's Classic Yellow, 14 oz) | < S$10 | To purchase |
+| 3D printer | — | **Owned.** Makes the printed-vs-purchased split in §6.2 available at negligible cost, and is what allows fiducial mounts to be exact by construction (§6.3) |
 | Object meshes (YCB 006, 024) | — | **Free**, public research dataset |
 | Cloud compute (detector training bursts) | ≤ US$100/month existing budget | Available |
 | Workstation (Ryzen 9700X, RTX 5070 Ti 16 GB) | — | Owned |
