@@ -26,10 +26,13 @@ runs/
 *.bag
 *.mkv
 
-# Meshes and USD assets: large binaries, and the CAD is an input to the project
-# rather than a product of it. Track config/meshes.yaml (the registry), not the
-# geometry it points at.
-assets/meshes/
+# USD/Blender scene files stay out -- large, and regenerable from the scripts.
+#
+# assets/meshes/ IS tracked (changed 2026-09-03, when the meshes landed). The
+# earlier rule assumed large CAD binaries; the reality is ~15 MB of YCB OBJ plus
+# textures, and every reportable number in the project is derived from this
+# exact geometry. §11.1 delivers a single self-contained ZIP, so the meshes
+# belong in it.
 *.usd
 *.usda
 *.usdc

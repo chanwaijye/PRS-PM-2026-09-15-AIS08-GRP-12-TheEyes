@@ -7,7 +7,8 @@ board:
   # contributes, which matters when two cameras at very different angles must
   # see it simultaneously.
   #
-  # ORDERED 2026-08-26, arriving ~2026-08-28: 324 x 324 mm panel, 8 x 8 squares
+  # ORDERED, reported by the user 2026-09-03 as arriving in ~2 days (~09-05):
+  # 324 x 324 mm panel, 8 x 8 squares
   # at 38 mm = 304 x 304 mm of squares, 49 interior corners, 32 markers.
   #
   # Decode reach. A DICT_5X5 marker is 7 modules across (5 bits + a 1-module

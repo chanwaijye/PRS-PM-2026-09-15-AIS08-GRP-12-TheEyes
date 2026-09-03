@@ -173,7 +173,7 @@ so you need **≥ 0.9 m** of usable length. If the cable you received is 0.5 m,
 it is the binding constraint on the whole layout and nothing else matters until
 it is resolved — measure it before mounting anything.
 
-## D. Calibration target — ORDERED: 324 × 324 mm, 8 × 8 @ 38 mm, arriving ~28 Aug
+## D. Calibration target — ORDERED: 324 × 324 mm, 8 × 8 @ 38 mm, arriving ~5 Sep
 
 The decisive number is not the board size but the **capture resolution**, and
 my earlier sizing here got it wrong twice: it used the standoff (0.70 m) as the
@@ -295,7 +295,7 @@ error and it will look like a fusion bug.
 
 **Not needed:** table — reusing the computer table (§A).
 
-**Ordered:** ChArUco board, 324 × 324 mm, 8 × 8 @ 38 mm, arriving ~28 Aug. Capture
+**Ordered:** ChArUco board, 324 × 324 mm, 8 × 8 @ 38 mm, arriving ~5 Sep. Capture
 calibration at 1920 × 1080 — see §D.
 
 **Now (cheap, blocks the build):** tabletop mat 1180 × 440 mm matte mid-grey,

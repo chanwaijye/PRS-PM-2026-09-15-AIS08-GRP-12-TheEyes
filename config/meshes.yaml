@@ -5,30 +5,66 @@
 # estimator. Keep these keys identical to the YOLOv8 class names.
 #
 # `diameter_m` is required — the ADD-S threshold is a fraction of object
-# diameter, so evaluation cannot run without it.
+# diameter, so evaluation cannot run without it. These are EXACT largest
+# pairwise vertex distances (computed on the convex hull), not sampled
+# estimates: sampling 3000 of the bowl's 8194 vertices moved the answer by
+# 0.4 mm between draws, which would quietly shift every ADD-S verdict.
 #
 # `extent` is the mesh AABB half-extents in metres, and is what fusion uses to
 # fill ObjectState::extent for a known class.
 #
-# [VERIFY] Every entry below is a placeholder pending real CAD meshes. The
-# mustard_bottle figures come from FoundationPose's own demo mesh, where the
-# estimator reported diameter 0.19646 m; the rest are nominal.
+# ---------------------------------------------------------------------------
+# Object-frame contract: THE ORIGIN IS THE AABB CENTRE
+# ---------------------------------------------------------------------------
+# A scanned mesh's origin is wherever the scanner left it. FoundationPose
+# returns the pose of the mesh origin, so ObjectState::pose_w.translation() is
+# the mesh origin too — and two things downstream assume it is the CENTRE:
+#
+#   1. scenegraph's AabbOf() (predicates.cpp) builds the box as
+#      translation() ± extent. The raw YCB bowl's origin is 43.7 mm off centre,
+#      27% of its own diameter, so every on/in/clear test would be evaluated
+#      against a displaced box.
+#   2. `symmetric: true` claims rotations about the symmetry axis are
+#      equivalent. Measured on the raw YCB bowl, the rim radius about the
+#      mesh-origin axis has sd 30.5 mm; about the AABB-centre axis, 2.5 mm.
+#      The origin was not on the axis, so rotating about it MOVED the origin
+#      and the "equivalent" poses differed in translation.
+#
+# Both vanish once the origin is the AABB centre, so that is the contract. It is
+# also simply better defined than "wherever the scanner left it".
+#
+# `training/prepare_meshes.py` enforces it — it re-centres on download, and
+# `--verify` re-checks. Re-centring is a rigid re-parameterisation: diameters,
+# extents, ADD/ADD-S and FoundationPose accuracy are all unaffected.
+# MeshRegistry.MeshesAreCentredOnTheirAabb re-derives these numbers from the OBJ
+# files at test time, so this file cannot drift from the geometry it describes.
+#
+# MEASURED 2026-09-04 from assets/meshes/. Provenance:
+#   mustard_bottle  YCB 006_mustard_bottle, via the FoundationPose demo data
+#                   (~/src/FoundationPose/demo_data/mustard0). Its diameter
+#                   agrees with the 0.19646 FoundationPose itself reports, so
+#                   this is provably the mesh the estimator was validated on.
+#   bowl            YCB 024_bowl, google_16k, ycb-benchmarks.s3.amazonaws.com
+#   red_cube        Authored, not scanned. Exact by construction — the printed
+#                   part is what must match the mesh, not the reverse.
 
 objects:
   mustard_bottle:
     mesh: assets/meshes/mustard_bottle.obj
     symmetric: false
-    diameter_m: 0.196
-    extent: [0.048, 0.043, 0.093]
+    diameter_m: 0.196463
+    extent: [0.048576, 0.033309, 0.095704]
 
   red_cube:
     mesh: assets/meshes/red_cube.obj
     symmetric: true            # a cube has a discrete symmetry group
-    diameter_m: 0.087
-    extent: [0.025, 0.025, 0.025]
+    diameter_m: 0.086603       # 0.05 * sqrt(3), exact
+    extent: [0.025000, 0.025000, 0.025000]
 
   bowl:
     mesh: assets/meshes/bowl.obj
-    symmetric: true            # rotationally symmetric about its axis
-    diameter_m: 0.160
-    extent: [0.075, 0.075, 0.035]
+    symmetric: true            # rotationally symmetric about its z axis, which
+                               # passes through the origin only because the mesh
+                               # is re-centred — see the contract above
+    diameter_m: 0.161952
+    extent: [0.080732, 0.080582, 0.027505]

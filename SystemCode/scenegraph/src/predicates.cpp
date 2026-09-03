@@ -90,6 +90,15 @@ Aabb AabbOf(const ObjectState& o) {
   // extent is world-axis-aligned half-extents, so pose_w's rotation is
   // deliberately unused. This is what lets unknown_object — whose rotation is
   // meaningless by contract — participate in these rules safely.
+  //
+  // This ALSO assumes pose_w.translation() is the object's centre, not merely
+  // some point rigidly attached to it. That holds because the object frame's
+  // origin is defined as the mesh AABB centre (config/meshes.yaml), which
+  // training/prepare_meshes.py enforces and
+  // MeshRegistry.MeshesAreCentredOnTheirAabb re-checks against the OBJ files.
+  // A raw scanned mesh breaks it silently: the YCB bowl's own origin is 43.7 mm
+  // off centre, so every box built here would be displaced by 27% of the
+  // object's diameter while every number downstream stayed self-consistent.
   const Eigen::Vector3d c = o.pose_w.translation();
   const Eigen::Vector3d e = o.extent.cwiseAbs();
   return Aabb{c - e, c + e};
