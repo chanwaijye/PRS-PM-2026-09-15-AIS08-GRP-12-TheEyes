@@ -98,6 +98,7 @@ import argparse
 import math
 import os
 import sys
+import time
 from pathlib import Path
 
 # Must match config/detector.yaml model.class_names and the keys in
@@ -543,6 +544,7 @@ def main() -> int:
             (args.out / "labels" / split).mkdir(parents=True, exist_ok=True)
 
         written = 0
+        t_start = time.time()
         for i in range(args.frames):
             rep.orchestrator.step(rt_subframes=4)
             split = "val" if rng.random() < args.val_fraction else "train"
@@ -581,8 +583,13 @@ def main() -> int:
                 (args.out / "labels" / split / f"{stem}.txt").write_text("\n".join(rows) + "\n")
                 written += 1
 
-            if (i + 1) % 50 == 0:
-                log(f"  frame {i+1}/{args.frames}  written={written}")
+            if (i + 1) % 25 == 0 or i + 1 == args.frames:
+                elapsed = time.time() - t_start
+                rate = (i + 1) / elapsed
+                eta = (args.frames - i - 1) / rate
+                log(f"  frame {i+1}/{args.frames}  written={written}  "
+                    f"{rate:.2f} frame/s  elapsed {elapsed/60:.1f} min  "
+                    f"ETA {eta/60:.1f} min")
 
         import yaml
         (args.out / "data.yaml").write_text(yaml.safe_dump({
