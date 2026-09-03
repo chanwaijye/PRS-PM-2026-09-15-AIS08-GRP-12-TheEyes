@@ -133,8 +133,12 @@ CAM_JITTER_M = 0.03
 
 # The real work surface: the desk in docs/RIG_BOM.md §A, 1180 x 440 mm free.
 TABLE_W, TABLE_D = 1.18, 0.44
-# Objects are placed within the workspace, not the whole desk.
-WORKSPACE_W, WORKSPACE_D = 0.60, 0.36
+# Objects are placed within the workspace, not the whole desk. Tightened
+# 2026-09-04 from 0.60 x 0.36: at that spread three objects on a 1.18 m desk
+# almost never overlapped, and 98% of frames showed all three unoccluded. The
+# project's entire claim is about occlusion, so the training data cannot be a
+# set of isolated objects.
+WORKSPACE_W, WORKSPACE_D = 0.42, 0.26
 # Desk height. Sets where the floor goes relative to the tabletop, which is the
 # world z = 0 plane.
 DESK_HEIGHT_M = 0.74
@@ -155,6 +159,25 @@ FILAMENT = {
     "bowl":           (0.12, 0.32, 0.68),   # blue: distinct from the other two
 }
 FILAMENT_SPREAD = 0.12
+
+# Distractors draw from the SAME palette as the targets. This is the change that
+# makes the modality ablation able to say anything.
+#
+# With three classes in three unmistakable colours on a plain table, colour alone
+# very nearly solves detection: the first training run reached mAP@0.5 = 0.994
+# after ONE epoch and 0.995 after ten. A task that saturates cannot show whether
+# the depth channel helps, so the RGB-vs-RGB-D comparison -- which carries PRS
+# technique category (2) -- would have had no room to register a difference.
+#
+# The fix is not to randomise the targets' colours, which would misrepresent
+# objects that really are printed one colour each. It is to put other objects of
+# the same colours in the scene, so colour stops being sufficient and shape and
+# depth have to carry the discrimination. That is also simply what a desk looks
+# like.
+DISTRACTOR_COUNT = 8
+# Spanning the target size range (cube 50 mm to bowl 161 mm) rather than sitting
+# below it, so size is not a shortcut either.
+DISTRACTOR_SIZE_M = (0.035, 0.16)
 # Matte. docs/RIG_BOM.md requires matte objects because gloss defeats the IR
 # projector, so a glossy render would depict something the rig will not contain.
 FILAMENT_ROUGHNESS = (0.55, 0.9)
@@ -247,6 +270,42 @@ def load_extents(log):
     return out
 
 
+def configure_renderer(log):
+    """Report the renderer's exposure state. Deliberately does not change it.
+
+    [VERIFY] Scene brightness sits high: RGB mean ~200/255 with p1 = 132 and 14%
+    of pixels saturated, i.e. nothing below mid-grey. A room-lit capture would
+    not look like this, so it is a sim-to-real appearance gap and it belongs in
+    the record even though it is not yet fixed.
+
+    What it is NOT: auto-exposure. `/rtx/post/histogram/enabled` is already
+    False, checked below, so the first explanation -- that auto-exposure was
+    normalising every frame and quietly cancelling the lighting randomisation --
+    was wrong.
+
+    What did not work, so the next person does not repeat it:
+      - Cutting light intensity 3-4x moved the mean 202 -> 199.
+      - Randomising the room albedo, which had been left at default white,
+        moved it the wrong way, to 210.
+      - Setting /rtx/post/tonemap filmIso, cameraShutter and fNumber saturated
+        the frame outright to 255, and then varying them across a ~300x exposure
+        range (ISO 25 f/16 1/250 s through ISO 200 f/5.6 1/60 s) changed nothing
+        at all. The camera parameters are not reaching this tonemapper, probably
+        because the active operator ignores them.
+
+    Left at defaults, which is the least-bad of the states measured. The right
+    fix is to match the exposure against a real capture once the rig is built,
+    rather than to keep guessing at Omniverse post-processing from the sim side.
+    """
+    import carb
+
+    settings = carb.settings.get_settings()
+    log(f"  renderer: auto-exposure(histogram)="
+        f"{settings.get('/rtx/post/histogram/enabled')}  "
+        f"tonemap op={settings.get('/rtx/post/tonemap/op')}  "
+        f"[VERIFY] scene renders bright, see configure_renderer")
+
+
 def build_scene(rep, mesh_dir, width, height, log):
     """Room, table, targets, distractors, lights, two cameras."""
     extents = load_extents(log)
@@ -254,10 +313,10 @@ def build_scene(rep, mesh_dir, width, height, log):
     # returns inf, which encodes as the invalid sentinel -- whereas the real
     # sensor, pointed at a desk, sees floor and wall and returns finite depth.
     # This was the single largest defect in the synthetic depth channel.
-    rep.create.plane(scale=(6.0, 6.0, 1.0), position=(0, 0, -DESK_HEIGHT_M),
-                     semantics=[("class", "floor")])
-    rep.create.plane(scale=(6.0, 3.0, 1.0), position=(0, WALL_Y_M, 0.6),
-                     rotation=(90, 0, 0), semantics=[("class", "wall")])
+    floor = rep.create.plane(scale=(6.0, 6.0, 1.0), position=(0, 0, -DESK_HEIGHT_M),
+                             semantics=[("class", "floor")])
+    wall = rep.create.plane(scale=(6.0, 3.0, 1.0), position=(0, WALL_Y_M, 0.6),
+                            rotation=(90, 0, 0), semantics=[("class", "wall")])
 
     # The work surface, at world z = 0.
     table = rep.create.plane(scale=(TABLE_W, TABLE_D, 1.0), position=(0, 0, 0),
@@ -278,18 +337,19 @@ def build_scene(rep, mesh_dir, width, height, log):
         targets.append(node)
         target_by_class[name] = node
 
-    distractors = rep.create.group([
-        rep.create.cube(scale=0.05),
-        rep.create.sphere(scale=0.05),
-        rep.create.cylinder(scale=0.05),
-    ])
+    makers = [rep.create.cube, rep.create.sphere, rep.create.cylinder, rep.create.cone]
+    distractors = rep.create.group(
+        [makers[i % len(makers)](scale=0.05) for i in range(DISTRACTOR_COUNT)])
 
     # A Dome light is REQUIRED, not decorative: with only Sphere/Distant lights
     # the RGB pass renders black even though depth and boxes are correct.
-    rep.create.light(light_type="Dome", intensity=rep.distribution.uniform(300, 1200))
+    # Lowered from 300-1200 / 2e3-4e4: the first dataset rendered at an RGB mean
+    # of ~200/255, brighter and flatter than any room-lit capture, which is a
+    # sim-to-real appearance gap introduced for no reason.
+    rep.create.light(light_type="Dome", intensity=rep.distribution.uniform(80, 600))
     rep.create.light(
         light_type="Sphere",
-        intensity=rep.distribution.uniform(2e3, 4e4),
+        intensity=rep.distribution.uniform(5e2, 1.2e4),
         temperature=rep.distribution.uniform(2500, 9000),
         position=rep.distribution.uniform((-2, -2, 1.5), (2, 2, 4)),
         count=3)
@@ -343,17 +403,33 @@ def build_scene(rep, mesh_dir, width, height, log):
             rep.modify.pose(
                 # Half of the sampled scale, so the prim rests on the table
                 # rather than half-buried: these are centred primitives too.
-                position=rep.distribution.uniform((-half_w, -half_d, 0.025),
-                                                  (half_w, half_d, 0.04)),
+                position=rep.distribution.uniform((-half_w, -half_d, 0.02),
+                                                  (half_w, half_d, 0.08)),
                 rotation=rep.distribution.uniform((0, 0, -180), (0, 0, 180)),
                 # ABSOLUTE size in metres, not a multiplier -- rep.modify.pose
                 # REPLACES scale. Passing 0.4-1.4 here (intended as a factor on a
                 # 5 cm prim) produced 40 cm to 1.4 m distractors.
-                scale=rep.distribution.uniform(0.02, 0.08))
+                scale=rep.distribution.uniform(*DISTRACTOR_SIZE_M))
+            # Same palette as the targets, plus neutrals -- see DISTRACTOR_COUNT.
             rep.randomizer.materials(rep.create.material_omnipbr(
-                diffuse=rep.distribution.uniform((0, 0, 0), (1, 1, 1)),
-                roughness=rep.distribution.uniform(0.1, 0.9),
-                metallic=rep.distribution.choice([0.0, 1.0])))
+                diffuse=rep.distribution.choice(
+                    list(FILAMENT.values()) + [(0.8, 0.8, 0.8), (0.25, 0.25, 0.25),
+                                               (0.5, 0.45, 0.4)]),
+                roughness=rep.distribution.uniform(0.3, 0.9)))
+        # The room surfaces need materials for the same reason the table does.
+        # Left at the default they render near-white and, since they fill most of
+        # the frame, the whole dataset came out at an RGB mean near 200/255 --
+        # brighter and flatter than any room-lit capture. Lowering the lights did
+        # not fix it (202 -> 199 for a 3-4x intensity cut), because the cause was
+        # a white room reflecting everything, not the light hitting it.
+        with floor:
+            rep.randomizer.materials(rep.create.material_omnipbr(
+                diffuse=rep.distribution.uniform((0.05, 0.05, 0.05), (0.45, 0.42, 0.38)),
+                roughness=rep.distribution.uniform(0.5, 1.0)))
+        with wall:
+            rep.randomizer.materials(rep.create.material_omnipbr(
+                diffuse=rep.distribution.uniform((0.15, 0.15, 0.15), (0.70, 0.68, 0.62)),
+                roughness=rep.distribution.uniform(0.6, 1.0)))
         with table:
             rep.randomizer.materials(rep.create.material_omnipbr(
                 diffuse=rep.distribution.uniform((0.25, 0.25, 0.25), (0.75, 0.75, 0.75)),
@@ -435,8 +511,27 @@ def diagnose(rep, annots, args, log) -> int:
             f"{mid[2]*1000:7.0f}] mm")
 
     log(f"\n--- rendered frames (n={args.diagnose}) ---")
-    stats = {name: {"valid": [], "near": [], "far": [], "boxes": [], "rgb": []}
+    stats = {name: {"valid": [], "near": [], "far": [], "boxes": [], "rgb": [],
+                    "occ": [], "hidden": 0, "frames": 0}
              for name in annots}
+
+    def occlusion_ratios(tight, loose):
+        """Per-object 1 - visible_area/full_area, matched by semantic id."""
+        def by_id(d):
+            out = {}
+            for b in d["data"]:
+                area = (float(b["x_max"]) - float(b["x_min"])) * \
+                       (float(b["y_max"]) - float(b["y_min"]))
+                out.setdefault(int(b["semanticId"]), []).append(area)
+            return out
+        t, l = by_id(tight), by_id(loose)
+        ratios = []
+        for sid, areas in l.items():
+            full = max(areas)
+            vis = max(t.get(sid, [0.0]))
+            if full > 0:
+                ratios.append(max(0.0, 1.0 - vis / full))
+        return ratios
     for _ in range(args.diagnose):
         rep.orchestrator.step(rt_subframes=4)
         for name in annots:
@@ -448,17 +543,28 @@ def diagnose(rep, annots, args, log) -> int:
             if hit.any():
                 stats[name]["near"].append(float(depth[hit].min()))
                 stats[name]["far"].append(float(np.percentile(depth[hit], 95)))
-            stats[name]["boxes"].append(len(to_yolo_rows(boxes, args.width, args.height)))
+            rows = to_yolo_rows(boxes, args.width, args.height)
+            stats[name]["boxes"].append(len(rows))
             stats[name]["rgb"].append(float(rgb.mean()))
+            stats[name]["frames"] += 1
+            if len(rows) < len(CLASSES):
+                stats[name]["hidden"] += 1
+            loose = annots[name]["bounding_box_2d_loose"].get_data()
+            stats[name]["occ"].extend(occlusion_ratios(boxes, loose))
 
     ok = True
     for name, st in stats.items():
         valid = float(np.mean(st["valid"])) if st["valid"] else 0.0
         near = float(np.mean(st["near"])) if st["near"] else float("nan")
         far = float(np.mean(st["far"])) if st["far"] else float("nan")
+        occ = np.array(st["occ"]) if st["occ"] else np.zeros(1)
         log(f"  {name}: depth hit {valid*100:5.1f}%   near {near*1000:6.0f} mm   "
             f"p95 {far*1000:6.0f} mm   labels/frame {np.mean(st['boxes']):.2f}   "
             f"rgb mean {np.mean(st['rgb']):.1f}")
+        log(f"    occlusion: mean {occ.mean()*100:.1f}%   "
+            f">25% occluded: {float((occ > 0.25).mean())*100:.0f}% of objects   "
+            f"frames missing a target: "
+            f"{st['hidden'] / max(1, st['frames'])*100:.0f}%")
         # A real D435i pointed at a desk sees the room; anything under ~80% means
         # the frame is still looking at empty space where reality has geometry.
         if valid < 0.80:
@@ -516,6 +622,7 @@ def main() -> int:
         rng = np.random.default_rng(args.seed)
         rep.set_global_seed(args.seed)
 
+        configure_renderer(log)
         cams = build_scene(rep, args.meshes, args.width, args.height, log)
         resolution = (args.width, args.height)
 
@@ -524,7 +631,12 @@ def main() -> int:
             rp = rep.create.render_product(cam, resolution)
             products[name] = rp
             annots[name] = {}
-            for ann in ("rgb", "distance_to_camera", "bounding_box_2d_tight"):
+            # tight = the VISIBLE extent, loose = the full extent ignoring
+            # occluders. Their ratio is a direct measure of how occluded each
+            # object is, which is the property this project is about and the one
+            # the first dataset accidentally had almost none of.
+            for ann in ("rgb", "distance_to_camera", "bounding_box_2d_tight",
+                        "bounding_box_2d_loose"):
                 a = rep.AnnotatorRegistry.get_annotator(ann)
                 a.attach(rp)
                 annots[name][ann] = a

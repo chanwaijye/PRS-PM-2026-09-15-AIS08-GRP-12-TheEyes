@@ -41,6 +41,13 @@ def main() -> int:
     parser.add_argument("--device", default="0")
     parser.add_argument("--seed", type=int, default=20260820)
     parser.add_argument("--patience", type=int, default=15)
+    parser.add_argument("--fraction", type=float, default=1.0,
+                        help="fraction of the TRAINING split to use; validation is "
+                             "unaffected. This is how the §7 dataset-size ablation "
+                             "is run -- 0.125 and 0.5 of the 40k train split give "
+                             "the 5k and 20k points against an identical val set "
+                             "and one generator config, rather than three separate "
+                             "generations that would also differ in scene sampling")
     parser.add_argument("--no-inflate-stem", action="store_true",
                         help="leave the depth channel at random init (the RGB-only "
                              "control for a stem-initialisation ablation)")
@@ -89,6 +96,10 @@ def main() -> int:
         device=args.device,
         seed=args.seed,
         patience=args.patience,
+        fraction=args.fraction,
+        # cache=False (the default) is load-bearing here, not incidental: the
+        # 4-channel .npy files are 1.63 MB each and the training split is 65 GB,
+        # so any in-RAM cache would exhaust memory rather than speed anything up.
         deterministic=True,
         exist_ok=True,
         verbose=True,
