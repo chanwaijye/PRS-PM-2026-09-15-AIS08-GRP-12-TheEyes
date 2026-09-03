@@ -207,7 +207,7 @@ Omniverse Replicator scenes with domain randomisation over lighting, textures, c
 |---|---|---|
 | `red_cube` | 3D printed | Authored mesh; the printed part matches by construction |
 | `bowl` | 3D printed | The YCB mesh is watertight and fully manifold (0 boundary edges, 0 non-manifold edges) and slices without repair, so printing reproduces the mesh geometry exactly. A visually similar purchased bowl would not, and the difference would surface as irreducible ADD-S error. Printing additionally avoids the original's material: the YCB bowl is glossy enamelware, and specular surfaces return little usable IR to an active-stereo sensor |
-| `mustard_bottle` | Purchased — French's Classic Yellow, **20 oz** (see below) | The printed label is the visual signature the RGB half of the detector learns; a blank printed bottle discards it. YCB selects commodity items precisely so they can be re-acquired |
+| `mustard_bottle` | 3D printed — see below | Purchase was preferred, because the printed label is the visual signature the RGB half of the detector learns. The YCB original is French's Classic Yellow **20 oz**, which is not retail-available in Singapore, so the class joins the printed group |
 
 **Consequence for the synthetic dataset.** Replicator renders training data from each mesh's texture, and for a printed object that texture — a scan of the original YCB item — does not describe the object that will actually be captured. For the bowl the mismatch is twofold: the YCB original is glossy speckled enamelware, and its scanned texture has the scan's own specular highlights baked into it, which a renderer would then light a second time. Rather than finishing prints to match a scan, the synthetic renders for printed classes use **the material the object is printed in**, with domain randomisation covering the residual. Both sides of the sim-to-real comparison are under the project's control for these classes, so they are made to agree at the source. The purchased mustard bottle keeps its scanned texture, since there the scan is a record of the real object.
 
@@ -215,7 +215,9 @@ Omniverse Replicator scenes with domain randomisation over lighting, textures, c
 
 The label design must also be checked against the current retail product. The scanned texture shows a "Best By SEP 2016" stamp and a 2014 copyright notice, so it predates this work by roughly a decade and the packaging may since have been revised. Any divergence is an RGB-channel sim-to-real gap (R3), affecting the RGB-only ablation baseline more than the RGB-D detector, whose depth channel is label-invariant.
 
-This divides the object set usefully for §7's modality ablation: two *controlled-appearance* classes whose RGB statistics are matched by construction, and one *real-world-texture* class where they are not.
+**All three classes are consequently controlled-appearance**, which must be stated rather than glossed, because it changes what the sim-to-real figure measures. The YCB mustard bottle is French's Classic Yellow 20 oz — identified from the mesh's own texture atlas, whose front label reads "40% MORE THAN OUR 14 OZ", and corroborated by the YCB paper's recorded 603 g — and it is not retail-available in Singapore. Substituting a visually similar bottle would reintroduce exactly the object/mesh mismatch this section exists to prevent, so the class is printed like the others and rendered in filament.
+
+The consequence: the appearance gap between synthetic and real is minimised by construction for every class, so the measured sim-to-real difference isolates geometry, sensor and lighting effects rather than testing appearance-domain randomisation. That is a cleaner experiment in one sense and a weaker test of G4 in another, and §7 reports it as such rather than presenting an artificially small gap as a result. Should the object become obtainable, restoring it as a purchased real-texture class recovers the stronger test at no cost to anything else.
 
 Printed objects must be sliced at 100% with no bed-fitting rescale, and the printer's dimensional accuracy verified with callipers against a test print before any object is relied upon — a printer 1% out of true reintroduces exactly the mesh/object mismatch that printing is chosen to avoid. Matte mid-tone filament is required: gloss defeats the IR projector and dark surfaces absorb it (§7A, sensor error budget). Layer lines are beneficial rather than harmful, as they add surface texture for active stereo.
 
@@ -388,13 +390,37 @@ was verified on 2026-08-27. Isaac Sim 5.1.0 is installed and the Replicator
 script has been run and debugged. Object meshes were acquired on 2026-09-04. The
 ChArUco board is due ~2026-09-05, which unblocks real extrinsics.
 
-**The remaining blocker is Replicator scene fidelity**, not tooling: the scene
-currently renders the table at roughly 1 m against a configured 0.6 m and yields
-only 4–15% depth validity, and the scene camera intrinsics are not yet set to
-the D435i's measured values. Until that is corrected the synthetic depth channel
-does not resemble the sensor it is meant to stand in for, which would make the
-depth channel itself the dominant sim-to-real gap (R3) rather than a mitigation
-of it.
+**Replicator scene fidelity was the remaining blocker and is now closed
+(2026-09-04).** The scene renders the derived rig geometry with the measured
+per-unit camera intrinsics and the real CAD meshes, and its output is verified
+by a `--diagnose` mode that reports what was actually rendered rather than what
+the scene description implies:
+
+| | before | after |
+|---|---|---|
+| depth validity | 4–15% | **100.0%** |
+| labelled targets per frame | ~0 | **3.00** |
+| nearest rendered surface | 1007 mm | **470 mm** (table corner is 458 mm) |
+| invalid-depth sentinel | ~85% | **1.5%** |
+
+Two defects account for it, and both had produced output that looked correct.
+The first was the **USD default near clipping plane of 1 metre**: the camera
+stands 0.70 m from the workspace centre and the nearest table corner is 0.46 m,
+so the entire subject sat inside the near plane and was clipped, leaving bright,
+plausible, object-free frames of the floor and far wall. The second was that
+**the scene contained no room** — at this geometry the vertical field of view
+sweeps a 1427 mm band across the table plane while the desk is 440 mm deep, so
+69% of every frame hit no geometry and returned the invalid sentinel, where a
+real sensor pointed at a desk sees floor and wall and returns finite depth. The
+synthetic depth channel would have taught the detector that "sentinel" means
+background, a property the real sensor does not have.
+
+A third, subtler defect followed from the object-frame convention of §6.2: with
+the origin at the mesh AABB centre each class rests at its own half-height (96,
+25 and 28 mm), so a single shared placement range buried some classes in the
+table and floated others — while the 2D boxes stayed correct throughout, so the
+label files looked perfect and `(on obj table)` was false in the very data the
+predicates are to be evaluated against.
 
 ---
 
@@ -405,7 +431,7 @@ of it.
 | P0 — Environment | now – mid Jul 2026 | **DONE.** Ubuntu 24.04; FoundationPose verified on sm_120, R1 retired |
 | P1 — Perception baseline | mid Jul – early Aug | **DONE.** FoundationPose end-to-end via the C++ pose_agent; detector C++/Python parity verified |
 | P2 — Fusion + hardware | Aug | **Done bar calibration.** Fusion, scene graph, dual-camera bring-up and hardware sync complete; rig geometry derived from measured intrinsics; calibration awaits the ChArUco board (~05 Sep) |
-| P3 — Dataset + evaluation | late Aug – Sep | **In progress, still the critical path.** Isaac Sim 5.1.0 installed and the Replicator script debugged; object meshes acquired 04 Sep. Remaining work is scene fidelity — framing and depth validity — which gates every reportable detection figure |
+| P3 — Dataset + evaluation | late Aug – Sep | **Unblocked 04 Sep.** Isaac Sim 5.1.0 installed, object meshes acquired and converted to USD, and Replicator scene fidelity verified (§7A). Generation of the full training set and the first detector run are the next steps |
 | P4 — Proposal | by **15 Sep 2026** | Proposal submitted (this document, finalised) |
 | — First Presentation | **30 Sep 2026**, 6:30–10:30 pm, Zoom | Goals, data resources, techniques, progress |
 | P5 — Hardening + integration | Oct | Full evaluation, PM1 integration demo, unknown-object path, Jetson test |

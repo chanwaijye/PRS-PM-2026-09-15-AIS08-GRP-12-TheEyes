@@ -18,9 +18,8 @@ Run inside Isaac Sim's Python, NOT the project venv:
 
 NOTE: Kit swallows stdout. Progress goes to <out>/generation.log.
 
-STATUS 2026-08-25: runs end to end and emits valid RGB-D + YOLO labels. The
-SCENE is not yet realistic -- see "Known gaps" at the bottom. Do not generate a
-large dataset from this until those are closed.
+STATUS 2026-09-04: runs end to end, emits valid RGB-D + YOLO labels, and the
+scene now carries real meshes and a real room. See "Scene fidelity" below.
 
 Hard-won settings, each of which failed silently before being found:
   - SimulationApp needs renderer="RayTracedLighting". The default headless
@@ -46,23 +45,57 @@ Randomisation axes, and why each is here:
   occlusion    deliberate overlap -- the whole project is about occlusion
   depth noise  the MEASURED D435i model (depth_simulation.py), not clean depth
 
-Known gaps, in priority order:
-  1. NO CAD MESHES. All three classes fall back to stand-in primitives. A
-     detector trained on these has learned cylinders and spheres, not objects.
-     This alone makes any mAP from it unreportable.
-  2. CAMERA INTRINSICS ARE REPLICATOR DEFAULTS, not the D435i's. Measured
-     fx ~= 605 px at 848x480 (SystemCode/camera/README.md); the rendered FOV
-     currently does not match the real camera, so the sim-to-real gap includes
-     a lens mismatch that has nothing to do with the objects.
-  3. SCENE FRAMING. The table renders ~1 m from the camera rather than the
-     configured 0.6 m, and depth validity is only 4-15% because most of the
-     frame is dome background rather than tabletop. Camera placement inside
-     the trigger needs verifying against the actual rendered transform.
+Scene fidelity, fixed 2026-09-04. Measured before/after, `--diagnose`:
+
+    depth validity   4-15%  ->  100.0%
+    labels/frame       ~0   ->  3.00
+    nearest surface  1007 mm -> 470 mm  (the table corner is 458 mm away)
+
+  1. NEAR CLIP. The USD default near plane is 1 METRE. This is a tabletop
+     scene: the camera stands 0.70 m from the workspace centre and the nearest
+     table corner is 0.46 m, so the entire subject sat inside the near plane and
+     was clipped. What rendered instead was the floor and the far wall -- a
+     bright, plausible frame with high depth validity and no objects in it. This
+     was the defect that made the dataset unusable, and nothing about the output
+     said so.
+  2. THE SCENE HAD NO ROOM. At the rig geometry the vertical FOV sweeps a
+     1427 mm band across the table plane while the desk is only 440 mm deep, so
+     69% of every frame hit no geometry. Replicator returns inf there, which
+     encodes as the invalid sentinel -- while a real D435i pointed at a desk
+     sees the room and returns finite depth that clips to "far". Sim produced
+     ~85% sentinel against ~1-15% in reality, a distribution mismatch in the
+     exact channel the RGB-D detector depends on. A floor and a back wall now
+     stand where the room stands, and sentinel is 1.5%.
+  3. RESTING HEIGHT. The object frame's origin is the mesh AABB centre, so each
+     class rests at its own half-height (96 / 25 / 28 mm). One shared z range
+     buried some classes and floated others -- while the 2D boxes stayed
+     correct, so the labels looked perfect and `(on obj table)` was false.
+  4. Camera intrinsics are the MEASURED per-unit factory values. The default
+     24 mm / 20.955 mm aperture is 47 deg horizontal against the D435i's 70 deg.
+  5. Camera placement is the derived rig (docs/RIG_BOM.md): 0.70 m standoff,
+     35 deg elevation, +/-40 deg azimuth -- previously the placeholder
+     extrinsics, which described a rig that was never built.
+  6. Real CAD meshes via assets/meshes/usd (training/obj_to_usd.py).
+
+Every one of those rendered frames that looked fine from the outside. Run
+`--diagnose N` after ANY scene change: it reports what was actually rendered --
+depth validity, the camera transform and FOV read back from USD, and measured
+world bounds -- and fails loudly rather than writing a plausible dataset.
+
+Known limitation: target placement is sampled independently per class, so
+objects can interpenetrate. Occlusion is wanted -- it is the whole project --
+but occlusion is objects overlapping in the IMAGE, not in space.
+rep.randomizer.scatter_2d(check_for_collisions=True) was tried and is worse: it
+clustered every object at the table centre, dropped one class out of frame, and
+silently overrode the per-class materials, while still not preventing
+interpenetration. Physics-based settling is the real fix.
+
 """
 
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import sys
 from pathlib import Path
@@ -71,42 +104,178 @@ from pathlib import Path
 # config/meshes.yaml -- this string is the join key through the whole pipeline.
 CLASSES = ["mustard_bottle", "red_cube", "bowl"]
 
-# Rough real-world half-extents, used when a class has no CAD mesh yet so the
-# stand-in primitive is at least the right size.
+# MEASURED factory colour intrinsics per unit at 848x480 (calibration_backup/).
+# The two cameras differ by 0.6%, which is small but free to model exactly.
+#
+# USD cameras are specified as focal length and aperture, not fx. For a sensor
+# of `aperture` mm imaged at `width` px through a `focal` mm lens,
+#     fx = width * focal / aperture   =>   aperture = width * focal / fx
+# The focal length is arbitrary (only the ratio matters); 24 mm is conventional.
+CAMERAS = {
+    "cam_front": {"serial": "261722073945", "fx": 607.01, "fy": 606.79,
+                  "azimuth_deg": -40.0},
+    "cam_over":  {"serial": "261822074567", "fx": 603.43, "fy": 603.39,
+                  "azimuth_deg": +40.0},
+}
+FOCAL_MM = 24.0
+# Near/far clip, metres. The USD default near plane is 1 m, which is BEHIND
+# everything in a tabletop scene -- see apply_intrinsics.
+CLIPPING_RANGE_M = (0.02, 100.0)
+
+# Derived rig geometry, docs/RIG_BOM.md. Not chosen by eye: computed from the
+# measured FOV against the measured depth-noise law.
+STANDOFF_M = 0.70
+ELEVATION_DEG = 35.0
+# Mount tolerance, metres. The real cameras sit where the tripods put them, not
+# where the design says, so the detector must not be tuned to one exact pose.
+CAM_JITTER_M = 0.03
+
+# The real work surface: the desk in docs/RIG_BOM.md §A, 1180 x 440 mm free.
+TABLE_W, TABLE_D = 1.18, 0.44
+# Objects are placed within the workspace, not the whole desk.
+WORKSPACE_W, WORKSPACE_D = 0.60, 0.36
+# Desk height. Sets where the floor goes relative to the tabletop, which is the
+# world z = 0 plane.
+DESK_HEIGHT_M = 0.74
+# The desk stands against a wall just behind its back edge.
+WALL_Y_M = TABLE_D / 2 + 0.06
+
+# Every target class is 3D printed (proposal §6.2): the bowl and cube because
+# printing reproduces the mesh exactly, and the mustard bottle because the YCB
+# original -- French's 20 oz -- is not retail-available here. So the scanned
+# textures on the USD meshes describe objects that will never be photographed,
+# and rendering them would build in an appearance gap by construction. The
+# renders instead use filament: a per-class base colour with enough spread to
+# cover filament batch, lighting and exposure, but not so much that colour stops
+# being a usable cue.
+FILAMENT = {
+    "mustard_bottle": (0.85, 0.72, 0.10),   # yellow, as the real product is
+    "red_cube":       (0.70, 0.09, 0.09),
+    "bowl":           (0.12, 0.32, 0.68),   # blue: distinct from the other two
+}
+FILAMENT_SPREAD = 0.12
+# Matte. docs/RIG_BOM.md requires matte objects because gloss defeats the IR
+# projector, so a glossy render would depict something the rig will not contain.
+FILAMENT_ROUGHNESS = (0.55, 0.9)
+
+# Fallback if a class has no USD. Kept only so the pipeline still runs without
+# assets; a detector trained on these has learned primitives, not objects.
 FALLBACK_SHAPES = {
-    "mustard_bottle": ("cylinder", (0.032, 0.032, 0.095)),
+    "mustard_bottle": ("cylinder", (0.049, 0.033, 0.096)),
     "red_cube":       ("cube",     (0.025, 0.025, 0.025)),
-    "bowl":           ("sphere",   (0.075, 0.075, 0.035)),
+    "bowl":           ("sphere",   (0.081, 0.081, 0.028)),
 }
 
 
-def build_scene(rep, mesh_dir: Path | None, log):
-    """Table, targets, distractors, lights, two cameras."""
-    # A REAL tabletop, not a 2 m floor. Stage units are metres
-    # (metersPerUnit = 1.0), so scale is size directly. A 2x2 m plane viewed
-    # from 0.6 m fills the frame edge to edge and pushes most of the surface
-    # past the 1.5 m depth clip, leaving objects as specks against a saturated
-    # background.
-    table = rep.create.plane(scale=(0.9, 0.7, 1.0), position=(0, 0, 0),
+def camera_position(azimuth_deg: float):
+    """Rig position for one camera, from the derived geometry."""
+    elev = math.radians(ELEVATION_DEG)
+    az = math.radians(azimuth_deg)
+    r = STANDOFF_M * math.cos(elev)
+    return (r * math.sin(az), -r * math.cos(az), STANDOFF_M * math.sin(elev))
+
+
+def apply_intrinsics(prim_path: str, fx: float, fy: float, width: int, height: int, log):
+    """Write measured intrinsics onto a USD camera, then read them back.
+
+    Replicator's create.camera accepts aperture arguments, but silently ignoring
+    one would leave the default 47 deg FOV in place while everything else looked
+    correct -- so the values are set through USD and verified here rather than
+    trusted.
+    """
+    import omni.usd
+    from pxr import Gf, Usd, UsdGeom
+
+    stage = omni.usd.get_context().get_stage()
+    # Replicator hands back the camera's Xform, not the Camera prim -- the
+    # Camera sits beneath it. Search the subtree rather than assuming the shape.
+    root = stage.GetPrimAtPath(prim_path)
+    if not root:
+        raise RuntimeError(f"nothing at {prim_path}")
+    cam = None
+    for prim in Usd.PrimRange(root):
+        if prim.IsA(UsdGeom.Camera):
+            cam = UsdGeom.Camera(prim)
+            break
+    if not cam:
+        raise RuntimeError(f"no USD camera under {prim_path}")
+    h_aperture = width * FOCAL_MM / fx
+    v_aperture = height * FOCAL_MM / fy
+    cam.GetFocalLengthAttr().Set(FOCAL_MM)
+    cam.GetHorizontalApertureAttr().Set(h_aperture)
+    cam.GetVerticalApertureAttr().Set(v_aperture)
+    # The default near clip is 1 METRE. This is a tabletop scene: the camera
+    # stands 0.70 m from the workspace centre and the nearest table corner is
+    # 0.46 m away, so the entire subject sits inside the default near plane and
+    # is silently clipped. What renders instead is the floor and the far wall --
+    # a bright, plausible, completely useless frame with 94% depth validity and
+    # no objects in it. The D435i itself stops at ~0.20 m.
+    cam.GetClippingRangeAttr().Set(Gf.Vec2f(*CLIPPING_RANGE_M))
+
+    near, far = cam.GetClippingRangeAttr().Get()
+    if near > 0.1:
+        raise RuntimeError(f"near clip {near} m would cut the tabletop scene")
+    f = cam.GetFocalLengthAttr().Get()
+    ha = cam.GetHorizontalApertureAttr().Get()
+    va = cam.GetVerticalApertureAttr().Get()
+    hfov = math.degrees(2 * math.atan(ha / (2 * f)))
+    vfov = math.degrees(2 * math.atan(va / (2 * f)))
+    log(f"    intrinsics: fx={width * f / ha:.2f} fy={height * f / va:.2f} px  "
+        f"FOV {hfov:.2f} x {vfov:.2f} deg  (target fx={fx:.2f} fy={fy:.2f})  "
+        f"clip {near:.2f}-{far:.0f} m")
+    if abs(width * f / ha - fx) > 0.5:
+        raise RuntimeError("camera aperture did not take: rendered fx does not match the sensor")
+
+
+def load_extents(log):
+    """Half-extents per class, from config/meshes.yaml.
+
+    Read rather than hardcoded: these are measured from the meshes and are
+    already asserted against them by the C++ MeshRegistry tests, so duplicating
+    them here would create a second copy free to drift.
+    """
+    import yaml
+    cfg = Path(__file__).resolve().parents[2] / "config" / "meshes.yaml"
+    objects = yaml.safe_load(cfg.read_text())["objects"]
+    out = {}
+    for name in CLASSES:
+        if name not in objects:
+            raise RuntimeError(f"config/meshes.yaml has no entry for '{name}'")
+        out[name] = [float(v) for v in objects[name]["extent"]]
+        log(f"  {name}: half-extents {out[name]} -> rests at z={out[name][2] * 1000:.1f} mm")
+    return out
+
+
+def build_scene(rep, mesh_dir, width, height, log):
+    """Room, table, targets, distractors, lights, two cameras."""
+    extents = load_extents(log)
+    # THE ROOM. Without it 69% of every frame hits no geometry and Replicator
+    # returns inf, which encodes as the invalid sentinel -- whereas the real
+    # sensor, pointed at a desk, sees floor and wall and returns finite depth.
+    # This was the single largest defect in the synthetic depth channel.
+    rep.create.plane(scale=(6.0, 6.0, 1.0), position=(0, 0, -DESK_HEIGHT_M),
+                     semantics=[("class", "floor")])
+    rep.create.plane(scale=(6.0, 3.0, 1.0), position=(0, WALL_Y_M, 0.6),
+                     rotation=(90, 0, 0), semantics=[("class", "wall")])
+
+    # The work surface, at world z = 0.
+    table = rep.create.plane(scale=(TABLE_W, TABLE_D, 1.0), position=(0, 0, 0),
                              semantics=[("class", "table")])
 
-    targets = []
+    targets, target_by_class = [], {}
     for name in CLASSES:
         usd = (mesh_dir / f"{name}.usd") if mesh_dir else None
         if usd and usd.exists():
-            targets.append(rep.create.from_usd(str(usd), semantics=[("class", name)]))
+            node = rep.create.from_usd(str(usd), semantics=[("class", name)])
             log(f"  {name}: USD {usd}")
         else:
-            # Stand-in primitive. Shape and size are approximately right, which
-            # is enough to exercise the pipeline -- but a detector trained on
-            # these has learned primitives, not the objects. Swap in CAD before
-            # quoting any mAP.
             kind, half = FALLBACK_SHAPES[name]
             maker = {"cube": rep.create.cube, "sphere": rep.create.sphere,
                      "cylinder": rep.create.cylinder}[kind]
-            targets.append(maker(scale=tuple(h * 2 for h in half),
-                                 semantics=[("class", name)]))
-            log(f"  {name}: STAND-IN {kind} (no CAD mesh -- results not reportable)")
+            node = maker(scale=tuple(h * 2 for h in half), semantics=[("class", name)])
+            log(f"  {name}: STAND-IN {kind} (no USD -- results not reportable)")
+        targets.append(node)
+        target_by_class[name] = node
 
     distractors = rep.create.group([
         rep.create.cube(scale=0.05),
@@ -115,44 +284,70 @@ def build_scene(rep, mesh_dir: Path | None, log):
     ])
 
     # A Dome light is REQUIRED, not decorative: with only Sphere/Distant lights
-    # the RGB pass renders black even though depth and boxes are correct. The
-    # dome supplies the ambient environment the beauty pass needs.
+    # the RGB pass renders black even though depth and boxes are correct.
     rep.create.light(light_type="Dome", intensity=rep.distribution.uniform(300, 1200))
-    lights = rep.create.light(
+    rep.create.light(
         light_type="Sphere",
         intensity=rep.distribution.uniform(2e3, 4e4),
         temperature=rep.distribution.uniform(2500, 9000),
         position=rep.distribution.uniform((-2, -2, 1.5), (2, 2, 4)),
         count=3)
 
-    # Cameras get CONCRETE positions here and are jittered inside the trigger
-    # below. Creating them with a distribution instead leaves them unplaced --
-    # the distribution is never sampled, the camera sits at the origin looking
-    # at itself, and every frame renders empty background with 0% finite depth.
-    cam_front = rep.create.camera(position=(0.60, 0.0, 0.40), look_at=(0, 0, 0.05))
-    cam_over = rep.create.camera(position=(0.0, 0.0, 0.90), look_at=(0, 0, 0.05))
+    # Cameras get CONCRETE positions and are jittered inside the trigger.
+    # Creating them with a distribution leaves them unplaced -- the distribution
+    # is never sampled and every frame renders empty background.
+    cams = {}
+    for name, spec in CAMERAS.items():
+        pos = camera_position(spec["azimuth_deg"])
+        cams[name] = rep.create.camera(position=pos, look_at=(0, 0, 0))
+        log(f"  {name} ({spec['serial']}) at "
+            f"[{pos[0] * 1000:.0f}, {pos[1] * 1000:.0f}, {pos[2] * 1000:.0f}] mm")
 
+    half_w, half_d = WORKSPACE_W / 2, WORKSPACE_D / 2
     target_group = rep.create.group(targets)
     with rep.trigger.on_frame():
         with target_group:
-            rep.modify.pose(
-                position=rep.distribution.uniform((-0.35, -0.25, 0.02), (0.35, 0.25, 0.10)),
-                rotation=rep.distribution.uniform((-8, -8, -180), (8, 8, 180)))
-            # Stand-in primitives carry no material of their own; without one
-            # they render flat and the detector would key on shape alone.
-            rep.randomizer.materials(rep.create.material_omnipbr(
-                diffuse=rep.distribution.uniform((0.1, 0.1, 0.1), (0.9, 0.9, 0.9)),
-                roughness=rep.distribution.uniform(0.2, 0.8)))
+            # +/-2 deg, not +/-8. An object resting on a flat table is flat; the
+            # residual is surface irregularity and print warp, not free tilt.
+            # It also bounds how far a tilted object dips through the tabletop,
+            # since resting height below is computed for the untilted pose.
+            rep.modify.pose(rotation=rep.distribution.uniform((-2, -2, -180),
+                                                              (2, 2, 180)))
+        # Per class, because two things differ per class and a shared randomiser
+        # gets both wrong.
+        #
+        # RESTING HEIGHT. The object frame's origin is the mesh AABB centre
+        # (config/meshes.yaml), so an object rests on the table exactly when its
+        # z equals its own half-height: 96 mm for the bottle, 25 mm for the cube,
+        # 28 mm for the bowl. One shared z range buries some classes in the table
+        # and floats others above it -- and the 2D boxes stay correct throughout,
+        # so the label files look perfect while `(on obj table)` is false in the
+        # very data the predicates will be evaluated against.
+        #
+        # COLOUR. The classes are partly distinguishable by colour; randomising
+        # all of them from one distribution erases that cue.
+        for name, node in target_by_class.items():
+            rest_z = extents[name][2]
+            with node:
+                rep.modify.pose(position=rep.distribution.uniform(
+                    (-half_w, -half_d, rest_z), (half_w, half_d, rest_z)))
+            base = FILAMENT[name]
+            lo = tuple(max(0.0, c - FILAMENT_SPREAD) for c in base)
+            hi = tuple(min(1.0, c + FILAMENT_SPREAD) for c in base)
+            with node:
+                rep.randomizer.materials(rep.create.material_omnipbr(
+                    diffuse=rep.distribution.uniform(lo, hi),
+                    roughness=rep.distribution.uniform(*FILAMENT_ROUGHNESS)))
         with distractors:
             rep.modify.pose(
-                # Kept on the tabletop, not floating around it.
-                position=rep.distribution.uniform((-0.35, -0.25, 0.02), (0.35, 0.25, 0.10)),
+                # Half of the sampled scale, so the prim rests on the table
+                # rather than half-buried: these are centred primitives too.
+                position=rep.distribution.uniform((-half_w, -half_d, 0.025),
+                                                  (half_w, half_d, 0.04)),
                 rotation=rep.distribution.uniform((0, 0, -180), (0, 0, 180)),
                 # ABSOLUTE size in metres, not a multiplier -- rep.modify.pose
-                # REPLACES scale rather than scaling the existing value. Passing
-                # 0.4-1.4 here (intended as a factor on a 5 cm prim) produced
-                # 40 cm to 1.4 m distractors that filled the frame and buried
-                # the targets.
+                # REPLACES scale. Passing 0.4-1.4 here (intended as a factor on a
+                # 5 cm prim) produced 40 cm to 1.4 m distractors.
                 scale=rep.distribution.uniform(0.02, 0.08))
             rep.randomizer.materials(rep.create.material_omnipbr(
                 diffuse=rep.distribution.uniform((0, 0, 0), (1, 1, 1)),
@@ -160,18 +355,17 @@ def build_scene(rep, mesh_dir: Path | None, log):
                 metallic=rep.distribution.choice([0.0, 1.0])))
         with table:
             rep.randomizer.materials(rep.create.material_omnipbr(
-                diffuse=rep.distribution.uniform((0.1, 0.1, 0.1), (0.9, 0.9, 0.9))))
-        # Viewpoint jitter around the real rig's mounts (config/extrinsics.yaml),
-        # so the detector is not overfitted to one extrinsic.
-        with cam_front:
-            rep.modify.pose(
-                position=rep.distribution.uniform((0.45, -0.15, 0.30), (0.75, 0.15, 0.50)),
-                look_at=(0, 0, 0.05))
-        with cam_over:
-            rep.modify.pose(
-                position=rep.distribution.uniform((-0.10, -0.10, 0.80), (0.10, 0.10, 1.00)),
-                look_at=(0, 0, 0.05))
-    return cam_front, cam_over
+                diffuse=rep.distribution.uniform((0.25, 0.25, 0.25), (0.75, 0.75, 0.75)),
+                roughness=rep.distribution.uniform(0.4, 0.9)))
+        for name, cam in cams.items():
+            pos = camera_position(CAMERAS[name]["azimuth_deg"])
+            with cam:
+                rep.modify.pose(
+                    position=rep.distribution.uniform(
+                        tuple(c - CAM_JITTER_M for c in pos),
+                        tuple(c + CAM_JITTER_M for c in pos)),
+                    look_at=(0, 0, 0))
+    return cams
 
 
 def to_yolo_rows(bbox_data, width, height):
@@ -196,12 +390,101 @@ def to_yolo_rows(bbox_data, width, height):
     return rows
 
 
+def diagnose(rep, annots, args, log) -> int:
+    """Render a few frames and report what was actually rendered.
+
+    Every scene defect this script has hit -- black RGB, unplaced cameras,
+    absolute-versus-relative scale, a missing room -- produced output that looked
+    structurally fine. Rendered frames were written, labels were emitted, and
+    only the pixel statistics gave it away. So the statistics are checked
+    directly rather than inferred from the scene description.
+    """
+    import numpy as np
+    import omni.usd
+    from pxr import Usd, UsdGeom, Gf
+
+    stage = omni.usd.get_context().get_stage()
+    log("\n--- stage geometry (world bounds, metres) ---")
+    cache = UsdGeom.BBoxCache(Usd.TimeCode.Default(), [UsdGeom.Tokens.default_])
+    for prim in stage.Traverse():
+        if not prim.IsA(UsdGeom.Mesh) and not prim.IsA(UsdGeom.Camera):
+            continue
+        name = prim.GetName()
+        if prim.IsA(UsdGeom.Camera):
+            xf = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+            t = Gf.Vec3d(xf.ExtractTranslation())
+            # A USD camera looks down its own -Z. Comparing that against the
+            # direction to the origin is the only way to tell an aimed camera
+            # from an unaimed one -- position alone looks correct either way.
+            fwd = Gf.Vec3d(-xf.ExtractRotationMatrix()[2]).GetNormalized()
+            want = (-t).GetNormalized()
+            err = math.degrees(math.acos(max(-1.0, min(1.0, fwd * want))))
+            log(f"  CAM  {name:22s} at [{t[0]*1000:7.0f},{t[1]*1000:7.0f},{t[2]*1000:7.0f}] mm"
+                f"  range {t.GetLength()*1000:.0f} mm"
+                f"  fwd [{fwd[0]:+.2f},{fwd[1]:+.2f},{fwd[2]:+.2f}]"
+                f"  off-aim {err:.1f} deg")
+            continue
+        box = cache.ComputeWorldBound(prim).ComputeAlignedRange()
+        if box.IsEmpty():
+            continue
+        size = Gf.Vec3d(box.GetMax()) - Gf.Vec3d(box.GetMin())
+        mid = (Gf.Vec3d(box.GetMax()) + Gf.Vec3d(box.GetMin())) * 0.5
+        log(f"  MESH {name:22s} size [{size[0]*1000:6.0f},{size[1]*1000:6.0f},"
+            f"{size[2]*1000:6.0f}] mm   at [{mid[0]*1000:7.0f},{mid[1]*1000:7.0f},"
+            f"{mid[2]*1000:7.0f}] mm")
+
+    log(f"\n--- rendered frames (n={args.diagnose}) ---")
+    stats = {name: {"valid": [], "near": [], "far": [], "boxes": [], "rgb": []}
+             for name in annots}
+    for _ in range(args.diagnose):
+        rep.orchestrator.step(rt_subframes=4)
+        for name in annots:
+            depth = np.asarray(annots[name]["distance_to_camera"].get_data(), np.float32)
+            rgb = np.asarray(annots[name]["rgb"].get_data()[:, :, :3])
+            boxes = annots[name]["bounding_box_2d_tight"].get_data()
+            hit = np.isfinite(depth) & (depth < 1e6)
+            stats[name]["valid"].append(float(hit.mean()))
+            if hit.any():
+                stats[name]["near"].append(float(depth[hit].min()))
+                stats[name]["far"].append(float(np.percentile(depth[hit], 95)))
+            stats[name]["boxes"].append(len(to_yolo_rows(boxes, args.width, args.height)))
+            stats[name]["rgb"].append(float(rgb.mean()))
+
+    ok = True
+    for name, st in stats.items():
+        valid = float(np.mean(st["valid"])) if st["valid"] else 0.0
+        near = float(np.mean(st["near"])) if st["near"] else float("nan")
+        far = float(np.mean(st["far"])) if st["far"] else float("nan")
+        log(f"  {name}: depth hit {valid*100:5.1f}%   near {near*1000:6.0f} mm   "
+            f"p95 {far*1000:6.0f} mm   labels/frame {np.mean(st['boxes']):.2f}   "
+            f"rgb mean {np.mean(st['rgb']):.1f}")
+        # A real D435i pointed at a desk sees the room; anything under ~80% means
+        # the frame is still looking at empty space where reality has geometry.
+        if valid < 0.80:
+            log(f"    FAIL: {(1-valid)*100:.0f}% of the frame hit no geometry. The real "
+                f"sensor returns depth there, so this trains the net that "
+                f"sentinel means background.")
+            ok = False
+        if np.mean(st["rgb"]) < 5.0:
+            log("    FAIL: RGB is essentially black -- renderer or lighting.")
+            ok = False
+        if np.mean(st["boxes"]) < 0.5:
+            log("    FAIL: almost no labelled targets in frame.")
+            ok = False
+    log("\nDIAGNOSE: " + ("PASS" if ok else "FAIL"))
+    return 0 if ok else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--meshes", type=Path, default=None,
+    parser.add_argument("--meshes", type=Path,
+                        default=Path(__file__).resolve().parents[2] / "assets/meshes/usd",
                         help="directory of <class>.usd; stand-in primitives if absent")
+    parser.add_argument("--diagnose", type=int, default=0, metavar="N",
+                        help="render N frames, report what was ACTUALLY rendered, "
+                             "write nothing. Run this after any scene change.")
     parser.add_argument("--frames", type=int, default=5000, help="frames PER CAMERA")
     parser.add_argument("--val-fraction", type=float, default=0.2)
     parser.add_argument("--width", type=int, default=848)
@@ -232,11 +515,11 @@ def main() -> int:
         rng = np.random.default_rng(args.seed)
         rep.set_global_seed(args.seed)
 
-        cam_front, cam_over = build_scene(rep, args.meshes, log)
+        cams = build_scene(rep, args.meshes, args.width, args.height, log)
         resolution = (args.width, args.height)
 
         products, annots = {}, {}
-        for name, cam in (("cam_front", cam_front), ("cam_over", cam_over)):
+        for name, cam in cams.items():
             rp = rep.create.render_product(cam, resolution)
             products[name] = rp
             annots[name] = {}
@@ -244,6 +527,16 @@ def main() -> int:
                 a = rep.AnnotatorRegistry.get_annotator(ann)
                 a.attach(rp)
                 annots[name][ann] = a
+
+        # Render products must exist before the camera prims are resolvable.
+        for name, cam in cams.items():
+            spec = CAMERAS[name]
+            log(f"  {name}:")
+            apply_intrinsics(str(rep.utils.get_node_targets(cam.node, "inputs:primsIn")[0]),
+                             spec["fx"], spec["fy"], args.width, args.height, log)
+
+        if args.diagnose:
+            return diagnose(rep, annots, args, log)
 
         for split in ("train", "val"):
             (args.out / "images" / split).mkdir(parents=True, exist_ok=True)

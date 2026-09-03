@@ -1,0 +1,6 @@
+bowl.obj -> assets/meshes/usd/bowl.usd
+  size [0.1615, 0.1612, 0.055] m   centre offset 0.000 mm   ok
+mustard_bottle.obj -> assets/meshes/usd/mustard_bottle.usd
+  size [0.0972, 0.0666, 0.1914] m   centre offset 0.000 mm   ok
+red_cube.obj -> assets/meshes/usd/red_cube.usd
+  size [0.05, 0.05, 0.05] m   centre offset 0.000 mm   ok

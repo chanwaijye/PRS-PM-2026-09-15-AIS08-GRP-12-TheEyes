@@ -35,11 +35,17 @@ the actual CAD meshes with domain randomisation over lighting, materials, pose,
 camera viewpoint, distractors, and deliberate occlusion. Every reported mAP
 figure and the dataset-size ablation must come from here.
 
-**Isaac Sim 5.1.0 is installed and the script has been run.** Four silent
+**Isaac Sim 5.1.0 is installed and the script has been run.** Six silent
 Replicator failures were found and fixed: the default headless config renders
 RGB black (needs `renderer="RayTracedLighting"`), the scene needs a Dome light,
 cameras created with a distribution position are never placed, and
-`rep.modify.pose(scale=)` sets ABSOLUTE metres rather than a multiplier.
+`rep.modify.pose(scale=)` sets ABSOLUTE metres rather than a multiplier, the
+default near clip is 1 m (which clips an entire tabletop scene), and a scene
+with no room renders 69% of each frame as invalid depth where the real sensor
+returns "far".
+
+Run `--diagnose N` after any scene change. Every one of those failures produced
+output that looked structurally correct.
 
 **[VERIFY] It has not yet produced a usable dataset.** Two things remain: the
 CAD/USD meshes for the three classes do not exist yet, and the scene framing is
