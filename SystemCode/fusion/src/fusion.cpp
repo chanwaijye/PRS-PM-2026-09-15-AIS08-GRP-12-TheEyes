@@ -34,6 +34,12 @@ bool LessDeterministic(const WorldEstimate& a, const WorldEstimate& b) {
   return pa.z() < pb.z();
 }
 
+Eigen::Vector3d UnweightedCentroid(const std::vector<const WorldEstimate*>& group) {
+  Eigen::Vector3d sum = Eigen::Vector3d::Zero();
+  for (const WorldEstimate* e : group) sum += e->pose_w.translation();
+  return sum / static_cast<double>(group.size());
+}
+
 Eigen::Vector3d WeightedCentroid(const std::vector<const WorldEstimate*>& group) {
   Eigen::Vector3d sum = Eigen::Vector3d::Zero();
   double weight = 0.0;
@@ -44,13 +50,38 @@ Eigen::Vector3d WeightedCentroid(const std::vector<const WorldEstimate*>& group)
   if (weight <= 0.0) {
     // All-zero scores: fall back to the unweighted mean rather than dividing by
     // zero. A detector emitting score 0 is a bug upstream, not a reason to NaN.
-    for (const WorldEstimate* e : group) sum += e->pose_w.translation();
-    return sum / static_cast<double>(group.size());
+    return UnweightedCentroid(group);
   }
   return sum / weight;
 }
 
-Eigen::Quaterniond FuseOrientation(const std::vector<const WorldEstimate*>& group) {
+Eigen::Vector3d FuseTranslation(const std::vector<const WorldEstimate*>& group, FusionMode mode) {
+  return (mode == FusionMode::kNaive) ? UnweightedCentroid(group) : WeightedCentroid(group);
+}
+
+Eigen::Quaterniond FuseOrientation(const std::vector<const WorldEstimate*>& group,
+                                   FusionMode mode) {
+  // Markley averaging itself is used by BOTH modes, deliberately. The naive
+  // baseline is meant to isolate what this module's policy buys, and swapping
+  // in coefficient-averaging here would not measure that: at the angular
+  // separations two calibrated cameras of the same static object produce, the
+  // two averages agree to well inside the per-view noise. Putting it in the
+  // baseline would manufacture a difference rather than measure one.
+  //
+  // What kNaive DOES drop is the symmetry special-case and the score weighting
+  // below -- those are policy, and policy is what the ablation is comparing.
+  if (mode == FusionMode::kNaive) {
+    if (group.size() == 1) {
+      return Eigen::Quaterniond(group.front()->pose_w.rotation()).normalized();
+    }
+    std::vector<Eigen::Quaterniond> quats;
+    quats.reserve(group.size());
+    for (const WorldEstimate* e : group) {
+      quats.emplace_back(Eigen::Quaterniond(e->pose_w.rotation()).normalized());
+    }
+    return WeightedQuaternionAverage(quats, std::vector<double>(quats.size(), 1.0));
+  }
+
   // Symmetric objects: averaging is not merely inaccurate, it is wrong. Two
   // views of a symmetric object legitimately report orientations differing by a
   // symmetry-group element, and the Markley mean of those lands on a rotation
@@ -127,7 +158,7 @@ std::vector<const WorldEstimate*> ApplyDisagreementGate(
   // Three or more views: there is a majority, so measure each view against the
   // consensus and drop the outliers.
   const Eigen::Vector3d consensus_t = WeightedCentroid(group);
-  const Eigen::Quaterniond consensus_r = FuseOrientation(group);
+  const Eigen::Quaterniond consensus_r = FuseOrientation(group, FusionMode::kGated);
 
   for (const WorldEstimate* e : group) {
     const double dt = (e->pose_w.translation() - consensus_t).norm();
@@ -232,13 +263,19 @@ std::vector<FusedObservation> FuseFrame(const std::vector<PoseEstimate>& estimat
   for (const std::vector<const WorldEstimate*>& cluster : clusters) {
     uint32_t rejected_bits = 0;
     bool two_view_conflict = false;
+    // kNaive believes every view. Skipping the gate is the point of the
+    // baseline, not an oversight: an outlier view that the gate would have
+    // dropped is exactly what the naive arm is supposed to be damaged by.
     const std::vector<const WorldEstimate*> survivors =
-        ApplyDisagreementGate(cluster, cfg.disagreement_gate, &rejected_bits, &two_view_conflict);
+        (cfg.mode == FusionMode::kNaive)
+            ? cluster
+            : ApplyDisagreementGate(cluster, cfg.disagreement_gate, &rejected_bits,
+                                    &two_view_conflict);
 
     FusedObservation obs;
     obs.cls = survivors.front()->cls;
-    obs.pose_w.translation() = WeightedCentroid(survivors);
-    obs.pose_w.linear() = FuseOrientation(survivors).toRotationMatrix();
+    obs.pose_w.translation() = FuseTranslation(survivors, cfg.mode);
+    obs.pose_w.linear() = FuseOrientation(survivors, cfg.mode).toRotationMatrix();
     obs.rejected_views = rejected_bits;
     obs.two_view_conflict = two_view_conflict;
 
@@ -254,7 +291,12 @@ std::vector<FusedObservation> FuseFrame(const std::vector<PoseEstimate>& estimat
     // Score-weighted mean of the surviving view scores. Deliberately NOT a
     // noisy-OR: agreement between views is already reported through
     // visible_views, and folding it into confidence too would double-count it.
-    obs.confidence = (weight_sum > 0.0) ? score_sum / weight_sum : 0.0;
+    // kNaive takes the plain mean, matching its unweighted pose.
+    if (cfg.mode == FusionMode::kNaive) {
+      obs.confidence = weight_sum / static_cast<double>(survivors.size());
+    } else {
+      obs.confidence = (weight_sum > 0.0) ? score_sum / weight_sum : 0.0;
+    }
     if (two_view_conflict) {
       obs.confidence *= cfg.disagreement_gate.two_view_conflict_confidence_penalty;
     }
@@ -347,12 +389,29 @@ SceneState Fusion::Process(const std::vector<PoseEstimate>& estimates, uint64_t 
     ObjectState o;
     o.id = it->id;
     o.cls = obs.cls;
-    o.pose_w = it->ekf->pose();  // temporally smoothed, not the raw fuse
     o.confidence = obs.confidence;
     o.visible_views = obs.visible_views;
     o.extent = it->extent;
     o.stamp_ns = stamp_ns;
     // relations stays empty: it is the scenegraph module's field to fill.
+
+    if (cfg_.mode == FusionMode::kNaive) {
+      // The baseline keeps no history, so the raw per-frame fuse IS its answer.
+      // The uncertainty fields stay at their "not supplied" sentinel: the EKF
+      // ran (track association reads its position, and that must stay identical
+      // across arms so the ablation compares fusion policy and not association)
+      // but this arm does not use its output, so reporting its covariance would
+      // credit the baseline with a filter it is defined not to have.
+      o.pose_w = obs.pose_w;
+    } else {
+      o.pose_w = it->ekf->pose();  // temporally smoothed, not the raw fuse
+      // The filter's own covariance, which nothing consumed before this. See
+      // ObjectState in types.hpp for why this is not the same thing as
+      // `confidence` and why a consumer must check has_uncertainty() first.
+      o.position_sigma_m = it->ekf->position_sigma_m();
+      o.orientation_sigma_rad = it->ekf->orientation_sigma_rad();
+      o.velocity_w = it->ekf->velocity();
+    }
 
     if (o.extent.isZero()) {
       diagnostics_.warnings.push_back(

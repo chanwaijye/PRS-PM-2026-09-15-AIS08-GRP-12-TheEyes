@@ -88,7 +88,12 @@ int main(int argc, char** argv) {
     std::cout << "Occlusion ablation -- SYNTHETIC INPUT, NOT AN EVALUATION RESULT\n"
               << frames.size() << " frames, " << truth.size()
               << " objects, 10 mm/axis Gaussian per-view noise\n\n"
-              << result.Format();
+              << result.Format()
+              << "\nArms: cam_* are single views. `naive` is both views under "
+                 "association +\nunweighted mean with no gate and no filter -- the "
+                 "baseline. `fused` is the\nfull policy. The claim rests on "
+                 "fused-vs-naive, NOT on fused-vs-single-view:\ntwo cameras beat "
+                 "one whoever writes the average.\n";
     return EXIT_SUCCESS;
   } catch (const std::exception& e) {
     std::cerr << "ablation_demo: " << e.what() << "\n";

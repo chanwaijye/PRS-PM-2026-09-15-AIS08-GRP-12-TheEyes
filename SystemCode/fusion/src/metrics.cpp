@@ -94,18 +94,32 @@ AblationResult RunOcclusionAblation(const std::vector<AblationFrame>& frames,
                                     const ExtrinsicsSet& extrinsics, const FusionConfig& cfg,
                                     const ExtentRegistry& extents, const ModelRegistry& models,
                                     double match_max_distance_m) {
-  // Configurations: each single view alone, then all views fused. Single-view
-  // rows are produced by filtering the SAME estimate stream, so any difference
-  // between rows is attributable to fusion and nothing else.
-  std::vector<std::pair<std::string, std::vector<std::string>>> configurations;
+  // Configurations: each single view alone, then both views under the naive
+  // baseline, then both views under the full policy. Every row is produced by
+  // filtering the SAME estimate stream through the SAME association, so a
+  // difference between rows is attributable to the arm and nothing else.
+  //
+  // Ordering is deliberate for the report table: the two single views set the
+  // floor, `naive` shows what a second camera alone buys, and `fused` sits last
+  // so the eye lands on the fused-minus-naive gap -- the only one of the three
+  // gaps that this module can take credit for.
+  struct Configuration {
+    std::string label;
+    std::vector<std::string> allowed_views;
+    FusionMode mode;
+  };
+  std::vector<Configuration> configurations;
   for (const std::string& view : cfg.view_names) {
-    configurations.emplace_back(view, std::vector<std::string>{view});
+    configurations.push_back({view, {view}, FusionMode::kGated});
   }
-  configurations.emplace_back("fused", cfg.view_names);
+  configurations.push_back({"naive", cfg.view_names, FusionMode::kNaive});
+  configurations.push_back({"fused", cfg.view_names, FusionMode::kGated});
 
   AblationResult result;
-  for (const auto& [label, allowed_views] : configurations) {
-    Fusion fusion(cfg, extrinsics, extents);
+  for (const auto& [label, allowed_views, mode] : configurations) {
+    FusionConfig arm_cfg = cfg;
+    arm_cfg.mode = mode;
+    Fusion fusion(arm_cfg, extrinsics, extents);
 
     AblationRow row;
     row.label = label;

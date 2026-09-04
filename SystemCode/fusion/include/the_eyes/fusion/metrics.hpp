@@ -2,9 +2,25 @@
 //
 // CLAUDE.md: "The fusion occlusion ablation is never cut. It is the entire
 // technical claim." This harness is therefore a deliverable, not a debugging
-// tool -- it runs one identical input three ways (cam_front only, cam_over
-// only, fused) and emits comparable ADD-S, which is the project's headline
-// result.
+// tool -- it runs one identical input four ways and emits comparable ADD-S,
+// which is the project's headline result.
+//
+// The four arms, and what each one is for:
+//
+//   cam_front  single view    |  what one camera alone achieves
+//   cam_over   single view    |
+//   naive      both views     |  BASELINE: association + unweighted mean, no
+//                             |  gate, no symmetry case, no temporal filter
+//   fused      both views     |  the system: weighted, gated, symmetry-aware,
+//                             |  EKF-smoothed
+//
+// The naive arm is what makes the claim falsifiable. Beating a single view is
+// not evidence that this module works -- two cameras see more than one, and
+// averaging two noisy measurements reduces error however the average is
+// written. Both of those hold for code nobody would call a contribution. It is
+// the fused-minus-naive delta that is attributable to the fusion policy, so
+// that is the number the report should lead with. If it comes out at zero,
+// that is a real finding about the operating regime and is reported as one.
 #ifndef THE_EYES_FUSION_METRICS_HPP
 #define THE_EYES_FUSION_METRICS_HPP
 
@@ -58,7 +74,7 @@ struct AblationFrame {
 };
 
 struct AblationRow {
-  std::string label;                  // "cam_front" | "cam_over" | "fused"
+  std::string label;                  // "cam_front" | "cam_over" | "naive" | "fused"
   int ground_truth_objects = 0;       // total GT instances across all frames
   int matched = 0;                    // GT instances an estimate was found for
   int missed = 0;                     // GT instances with no estimate

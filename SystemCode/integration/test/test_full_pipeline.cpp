@@ -325,7 +325,8 @@ TEST(FullPipeline, FusedErrorBeatsSingleViewThroughTheRealModuleChain) {
 
   const fusion::AblationResult result =
       fusion::RunOcclusionAblation(frames, ex, fusion::FusionConfig{}, {}, models);
-  ASSERT_EQ(result.rows.size(), 3u);
+  // Four arms: the two single views, the naive baseline, and the full policy.
+  ASSERT_EQ(result.rows.size(), 4u);
 
   const auto row = [&](const std::string& label) {
     return *std::find_if(result.rows.begin(), result.rows.end(),
@@ -334,6 +335,22 @@ TEST(FullPipeline, FusedErrorBeatsSingleViewThroughTheRealModuleChain) {
   EXPECT_LT(row("fused").mean_add_s_m, row("cam_front").mean_add_s_m);
   EXPECT_LT(row("fused").mean_add_s_m, row("cam_over").mean_add_s_m);
   EXPECT_EQ(row("fused").missed, 0);
+  // The claim this project actually makes. Beating a single view only shows
+  // that two cameras beat one; beating the naive baseline is what shows the
+  // fusion POLICY is doing the work, and it must hold through the real module
+  // chain and not merely in the fusion unit tests.
+  EXPECT_LT(row("fused").mean_add_s_m, row("naive").mean_add_s_m);
+
+  // Uncertainty must survive the whole chain to the external contract, since
+  // that is where PM1 and PM4 read it.
+  const SceneState scene_out = [&] {
+    fusion::Fusion f(fusion::FusionConfig{}, ex, {});
+    SceneState last;
+    for (const fusion::AblationFrame& frame : frames) last = f.Process(frame.estimates, frame.stamp_ns);
+    return last;
+  }();
+  ASSERT_FALSE(scene_out.objects.empty());
+  EXPECT_TRUE(has_uncertainty(scene_out.objects[0]));
 }
 
 }  // namespace

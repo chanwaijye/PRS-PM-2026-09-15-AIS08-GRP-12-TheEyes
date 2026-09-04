@@ -43,7 +43,31 @@ struct TrackingConfig {
   double track_match_max_distance_m = 0.10;
 };
 
+// Which fusion policy to run.
+//
+// kNaive exists for one reason: the occlusion ablation's headline claim is
+// about THIS module, and comparing "fused" only against single views cannot
+// support that claim. Two cameras beat one camera by construction -- more
+// viewpoints see more objects, and averaging two noisy measurements of the
+// same quantity reduces error whoever writes the average. Neither result
+// depends on the disagreement gate, the confidence weighting, the symmetry
+// handling or the EKF, which is what the module actually contributes.
+//
+// kNaive is therefore the baseline a reader would reach for unprompted:
+// associate across views, take the unweighted mean, believe every view, keep
+// no history. The gated-minus-naive delta is the part attributable to the
+// module rather than to owning a second camera.
+enum class FusionMode {
+  kGated,  // the system: weighted, gated, symmetry-aware, EKF-smoothed
+  kNaive,  // ablation baseline: unweighted mean, no gate, no filter
+};
+
 struct FusionConfig {
+  // Deliberately NOT read from fusion.yaml. The deployed system is always
+  // kGated; kNaive is an evaluation harness setting, and a YAML key for it
+  // would be a way to ship the baseline to the robot by accident.
+  FusionMode mode = FusionMode::kGated;
+
   CalibrationGateConfig calibration;
   AssociationConfig association;
   DisagreementGateConfig disagreement_gate;

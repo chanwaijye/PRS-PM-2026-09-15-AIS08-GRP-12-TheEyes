@@ -118,6 +118,11 @@ struct ObjectState {
   uint32_t visible_views;      // bitmask: bit0 = cam_front, bit1 = cam_over
   Eigen::Vector3d extent;      // bounding volume half-extents (world-axis-aligned)
   uint64_t stamp_ns;           // fusion output time
+
+  // Belief, not just an estimate. ADDITIVE — see below.
+  double position_sigma_m;         // 1-sigma RMS position uncertainty; <0 = absent
+  double orientation_sigma_rad;    // 1-sigma RMS orientation uncertainty; <0 = absent
+  Eigen::Vector3d velocity_w;      // world-frame linear velocity, m/s
 };
 
 struct SceneState {
@@ -133,6 +138,28 @@ Semantics that matter:
 - `cls == "unknown_object"` means the DBSCAN path produced it: `pose_w`
   translation is the cluster centroid, rotation is identity and **meaningless**,
   `extent` is the cluster bounding volume.
+
+**Uncertainty fields (additive, no existing field moved).** `confidence` is a
+frontend score: it says how sure the detector and pose estimator were that they
+saw the object. It does not say how well the pose is pinned down in metres, and
+those are different questions. Only the second one tells a consumer whether a
+geometric test over this pose is safe to trust — a 5 mm surface tolerance means
+nothing against a pose with 30 mm of position sigma. The per-object EKF already
+computed these every frame and discarded them; these fields carry them.
+
+- Both sigmas are **negative when not supplied**, not zero. Zero is a
+  legitimate-looking value that would read as perfect certainty, so a producer
+  predating the field — or one running with no temporal filter, such as the
+  ablation's naive baseline arm — must be distinguishable from a confident one.
+  `has_uncertainty(const ObjectState&)` in `types.hpp` is the check, and a
+  consumer reasoning about uncertainty **must** call it first.
+- `velocity_w` needs no sentinel: zero is the correct answer for a static
+  object, which is the common tabletop case.
+- Intended use downstream: predicate extraction can decline to assert a fact
+  whose geometric margin is smaller than the pose uncertainty, rather than
+  emitting a confident fact the planner cannot check. That consumer is not yet
+  built — the fields are supplied first so the contract is stable before
+  anything depends on it.
 
 ---
 

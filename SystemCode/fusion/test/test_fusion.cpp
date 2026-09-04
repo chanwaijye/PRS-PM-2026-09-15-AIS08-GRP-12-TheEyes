@@ -73,6 +73,120 @@ FusionConfig Cfg() { return FusionConfig{}; }
 // Acceptance: refuses to start on extrinsics failing the quality gate
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Belief output: the filter's own uncertainty reaches the contract
+// ---------------------------------------------------------------------------
+
+TEST(Fusion, EmitsFilterUncertaintyAndVelocityOnTheContract) {
+  // The EKF has always computed these; before this they were computed and
+  // thrown away every frame. A consumer deciding whether a geometric predicate
+  // over this pose is safe needs the sigma, and `confidence` cannot answer that
+  // -- it is a detector score, not a distance.
+  Fusion fusion(Cfg(), Rig());
+  const Eigen::Isometry3d truth = Pose({0.10, 0.05, 0.03}, 15.0);
+
+  const SceneState first = fusion.Process(
+      {Observe(Rig(), "cam_front", "cube", truth), Observe(Rig(), "cam_over", "cube", truth)},
+      1'000'000'000ULL);
+  ASSERT_EQ(first.objects.size(), 1u);
+  EXPECT_TRUE(has_uncertainty(first.objects[0]));
+  EXPECT_GT(first.objects[0].position_sigma_m, 0.0);
+  EXPECT_GT(first.objects[0].orientation_sigma_rad, 0.0);
+
+  // Repeated consistent observations must tighten the belief. A filter whose
+  // covariance did not shrink would be reporting a constant, which is worse
+  // than reporting nothing because it looks like information.
+  SceneState latest = first;
+  for (int i = 1; i < 30; ++i) {
+    latest = fusion.Process(
+        {Observe(Rig(), "cam_front", "cube", truth), Observe(Rig(), "cam_over", "cube", truth)},
+        1'000'000'000ULL + static_cast<uint64_t>(i) * 33'000'000ULL);
+  }
+  ASSERT_EQ(latest.objects.size(), 1u);
+  EXPECT_LT(latest.objects[0].position_sigma_m, first.objects[0].position_sigma_m);
+  EXPECT_LT(latest.objects[0].orientation_sigma_rad, first.objects[0].orientation_sigma_rad);
+
+  // A static object on a table: the constant-velocity state must settle near
+  // zero rather than chasing measurement noise.
+  EXPECT_LT(latest.objects[0].velocity_w.norm(), 0.02);
+}
+
+TEST(Fusion, VelocityFollowsAMovingObject) {
+  Fusion fusion(Cfg(), Rig());
+  const Eigen::Vector3d velocity(0.05, 0.0, 0.0);  // 5 cm/s along +x
+
+  SceneState latest;
+  for (int i = 0; i < 60; ++i) {
+    const double t = static_cast<double>(i) * 0.033;
+    const Eigen::Isometry3d truth = Pose(Eigen::Vector3d(0.0, 0.05, 0.03) + velocity * t);
+    latest = fusion.Process(
+        {Observe(Rig(), "cam_front", "cube", truth), Observe(Rig(), "cam_over", "cube", truth)},
+        1'000'000'000ULL + static_cast<uint64_t>(i) * 33'000'000ULL);
+  }
+  ASSERT_EQ(latest.objects.size(), 1u);
+  EXPECT_LT((latest.objects[0].velocity_w - velocity).norm(), 0.02);
+}
+
+TEST(Fusion, ADefaultObjectStateReportsNoUncertainty) {
+  // The sentinel is the whole safety property: a producer that predates the
+  // field, or the naive ablation arm that runs no filter, must not read as
+  // "certain to zero metres".
+  const ObjectState fresh;
+  EXPECT_FALSE(has_uncertainty(fresh));
+  EXPECT_LT(fresh.position_sigma_m, 0.0);
+  EXPECT_LT(fresh.orientation_sigma_rad, 0.0);
+}
+
+TEST(Fusion, NaiveModeEmitsTheRawFuseAndNoUncertainty) {
+  // The ablation baseline is defined as having no temporal filter, so it must
+  // not inherit one through the back door -- neither in the pose it emits nor
+  // in the belief it claims.
+  FusionConfig cfg = Cfg();
+  cfg.mode = FusionMode::kNaive;
+  Fusion naive(cfg, Rig());
+
+  const Eigen::Isometry3d truth = Pose({0.10, 0.05, 0.03});
+  SceneState scene;
+  for (int i = 0; i < 10; ++i) {
+    scene = naive.Process(
+        {Observe(Rig(), "cam_front", "cube", truth), Observe(Rig(), "cam_over", "cube", truth)},
+        1'000'000'000ULL + static_cast<uint64_t>(i) * 33'000'000ULL);
+  }
+  ASSERT_EQ(scene.objects.size(), 1u);
+  EXPECT_FALSE(has_uncertainty(scene.objects[0]));
+  // Noise-free agreeing views: the unweighted mean is exactly the truth, with
+  // no filter lag between it and the measurement.
+  EXPECT_LT((scene.objects[0].pose_w.translation() - truth.translation()).norm(), 1e-9);
+}
+
+TEST(Fusion, NaiveModeBelievesAViewTheGateWouldReject) {
+  // This is what the baseline is FOR. Same input, two policies: the gate drops
+  // the 8 cm outlier and keeps the good view; the naive mean splits the
+  // difference and lands 4 cm from the object.
+  const ExtrinsicsSet ex = Rig();
+  const Eigen::Isometry3d truth = Pose({0.10, 0.05, 0.03});
+  Eigen::Isometry3d wrong = truth;
+  wrong.translation() += Eigen::Vector3d(0.08, 0.0, 0.0);
+  const std::vector<PoseEstimate> estimates = {
+      Observe(ex, "cam_front", "cube", truth, 0.95),
+      Observe(ex, "cam_over", "cube", wrong, 0.60)};
+
+  FusionConfig naive_cfg = Cfg();
+  naive_cfg.mode = FusionMode::kNaive;
+  const SceneState naive = Fusion(naive_cfg, ex).Process(estimates, 1'000'000'000ULL);
+  const SceneState gated = Fusion(Cfg(), ex).Process(estimates, 1'000'000'000ULL);
+
+  ASSERT_EQ(naive.objects.size(), 1u);
+  ASSERT_EQ(gated.objects.size(), 1u);
+  const double naive_error = (naive.objects[0].pose_w.translation() - truth.translation()).norm();
+  const double gated_error = (gated.objects[0].pose_w.translation() - truth.translation()).norm();
+
+  EXPECT_NEAR(naive_error, 0.04, 5e-3) << "unweighted mean of a good and an 8 cm-wrong view";
+  EXPECT_LT(gated_error, naive_error);
+  // The gate must also SAY it dropped a view, not silently improve.
+  EXPECT_EQ(gated.objects[0].visible_views, kViewCamFront);
+}
+
 TEST(Fusion, RefusesToConstructOnBadCalibration) {
   FusionConfig cfg = Cfg();
   cfg.calibration.max_reprojection_rmse_px = 0.5;

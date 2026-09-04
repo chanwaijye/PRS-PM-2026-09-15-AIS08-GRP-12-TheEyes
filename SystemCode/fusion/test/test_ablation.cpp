@@ -141,7 +141,7 @@ TEST(Ablation, FusedBeatsEitherSingleViewUnderSymmetricNoise) {
   }
 
   const AblationResult result = RunOcclusionAblation(frames, ex, cfg, {}, Models());
-  ASSERT_EQ(result.rows.size(), 3u);
+  ASSERT_EQ(result.rows.size(), 4u);
 
   const AblationRow& front = Row(result, "cam_front");
   const AblationRow& over = Row(result, "cam_over");
@@ -193,15 +193,84 @@ TEST(Ablation, RowsCoverEveryViewPlusFusedAndFormatCleanly) {
   f.ground_truth = {GroundTruthObject{"cube", truth}};
 
   const AblationResult result = RunOcclusionAblation({f}, ex, cfg, {}, Models());
-  ASSERT_EQ(result.rows.size(), 3u);
+  ASSERT_EQ(result.rows.size(), 4u);
   EXPECT_EQ(result.rows[0].label, "cam_front");
   EXPECT_EQ(result.rows[1].label, "cam_over");
-  EXPECT_EQ(result.rows[2].label, "fused");
+  // `naive` before `fused`: the report table is read left to right and the
+  // fused-minus-naive gap is the one the claim rests on.
+  EXPECT_EQ(result.rows[2].label, "naive");
+  EXPECT_EQ(result.rows[3].label, "fused");
 
   const std::string table = result.Format();
   EXPECT_NE(table.find("cam_front"), std::string::npos);
+  EXPECT_NE(table.find("naive"), std::string::npos);
   EXPECT_NE(table.find("fused"), std::string::npos);
   EXPECT_NE(table.find("ADD-S"), std::string::npos);
+}
+
+// --------------------------------------------------------------------------
+// The baseline arm -- what makes the headline claim falsifiable
+// --------------------------------------------------------------------------
+
+TEST(Ablation, GatedFusionBeatsTheNaiveBaselineWhenOneViewIsAnOutlier) {
+  // The scenario the disagreement gate exists for, and the only kind of
+  // scenario in which this module can out-perform a two-line average: one view
+  // is confidently wrong. cam_over reports the object 8 cm from where it is,
+  // which is past the 5 cm gate. The gate drops it; the naive baseline averages
+  // it in and lands halfway to nowhere.
+  //
+  // If this test ever passes only marginally on real captures, that is the
+  // finding -- it means FoundationPose rarely produces gate-tripping outliers
+  // at this rig geometry, which is worth reporting rather than hiding.
+  const ExtrinsicsSet ex = Rig();
+  const FusionConfig cfg;
+  const Eigen::Isometry3d truth = Pose({0.10, 0.05, 0.03});
+  Eigen::Isometry3d wrong = truth;
+  wrong.translation() += Eigen::Vector3d(0.08, 0.0, 0.0);
+
+  std::vector<AblationFrame> frames;
+  for (int i = 0; i < 40; ++i) {
+    AblationFrame f;
+    f.stamp_ns = static_cast<uint64_t>(i) * 33'000'000ULL + 1'000'000'000ULL;
+    // cam_front is right and scores higher; cam_over is the outlier.
+    f.estimates.push_back(Observe(ex, "cam_front", "cube", truth, 0.95));
+    f.estimates.push_back(Observe(ex, "cam_over", "cube", wrong, 0.60));
+    f.ground_truth.push_back(GroundTruthObject{"cube", truth});
+    frames.push_back(std::move(f));
+  }
+
+  const AblationResult result = RunOcclusionAblation(frames, ex, cfg, {}, Models());
+  const AblationRow& naive = Row(result, "naive");
+  const AblationRow& fused = Row(result, "fused");
+
+  EXPECT_LT(fused.mean_add_s_m, naive.mean_add_s_m)
+      << "the disagreement gate must buy something over an unweighted mean, or "
+         "the module's headline claim is just 'two cameras beat one'";
+  EXPECT_GT(fused.recall_at_0p1_diameter, naive.recall_at_0p1_diameter);
+}
+
+TEST(Ablation, NaiveBaselineStillSeesWhatBothViewsSee) {
+  // The baseline is a baseline, not a strawman: with both views agreeing it
+  // must recover the object just as well as the full policy. A naive arm that
+  // failed here would flatter the fused arm for the wrong reason.
+  const ExtrinsicsSet ex = Rig();
+  const Eigen::Isometry3d truth = Pose({0.10, 0.05, 0.03});
+
+  std::vector<AblationFrame> frames;
+  for (int i = 0; i < 20; ++i) {
+    AblationFrame f;
+    f.stamp_ns = static_cast<uint64_t>(i) * 33'000'000ULL + 1'000'000'000ULL;
+    f.estimates = {Observe(ex, "cam_front", "cube", truth),
+                   Observe(ex, "cam_over", "cube", truth)};
+    f.ground_truth = {GroundTruthObject{"cube", truth}};
+    frames.push_back(std::move(f));
+  }
+
+  const AblationResult result = RunOcclusionAblation(frames, ex, FusionConfig{}, {}, Models());
+  const AblationRow& naive = Row(result, "naive");
+  EXPECT_EQ(naive.missed, 0);
+  EXPECT_EQ(naive.matched, 20);
+  EXPECT_LT(naive.mean_add_s_m, 1e-6) << "noise-free input: the mean is exact";
 }
 
 TEST(Ablation, MissingModelRegistryEntryThrows) {
