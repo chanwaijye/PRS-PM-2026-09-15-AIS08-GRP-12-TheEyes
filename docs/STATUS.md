@@ -95,9 +95,10 @@ Raw metrics: `docs/results/modality_rgb_vs_rgbd_50k_v2.json`.
 |---|---|---|
 | Sync cable | ~~2026-08-25~~ **ARRIVED, installed, verified 08-27** | R4b hardware sync — master/slave streams; see "Hardware sync: DONE" |
 | ChArUco board | ~~first week of Sept~~ **ARRIVED 2026-08-28**, decode-verified on a real capture | calibration → real extrinsics → ablation on real poses |
+| Matte PLA, 3 × 1 kg (yellow / red / blue) | **ORDERED 2026-09-05**, ETA ~09-12 | printing the three objects → real ADD-S ground truth |
 
-**Nothing is on order any more.** Both deliveries have landed and this table is
-kept only as a record.
+**No rig hardware is outstanding.** Filament is the only open delivery, and it
+gates only the object track — see "The critical path" below.
 
 Against the deadlines: proposal 09-15, first presentation 09-30, final 10-31.
 Calibration is a day's work and the board has been on the desk since 08-28, so
@@ -132,16 +133,32 @@ geometry exists anywhere in the repo as of 2026-09-05: `assets/meshes/` holds
 only the three source OBJs. Authoring the seats is unstarted CAD work, and it is
 now the longest pole, ahead of calibration.
 
-Calibration must in any case follow final rigid mounting, so the order is
-**author seats → print → calliper-verify → mount → calibrate → capture**.
+**These are two independent tracks, and an earlier revision of this file
+serialised them wrongly.** It read "print → calliper-verify → mount → calibrate →
+capture", which implies printing gates mounting. It does not. Calibration needs
+the board and rigidly mounted cameras — all three are on the desk — and it needs
+nothing from the objects. The objects need filament and seat geometry and nothing
+from the rig. They converge only at capture:
 
-**Calibration itself is unblocked and unstarted.** `config/extrinsics.yaml` is
-still the synthetic mock-mode placeholder and no `captures/` directory exists.
+```
+track A   author seats ──→ print ──→ calliper-verify ──┐
+                                                       ├──→ capture → ADD-S
+track B   rigid mounting ──→ calibrate ────────────────┘
+```
+
+Filament was ordered 2026-09-05, ETA ~2026-09-12, so track A is blocked on
+delivery for a week and track B is blocked on nothing. **Track B is the work for
+that week**, together with authoring the seat geometry so printing can start the
+day the spools land. `config/extrinsics.yaml` is still the synthetic mock-mode
+placeholder and no `captures/` directory exists.
+
 Filament requirement for one full set, computed from the meshes: 227 g
 (mustard_bottle 137 g at 10% infill, red_cube 49 g at 20%, bowl 41 g). The bowl's
 scanned wall is **0.99 mm**, thinner than two perimeters at a 0.4 mm nozzle, so
 it prints as a solid thin wall and its infill setting is inert — and it must not
-be thickened, because ADD-S is computed over mesh vertices.
+be thickened, because ADD-S is computed over mesh vertices. Colours and bands are
+in `docs/RIG_BOM.md` and proposal §6.2; they are fixed by the rendered dataset,
+not chosen at print time.
 
 ### Hardware sync: DONE 2026-08-27 (R4b mitigated)
 
