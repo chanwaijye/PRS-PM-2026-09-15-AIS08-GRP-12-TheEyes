@@ -415,6 +415,48 @@ real sensor pointed at a desk sees floor and wall and returns finite depth. The
 synthetic depth channel would have taught the detector that "sentinel" means
 background, a property the real sensor does not have.
 
+### Measured: first detector training, and why mAP@0.5 is the wrong number here
+
+The RGB-D detector has now been trained twice, and the comparison is more
+informative than either result alone. On the first synthetic dataset it reached
+**mAP@0.5 = 0.994 after a single epoch** and 0.995 by the tenth, against this
+proposal's provisional target of 0.90. That is not a result to report; it is a
+warning that the benchmark cannot discriminate. Inspection confirmed why: three
+classes in three unmistakable filament colours on a plain table, with 98% of
+frames showing all three targets essentially unoccluded.
+
+The scenes were rebuilt to be discriminative — distractors drawing from the
+*same* colour palette as the targets, so colour ceases to be sufficient and
+shape and depth must carry the decision; eight distractors rather than three,
+sized across the target range; and a tighter workspace so objects crowd.
+Occlusion is now measured rather than assumed, from the ratio of Replicator's
+tight (visible) to loose (full) bounding boxes: mean occlusion rose from ~0% to
+31–35%, objects more than 25% occluded from ~0% to 54–56%, and frames showing
+all three targets fell from 98% to 62%.
+
+Retrained on the harder data, 40 epochs, 40,012 train / 9,988 val:
+
+| class | instances | P | R | mAP@0.5 | mAP@0.5:0.95 |
+|---|---|---|---|---|---|
+| mustard_bottle | 9,988 | 0.997 | 0.998 | 0.995 | 0.989 |
+| bowl | 9,322 | 0.989 | 0.986 | 0.994 | 0.966 |
+| **red_cube** | **6,622** | 0.988 | **0.963** | 0.992 | **0.915** |
+| **all** | 25,932 | 0.991 | 0.983 | **0.994** | **0.956** |
+
+**The headline finding is that harder scenes did not prevent saturation at
+mAP@0.5.** It converged to 0.994 against the easy dataset's 0.995 — a difference
+of one thousandth. What changed is everything underneath: mAP@0.5:0.95 fell from
+0.985 to 0.956, and convergence slowed from one epoch to roughly eleven.
+
+The consequence for §7 is concrete. **The modality and dataset-size ablations
+must be reported on mAP@0.5:0.95 and per class, not on mAP@0.5**, which has
+0.006 of headroom and can register nothing. mAP@0.5:0.95 retains 0.044, and
+`red_cube` alone retains 0.085 — that class is the discriminating one, being the
+smallest object and the most often occluded, visible in only 66% of validation
+images against the bottle's 100%. A depth channel that helps should help there
+first, which makes it the natural place to look for the RGB-D gain rather than
+in a pooled average that is already close to its ceiling.
+
 A third, subtler defect followed from the object-frame convention of §6.2: with
 the origin at the mesh AABB centre each class rests at its own half-height (96,
 25 and 28 mm), so a single shared placement range buried some classes in the
