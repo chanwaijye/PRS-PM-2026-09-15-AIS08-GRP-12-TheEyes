@@ -305,6 +305,47 @@ calibration at 1920 × 1080 — see §D.
 **Now (cheap, blocks the build):** tabletop mat 1180 × 440 mm matte mid-grey,
 **digital calipers**, masking + gaffer tape.
 
+**Filament — 3 × 1 kg matte PLA, 1.75 mm.** The colours are NOT a free choice.
+`training/detector/replicator_dataset.py` renders each class in a fixed base
+colour with `FILAMENT_SPREAD = 0.12` of linear randomisation, and `synth50k_v2`
+— and therefore the trained detector — has already learned those distributions.
+A spool outside the band introduces an appearance gap *after* training:
+
+| class | colour | sRGB target | acceptable band |
+|---|---|---|---|
+| `mustard_bottle` | yellow | `#EDDD59` | `#DECB00` – `#FCEC81` |
+| `red_cube` | red | `#DA5555` | `#C80000` – `#EA7E7E` |
+| `bowl` | blue | `#6199D7` | `#007CC5` – `#86B1E7` |
+
+**Matte, not silk.** Gloss defeats the IR projector and dark absorbs it — the
+same rule as the board and the mat. The renderer draws these at roughness
+0.55–0.90, so a glossy print depicts something the training set does not contain.
+
+Quantity, computed from the meshes: **227 g per object set** — `mustard_bottle`
+137 g (1.2 mm wall, 10% infill), `red_cube` 49 g (20% infill), `bowl` 41 g. Two
+sets plus a 20 mm test cube per colour plus 10% waste comes to ~303 g yellow,
+~110 g red, ~93 g blue, so 1 kg spools leave room for printed distractors.
+
+Two print constraints that follow from the meshes rather than from taste:
+
+- **The bowl's scanned wall is 0.99 mm**, thinner than two perimeters at a
+  0.4 mm nozzle, so it prints as a solid thin wall and infill is inert. Do NOT
+  thicken it for durability — ADD-S is computed over mesh vertices, so any
+  deviation enters the pose error and cannot be separated from estimator error.
+- **Both YCB OBJs are UV-seam split**, which makes naive watertightness checks
+  report false. After merging texture/normal-split vertices the bottle is
+  watertight and the bowl has 0 boundary edges, so both slice without repair.
+  The bowl carries 6 stray two-face fragments from the scan — delete them in the
+  slicer so they do not print as debris.
+
+**Distractors need colour too.** `DISTRACTOR_COUNT = 8`, and the renderer draws
+distractors from the *same palette as the targets* — that is the change that
+stopped the benchmark saturating and made the modality ablation able to say
+anything. §6.3 says distractors need no meshes, so household objects qualify,
+but if the real ones are arbitrary colours the real scenes will not test what the
+synthetic ones do. Either source real objects in these three colours or print
+simple shapes (~190 g across the three).
+
 **Later (nice to have):** LED panels, blackout curtain, laser distance meter,
 quick-release plates, counterweights.
 

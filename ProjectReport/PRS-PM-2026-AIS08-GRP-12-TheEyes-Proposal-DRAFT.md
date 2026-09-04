@@ -219,6 +219,18 @@ The label design must also be checked against the current retail product. The sc
 
 The consequence: the appearance gap between synthetic and real is minimised by construction for every class, so the measured sim-to-real difference isolates geometry, sensor and lighting effects rather than testing appearance-domain randomisation. That is a cleaner experiment in one sense and a weaker test of G4 in another, and §7 reports it as such rather than presenting an artificially small gap as a result. Should the object become obtainable, restoring it as a purchased real-texture class recovers the stronger test at no cost to anything else.
 
+**The print colours are determined by the dataset, not chosen at print time.** `replicator_dataset.py` renders each class in a fixed base colour with `FILAMENT_SPREAD = 0.12` of linear randomisation around it, and the shipped `synth50k_v2` set — and therefore the trained detector — has already learned those distributions. A filament that falls outside the rendered band is an appearance gap introduced *after* training, which is precisely what §6.2 exists to prevent. The band is wide enough that an exact match is unnecessary and narrow enough that it must be checked:
+
+| class | linear diffuse (as rendered) | sRGB target | acceptable band |
+|---|---|---|---|
+| `mustard_bottle` | (0.85, 0.72, 0.10) | `#EDDD59` | `#DECB00` – `#FCEC81` |
+| `red_cube` | (0.70, 0.09, 0.09) | `#DA5555` | `#C80000` – `#EA7E7E` |
+| `bowl` | (0.12, 0.32, 0.68) | `#6199D7` | `#007CC5` – `#86B1E7` |
+
+Matte is a requirement rather than a preference, and it is the same requirement in both directions: gloss defeats the IR projector on the real object (§7A sensor error budget), and the renderer draws these classes at roughness 0.55–0.90, so a glossy print would depict something the training set does not contain.
+
+**Wall thickness is dictated by the mesh, not by print strength.** The YCB bowl's scanned wall measures 0.99 mm, thinner than two perimeters at a 0.4 mm nozzle, so it prints as a solid thin wall and its infill setting has no effect. It must not be thickened for durability: ADD-S is computed over mesh vertices, so any deviation from the mesh enters the pose error and cannot afterwards be separated from estimator error. Material requirement per full object set, computed from the meshes: **227 g** (`mustard_bottle` 137 g at 1.2 mm wall and 10% infill, `red_cube` 49 g at 20% infill, `bowl` 41 g).
+
 Printed objects must be sliced at 100% with no bed-fitting rescale, and the printer's dimensional accuracy verified with callipers against a test print before any object is relied upon — a printer 1% out of true reintroduces exactly the mesh/object mismatch that printing is chosen to avoid. Matte mid-tone filament is required: gloss defeats the IR projector and dark surfaces absorb it (§7A, sensor error budget). Layer lines are beneficial rather than harmful, as they add surface texture for active stereo.
 
 ### 6.3 Real Evaluation Data
@@ -527,18 +539,23 @@ predicates are to be evaluated against.
 
 ## 9. Budget & Resource Requirements
 
+All figures in **Singapore dollars**. Two items were purchased in CNY and are
+converted at the **ECB reference rate for 2026-09-04, 1 CNY = 0.18878 SGD**; the
+original CNY amount is given alongside so the conversion is auditable rather than
+opaque. Amounts are purchase prices from receipts, not estimates.
+
 | Item | Cost | Status |
 |---|---|---|
-| 2 × Intel RealSense D435i | [VERIFY actual — from receipts] | **Acquired.** Firmware levelled to 5.17.3.10; factory calibration tables backed up |
-| Inter-camera hardware sync cable | [VERIFY actual] | **Acquired**, installed and verified 2026-08-27 |
-| 2 × USB 3.2 Gen 1 cables, 2 m | [VERIFY actual] | **Acquired** |
-| 2 × tripods with heads | [VERIFY actual] | **Acquired** |
-| Digital angle gauge | [VERIFY actual] | **Acquired** |
-| ChArUco board, 324 × 324 mm, 8 × 8 @ 38 mm | [VERIFY actual] | **Acquired 2026-08-28**, decode-verified on a real capture |
+| 2 × Intel RealSense D435i | **S$862.08** | **Acquired.** Firmware levelled to 5.17.3.10; factory calibration tables backed up |
+| Inter-camera hardware sync cable (SHR-09V-S-B) | **S$21.44** (¥113.58) | **Acquired**, installed and verified 2026-08-27 |
+| 2 × USB 3.2 Gen 1 cables, 2 m, A-to-C | **S$8.76** | **Acquired** |
+| 2 × tripods with extension rod | **S$77.00** | **Acquired** |
+| Digital angle gauge | [VERIFY actual] | **Acquired** — receipt not yet located |
+| ChArUco board, 324 × 324 mm, 8 × 8 @ 38 mm | **S$71.81** (¥380.41) | **Acquired 2026-08-28**, decode-verified on a real capture |
+| **Subtotal, hardware acquired** | **S$1,041.09** | Excludes the angle gauge, still `[VERIFY actual]` |
 | Work surface | — | **No purchase.** Existing desk reused; 1180 × 440 mm of free surface is sufficient for the derived rig geometry (§7A) |
-| Filament for printed objects (`red_cube`, `bowl`, fiducial mounts) | < S$50 | To produce. Matte mid-tone; see §6.2 |
-| `mustard_bottle` physical object (French's Classic Yellow, **20 oz** — not 14 oz, see §6.2) | < S$10 | To purchase |
-| 3D printer | — | **Owned.** Makes the printed-vs-purchased split in §6.2 available at negligible cost, and is what allows fiducial mounts to be exact by construction (§6.3) |
+| Matte PLA filament, 3 × 1 kg (yellow, red, blue) | [VERIFY actual — ordered 2026-09-05] | To produce. **227 g per object set**, computed from the meshes: `mustard_bottle` 137 g, `red_cube` 49 g, `bowl` 41 g. Two sets are budgeted because §6.2 requires a calliper check that may force a reprint. Colours are not free choices — they are the per-class values the synthetic dataset was rendered with, and are reproduced in §6.2 |
+| 3D printer | — | **Owned.** Makes the all-printed resolution in §6.2 available at negligible cost, and is what allows fiducial mounts to be exact by construction (§6.3) |
 | Object meshes (YCB 006, 024) | — | **Free**, public research dataset |
 | Cloud compute (detector training bursts) | ≤ US$100/month existing budget | Available |
 | Workstation (Ryzen 9700X, RTX 5070 Ti 16 GB) | — | Owned |
