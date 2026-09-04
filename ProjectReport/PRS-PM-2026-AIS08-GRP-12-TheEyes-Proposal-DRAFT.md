@@ -416,14 +416,23 @@ not.
 
 ### What is not yet measured
 
-Real-capture detection mAP, the modality and dataset-size ablations, ADD-S on
-real captures, and predicate accuracy — every one of which sits downstream of a
-trained detector, and therefore of the synthetic dataset.
+Real-capture detection mAP, ADD-S on real captures, and predicate accuracy —
+each of which requires the physical objects and a real calibration. The modality
+ablation **has now run** and is reported above as a negative result; the
+dataset-size ablation is running as of 2026-09-05.
 
-The gating items have narrowed to one. The inter-camera sync cable arrived and
-was verified on 2026-08-27. Isaac Sim 5.1.0 is installed and the Replicator
-script has been run and debugged. Object meshes were acquired on 2026-09-04. The
-ChArUco board is due ~2026-09-05, which unblocks real extrinsics.
+**No delivery gates anything any more.** The inter-camera sync cable arrived and
+was verified on 2026-08-27; the ChArUco board arrived on 2026-08-28 and was
+decode-verified against a real capture (ids 0–31 under `DICT_5X5_250`, measured
+reach 1.85 m / 1.84 m per unit at 1920 × 1080). Isaac Sim 5.1.0 is installed and
+the Replicator script has been run and debugged. Object meshes were acquired on
+2026-09-04.
+
+What remains is work, not waiting, and the longest pole is **print-ready object
+geometry**: §6.3 requires the ArUco ground-truth seats to be modelled into the
+printed parts, and that geometry does not exist yet. The order is author seats →
+print → calliper-verify → mount → calibrate → capture, and calibration —
+unblocked since 08-28 — has not yet been run against the real rig.
 
 **Replicator scene fidelity was the remaining blocker and is now closed
 (2026-09-04).** The scene renders the derived rig geometry with the measured
@@ -508,7 +517,7 @@ predicates are to be evaluated against.
 | P0 — Environment | now – mid Jul 2026 | **DONE.** Ubuntu 24.04; FoundationPose verified on sm_120, R1 retired |
 | P1 — Perception baseline | mid Jul – early Aug | **DONE.** FoundationPose end-to-end via the C++ pose_agent; detector C++/Python parity verified |
 | P2 — Fusion + hardware | Aug | **Done bar calibration.** Fusion, scene graph, dual-camera bring-up and hardware sync complete; rig geometry derived from measured intrinsics; calibration awaits the ChArUco board (~05 Sep) |
-| P3 — Dataset + evaluation | late Aug – Sep | **Unblocked 04 Sep.** Isaac Sim 5.1.0 installed, object meshes acquired and converted to USD, and Replicator scene fidelity verified (§7A). Generation of the full training set and the first detector run are the next steps |
+| P3 — Dataset + evaluation | late Aug – Sep | **Largely done.** `synth50k_v2` generated (40,012 train / 9,988 val), RGB-D detector trained and exported to ONNX, C++/Python parity re-verified against the trained network, modality ablation run (negative result, §7A), dataset-size ablation running. Outstanding: real-capture evaluation, which needs the printed objects |
 | P4 — Proposal | by **15 Sep 2026** | Proposal submitted (this document, finalised) |
 | — First Presentation | **30 Sep 2026**, 6:30–10:30 pm, Zoom | Goals, data resources, techniques, progress |
 | P5 — Hardening + integration | Oct | Full evaluation, PM1 integration demo, unknown-object path, Jetson test |
@@ -525,7 +534,7 @@ predicates are to be evaluated against.
 | 2 × USB 3.2 Gen 1 cables, 2 m | [VERIFY actual] | **Acquired** |
 | 2 × tripods with heads | [VERIFY actual] | **Acquired** |
 | Digital angle gauge | [VERIFY actual] | **Acquired** |
-| ChArUco board, 324 × 324 mm, 8 × 8 @ 38 mm | [VERIFY actual] | **Ordered**, due ~2026-09-05 |
+| ChArUco board, 324 × 324 mm, 8 × 8 @ 38 mm | [VERIFY actual] | **Acquired 2026-08-28**, decode-verified on a real capture |
 | Work surface | — | **No purchase.** Existing desk reused; 1180 × 440 mm of free surface is sufficient for the derived rig geometry (§7A) |
 | Filament for printed objects (`red_cube`, `bowl`, fiducial mounts) | < S$50 | To produce. Matte mid-tone; see §6.2 |
 | `mustard_bottle` physical object (French's Classic Yellow, **20 oz** — not 14 oz, see §6.2) | < S$10 | To purchase |

@@ -91,7 +91,7 @@ consequences, in order of how much they matter:
 
 | | Consequence |
 |---|---|
-| **1. Board fits with room to spare** | The ordered 324 × 324 mm panel sits inside the 440 mm depth with 58 mm margin each side. No overhang. |
+| **1. Board fits with room to spare** | The 324 × 324 mm panel sits inside the 440 mm depth with 58 mm margin each side. No overhang. |
 | **2. Rigidity is the real risk** | You type on this table, lean on it, and the tower may vibrate it. Extrinsics are camera→table-origin, so *any* relative movement between the cameras and the tabletop invalidates them, and nothing downstream detects it. Mitigation below. |
 | **3. Check what is above it** | A monitor at the back edge will be in frame and will occlude. An overhead shelf or hutch blocks the camera at 1.14 m entirely. Measure the vertical clearance before mounting. |
 | **4. Where do you sit** | The tripods occupy the seat position during capture. Plan to drive the capture over SSH or from a second position. |
@@ -173,7 +173,7 @@ so you need **≥ 0.9 m** of usable length. If the cable you received is 0.5 m,
 it is the binding constraint on the whole layout and nothing else matters until
 it is resolved — measure it before mounting anything.
 
-## D. Calibration target — ORDERED: 324 × 324 mm, 8 × 8 @ 38 mm, arriving ~5 Sep
+## D. Calibration target — ARRIVED 2026-08-28: 324 × 324 mm, 8 × 8 @ 38 mm
 
 The decisive number is not the board size but the **capture resolution**, and
 my earlier sizing here got it wrong twice: it used the standoff (0.70 m) as the
@@ -228,7 +228,7 @@ failure is the check working, not a bug.
 
 | Item | Spec |
 |---|---|
-| ChArUco board | 324 × 324 mm panel, 8 × 8 @ 38 mm (ordered) |
+| ChArUco board | 324 × 324 mm panel, 8 × 8 @ 38 mm (**arrived 2026-08-28**) |
 | Substrate | Aluminium composite or 5 mm foam-PVC — **rigid and flat**. Laminated paper curls and every corner is then wrong. |
 | Finish | **Matte**. Gloss blows out under the IR projector and under your lights. |
 
@@ -295,7 +295,11 @@ error and it will look like a fusion bug.
 
 **Not needed:** table — reusing the computer table (§A).
 
-**Ordered:** ChArUco board, 324 × 324 mm, 8 × 8 @ 38 mm, arriving ~5 Sep. Capture
+**ARRIVED 2026-08-28:** ChArUco board, 324 × 324 mm, 8 × 8 @ 38 mm. Decode
+verified on a real capture — ids 0–31 under `DICT_5X5_250`, measured reach
+1.85 m (`261722073945`) / 1.84 m (`261822074567`) at 1920 × 1080. The square
+length is still `[VERIFY]`: callipers across eight squares divided by eight.
+Capture
 calibration at 1920 × 1080 — see §D.
 
 **Now (cheap, blocks the build):** tabletop mat 1180 × 440 mm matte mid-grey,

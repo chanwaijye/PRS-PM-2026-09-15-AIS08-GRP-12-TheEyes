@@ -129,8 +129,9 @@ so in its own output.
   its cluster bounding volume on the estimate. Fusion warns when an object ends
   up with zero extent, because downstream predicates over it are degenerate.
 - **`config/extrinsics.yaml` is a placeholder.** Synthetic values for mock-mode
-  development, and `cam_over`'s serial is `[VERIFY]` — the second D435i's serial
-  is not yet recorded. Replace wholesale after rigid mounting and `calib_agent`.
+  development. Both serials ARE recorded and correct — `cam_front`
+  `261722073945`, `cam_over` `261822074567` — so only the transforms are
+  synthetic. Replace those wholesale after rigid mounting and `calib_agent`.
 - **Tuning is unvalidated.** Every threshold in `config/fusion.yaml` is a
   reasoned starting point, not a measured one. The gate and association radii in
   particular should be re-derived from the depth-noise characterisation

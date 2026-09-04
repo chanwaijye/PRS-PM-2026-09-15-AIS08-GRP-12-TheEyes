@@ -81,4 +81,4 @@ named explicitly.
 | Detections whose class has no registered mesh are dropped with a warning | Met at `pose_agent`, which owns the mesh registry; asserted at the "never reaches the estimator" level |
 | mAP@0.5 ≥ 0.90 on the synthetic validation split | **Met** — 0.9937 mAP@0.5, 0.9574 mAP@0.5:0.95 on `synth50k_v2` (40 epochs, 9,988 val frames). Note that mAP@0.5 is saturated here and cannot support the ablations; report mAP@0.5:0.95 and per class |
 | Real-capture mAP measured and reported | **Blocked** — no real captures yet; gated on printed objects, rig mounting and calibration |
-| Dataset-size ablation at ~5k / 20k / 50k frames | **Unblocked, not yet run** — the dataset exists; `train.py --fraction 0.125 / 0.5` gives the 5k and 20k points against an identical val split |
+| Dataset-size ablation at ~5k / 20k / 50k frames | **Running 2026-09-05** — `train.py --fraction 0.125 / 0.5` against the identical 9,988-frame val split and seed 20260820, so `runs/detector/rgbd_50k_v2` supplies the 50k point unchanged. Arms land in `runs/detector/rgbd_5k_v2` and `rgbd_20k_v2` |

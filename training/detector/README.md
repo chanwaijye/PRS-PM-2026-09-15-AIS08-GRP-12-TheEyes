@@ -47,10 +47,12 @@ returns "far".
 Run `--diagnose N` after any scene change. Every one of those failures produced
 output that looked structurally correct.
 
-**[VERIFY] It has not yet produced a usable dataset.** Two things remain: the
-CAD/USD meshes for the three classes do not exist yet, and the scene framing is
-wrong (the table renders ~1 m away against a configured 0.6 m, and depth
-validity comes out at 4-15%).
+**Both blockers are closed and the dataset exists.** The CAD/USD meshes were
+acquired 2026-09-04 (`assets/meshes/usd/`) and the scene framing was fixed the
+same day — depth validity went 4-15% -> 100.0%, labelled targets per frame ~0 ->
+3.00, nearest surface 1007 mm -> 470 mm. `synth50k_v2` is 40,012 train / 9,988
+val at `/opt/the-eyes-data/synth50k_v2`, and `runs/detector/rgbd_50k_v2` is
+trained on it.
 
 `generate_dataset.py` draws primitive shapes with OpenCV. It exists for one
 reason: to make the C++ inference path verifiable before Isaac Sim exists.

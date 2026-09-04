@@ -94,13 +94,20 @@ Raw metrics: `docs/results/modality_rgb_vs_rgbd_50k_v2.json`.
 | item | ETA | unblocks |
 |---|---|---|
 | Sync cable | ~~2026-08-25~~ **ARRIVED, installed, verified 08-27** | R4b hardware sync — master/slave streams; see "Hardware sync: DONE" |
-| ChArUco board | **first week of Sept** (~09-04) | calibration → real extrinsics → ablation on real poses |
+| ChArUco board | ~~first week of Sept~~ **ARRIVED 2026-08-28**, decode-verified on a real capture | calibration → real extrinsics → ablation on real poses |
+
+**Nothing is on order any more.** Both deliveries have landed and this table is
+kept only as a record.
 
 Against the deadlines: proposal 09-15, first presentation 09-30, final 10-31.
-The board lands ~11 days before the proposal and 26 before the presentation.
-Calibration itself is a day's work once the board exists, so that is workable —
-but it is the whole critical path, and it has no slack for a second attempt if
-the first capture set is bad. Shoot generously on day one.
+Calibration is a day's work and the board has been on the desk since 08-28, so
+the slack that this section used to warn about no longer exists as a risk — it
+exists as unspent time. **This file previously described the board as on order
+and gave its geometry as 12 × 9 at 60 mm; both were wrong.** The physical board
+is 8 × 8 at 38 mm on a 324 × 324 mm panel, `DICT_5X5_250`, per
+`config/calibration.yaml` and `SystemCode/calibration/README.md` — and
+`BoardSpec.LoadsTheShippedConfig` fails on a mismatch, so the config is
+authoritative over any prose including this page.
 
 ### Both no-hardware tracks are now DONE
 
@@ -110,18 +117,31 @@ patch. Numbers under "What is measured vs. what is assumed" below.
 **2. The Replicator dataset — DONE.** Isaac Sim 5.1.0, 50k v2 generated, and the
 detector trained on it. What it gated has now largely been collected: synthetic
 mAP, the modality ablation (above). Still outstanding and still gated on real
-captures: real-capture mAP. Still outstanding and NOT gated on hardware: the
-5k/20k/50k dataset-size ablation, runnable today via `train.py --fraction
-0.125 / 0.5` against the identical val split.
+captures: real-capture mAP. The 5k/20k/50k **dataset-size ablation is running**
+as of 2026-09-05 — `train.py --fraction 0.125` and `--fraction 0.5` against the
+identical 9,988-frame val split and the identical seed, so the 50k arm already in
+`runs/detector/rgbd_50k_v2` is the third point rather than being re-run.
 
-### What is genuinely unblocked right now
+### The critical path, now that no delivery blocks anything
 
-The **physical objects**. Proposal §6.2 resolves all three classes to 3D
-printed, and §6.3 puts the ArUco ground-truth seats *inside* the printed parts —
-so printing gates the objects and the ground-truth mechanism together, and it
-sits on the critical path beside the ChArUco board rather than after it.
-Calibration must in any case follow final rigid mounting, so the real order is
-**print → calliper-verify → mount → calibrate → capture**.
+**The physical objects, and specifically the print-ready geometry that does not
+yet exist.** Proposal §6.2 resolves all three classes to 3D printed, and §6.3
+puts the ArUco ground-truth seats *inside* the printed parts — so printing gates
+the objects and the ground-truth mechanism together. No STL, 3MF or seat
+geometry exists anywhere in the repo as of 2026-09-05: `assets/meshes/` holds
+only the three source OBJs. Authoring the seats is unstarted CAD work, and it is
+now the longest pole, ahead of calibration.
+
+Calibration must in any case follow final rigid mounting, so the order is
+**author seats → print → calliper-verify → mount → calibrate → capture**.
+
+**Calibration itself is unblocked and unstarted.** `config/extrinsics.yaml` is
+still the synthetic mock-mode placeholder and no `captures/` directory exists.
+Filament requirement for one full set, computed from the meshes: 227 g
+(mustard_bottle 137 g at 10% infill, red_cube 49 g at 20%, bowl 41 g). The bowl's
+scanned wall is **0.99 mm**, thinner than two perimeters at a 0.4 mm nozzle, so
+it prints as a solid thin wall and its infill setting is inert — and it must not
+be thickened, because ADD-S is computed over mesh vertices.
 
 ### Hardware sync: DONE 2026-08-27 (R4b mitigated)
 
@@ -168,11 +188,20 @@ controllers, and 90 s of both cameras streaming 1280×720 colour + 848×480 dept
 @30 simultaneously held 29.99 fps each with 1 dropped frame in 2699, no link
 renegotiation and no kernel USB errors.
 
-**Board:** 12 × 9 squares at 60 mm (720 × 540 mm). A **printed board on flat
-rigid backing is sufficient** — factory intrinsics are usable (per-unit, zero
-distortion), so only the extrinsic registration must be solved locally, and that
-needs one shared view rather than a 40-view sweep. Measure a square with
-callipers and put the real number in `config/calibration.yaml`.
+**Board:** 8 × 8 squares at 38 mm on a 324 × 324 mm panel, `DICT_5X5_250`,
+49 interior corners, 32 markers — **the physical board, arrived 2026-08-28**.
+A printed board on flat rigid backing is sufficient: factory intrinsics are
+usable (per-unit, zero distortion), so only the extrinsic registration must be
+solved locally, and that needs one shared view rather than a 40-view sweep.
+
+**Capture at 1920 × 1080 — this is mandatory on this rig, not a preference.**
+The board lies flat and the cameras are oblique at 35°, so its far corner sits
+884 mm away, and a `DICT_5X5` marker stops decoding below ~3 px/module: 848 × 480
+gives 2.8 px/module and reach 0.82 m, i.e. it fails. 1920 × 1080 gives 6.3 and a
+measured reach of 1.85 m / 1.84 m. The recovered pose is resolution-independent,
+so 1080p captures stay valid while the pipeline streams 848 × 480 — that is what
+`run --factory` is for. Measure a square with callipers (across eight squares,
+divided by eight) and put the real number in `config/calibration.yaml`.
 
 **Next action — `calib_agent` on the real rig:**
 
