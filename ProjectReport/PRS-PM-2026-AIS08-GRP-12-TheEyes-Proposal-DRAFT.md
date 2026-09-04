@@ -542,7 +542,7 @@ predicates are to be evaluated against.
 All figures in **Singapore dollars**. Two items were purchased in CNY and are
 converted at the **ECB reference rate for 2026-09-04, 1 CNY = 0.18878 SGD**; the
 original CNY amount is given alongside so the conversion is auditable rather than
-opaque. Amounts are purchase prices from receipts, not estimates.
+opaque. Every amount is a purchase price from a receipt, not an estimate.
 
 | Item | Cost | Status |
 |---|---|---|
@@ -550,9 +550,9 @@ opaque. Amounts are purchase prices from receipts, not estimates.
 | Inter-camera hardware sync cable (SHR-09V-S-B) | **S$21.44** (¥113.58) | **Acquired**, installed and verified 2026-08-27 |
 | 2 × USB 3.2 Gen 1 cables, 2 m, A-to-C | **S$8.76** | **Acquired** |
 | 2 × tripods with extension rod | **S$77.00** | **Acquired** |
-| Digital angle gauge | [VERIFY actual] | **Acquired** — receipt not yet located |
+| Digital angle finder / ruler / protractor | **S$18.33** | **Acquired** |
 | ChArUco board, 324 × 324 mm, 8 × 8 @ 38 mm | **S$71.81** (¥380.41) | **Acquired 2026-08-28**, decode-verified on a real capture |
-| **Subtotal, hardware acquired** | **S$1,041.09** | Excludes the angle gauge, still `[VERIFY actual]` |
+| **Subtotal, hardware acquired** | **S$1,059.42** | Complete — every rig purchase is receipted |
 | Work surface | — | **No purchase.** Existing desk reused; 1180 × 440 mm of free surface is sufficient for the derived rig geometry (§7A) |
 | Matte PLA filament, 3 × 1 kg (yellow, red, blue) | [VERIFY actual — ordered 2026-09-05] | To produce. **227 g per object set**, computed from the meshes: `mustard_bottle` 137 g, `red_cube` 49 g, `bowl` 41 g. Two sets are budgeted because §6.2 requires a calliper check that may force a reprint. Colours are not free choices — they are the per-class values the synthetic dataset was rendered with, and are reproduced in §6.2 |
 | 3D printer | — | **Owned.** Makes the all-printed resolution in §6.2 available at negligible cost, and is what allows fiducial mounts to be exact by construction (§6.3) |
