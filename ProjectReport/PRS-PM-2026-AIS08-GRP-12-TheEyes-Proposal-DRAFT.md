@@ -209,7 +209,7 @@ Omniverse Replicator scenes with domain randomisation over lighting, textures, c
 | `bowl` | 3D printed | The YCB mesh is watertight and fully manifold (0 boundary edges, 0 non-manifold edges) and slices without repair, so printing reproduces the mesh geometry exactly. A visually similar purchased bowl would not, and the difference would surface as irreducible ADD-S error. Printing additionally avoids the original's material: the YCB bowl is glossy enamelware, and specular surfaces return little usable IR to an active-stereo sensor |
 | `mustard_bottle` | 3D printed — see below | Purchase was preferred, because the printed label is the visual signature the RGB half of the detector learns. The YCB original is French's Classic Yellow **20 oz**, which is not retail-available in Singapore, so the class joins the printed group |
 
-**Consequence for the synthetic dataset.** Replicator renders training data from each mesh's texture, and for a printed object that texture — a scan of the original YCB item — does not describe the object that will actually be captured. For the bowl the mismatch is twofold: the YCB original is glossy speckled enamelware, and its scanned texture has the scan's own specular highlights baked into it, which a renderer would then light a second time. Rather than finishing prints to match a scan, the synthetic renders for printed classes use **the material the object is printed in**, with domain randomisation covering the residual. Both sides of the sim-to-real comparison are under the project's control for these classes, so they are made to agree at the source. The purchased mustard bottle keeps its scanned texture, since there the scan is a record of the real object.
+**Consequence for the synthetic dataset.** Replicator renders training data from each mesh's texture, and for a printed object that texture — a scan of the original YCB item — does not describe the object that will actually be captured. For the bowl the mismatch is twofold: the YCB original is glossy speckled enamelware, and its scanned texture has the scan's own specular highlights baked into it, which a renderer would then light a second time. Rather than finishing prints to match a scan, the synthetic renders for printed classes use **the material the object is printed in**, with domain randomisation covering the residual. Both sides of the sim-to-real comparison are under the project's control for these classes, so they are made to agree at the source. This now applies to **all three** classes without exception: an earlier revision kept the mustard bottle on its scanned texture on the grounds that the scan recorded a real purchased object, but §6.2 resolves that class to the printed group, so its scanned label likewise describes an object that will never be photographed. `replicator_dataset.py` renders all three in filament accordingly — yellow for the bottle, as the real product is — and the generated dataset reflects that.
 
 **Identifying the correct product is not incidental.** The YCB object is commonly assumed to be the 14 oz bottle; it is not. Reading the texture atlas, the front label carries "40% MORE THAN OUR 14 OZ", which identifies the **20 oz** bottle, and the YCB paper's recorded mass of 603 g agrees — 20 oz is 567 g of product plus bottle, whereas 14 oz would total roughly 430 g. The mesh's 191.4 mm height is consistent with the larger bottle. Buying the 14 oz would reintroduce precisely the object/mesh mismatch this section exists to prevent, and would do so invisibly: the detector would still fire, FoundationPose would still return a pose, and only the ADD-S figure would silently carry the difference.
 
@@ -227,7 +227,7 @@ Manually captured dual-camera RGB-D sequences of tabletop scenes, including stag
 
 **Fiducial mounts are designed into the printed objects rather than attached to them.** A marker glued to a finished object gives a ground-truth pose only as good as the subsequent measurement of the offset between marker and object frame — an error that enters every ADD/ADD-S figure as a constant bias, and one that is invisible because it leaves all results self-consistent. For the printed classes the marker seat is instead modelled into the part at a known offset from the object frame origin, which §6.2 defines as the mesh AABB centre. The offset is then exact by construction rather than measured, and the ground truth is as accurate as the print.
 
-The purchased mustard bottle admits no such mount and requires a measured attachment; its ground-truth uncertainty is correspondingly higher and is reported separately rather than pooled with the printed classes.
+An earlier revision of this section carved out the mustard bottle as a purchased object admitting no such mount, requiring a measured attachment, and therefore carrying higher ground-truth uncertainty reported separately from the printed classes. That carve-out no longer applies: §6.2 resolves the bottle to the printed group, because the YCB original is the 20 oz French's Classic Yellow and it is not retail-available in Singapore. Being printed, it takes a modelled marker seat like the other two, so **all three classes have ground truth that is exact by construction** and none is reported separately. The change removes a limitation rather than adding one — it was forced by sourcing, but its effect on evaluation is strictly positive.
 
 Distractor objects used for clutter and false-positive testing require no meshes, as they are never detected classes.
 
@@ -287,15 +287,50 @@ Headline ablation, through the real module chain on *synthetic* input
 (150 frames, 4 objects, 10 mm/3° per-view noise, one object occluded from
 `cam_over` on 3 of 4 frames):
 
-| view | ADD-S (mm) | recall @0.1d | missed |
-|---|---|---|---|
-| cam_front | 9.12 | 0.865 | 0 |
-| cam_over | 10.12 | 0.692 | 112 |
-| **fused** | **7.59** | **0.915** | **0** |
+| view | ADD-S (mm) | ADD-S (/diam) | recall @0.1d | missed |
+|---|---|---|---|---|
+| cam_front | 9.12 | 0.0449 | 0.8650 | 0 |
+| cam_over | 10.12 | 0.0458 | 0.6917 | 112 |
+| naive (baseline) | 15.43 | 0.0651 | 0.7600 | 0 |
+| **fused** | **7.59** | **0.0376** | **0.9150** | **0** |
 
-Fusion gains on both axes — 17% lower ADD-S than the better single view, and it
-recovers the instances one view could not see at all. Reproducing this shape on
-**real** captures is the project's central claim and remains the outstanding work.
+**The comparison that carries the claim is fused against `naive`, not fused
+against a single view.** An earlier revision of this table reported only the two
+single views and `fused`, and concluded that fusion gained on both axes. That
+conclusion was safe but empty: both gains are guaranteed before a line of fusion
+code is written. The recall gain is the set union of what two viewpoints can
+see, and the accuracy gain is what averaging two noisy measurements does for
+anybody. Neither depends on the disagreement gate, the confidence weighting, the
+symmetry handling or the per-object EKF — which is the entire contribution the
+module is graded on. Inverse-variance weighting of the two single-view figures
+predicts ≈6.8 mm against the reported fused 7.59 mm, so the published result in
+fact sat on the *wrong* side of what a two-line mean gives, and nothing in that
+three-row table could reveal it.
+
+`naive` is that missing baseline: both views, the same world-frame lift and the
+same cross-view association, then an unweighted mean with no gate, no symmetry
+case and no temporal filter. Quaternion averaging is deliberately shared between
+the two arms — at the angular separations two calibrated cameras produce on a
+static object, Markley averaging and naive coefficient-averaging agree well
+inside the per-view noise, so putting it in the baseline would manufacture a
+difference rather than measure one.
+
+With the baseline in place the result reads differently, and more strongly.
+**Adding a second camera and averaging makes matters worse**: `naive` is 15.43 mm
+against `cam_front`'s 9.12 mm alone, a 69% *increase* in pose error, and its
+recall (0.760) falls below the better single view (0.865). The fusion policy
+turns that same input into 7.59 mm and 0.915, the best figures in the table on
+both axes. The claim is therefore not "two cameras beat one", which needs no
+code, but that **a second viewpoint is a liability until something arbitrates the
+disagreement between the views**, and that the arbitration is what this module
+supplies. Reproducing this shape on **real** captures is the project's central
+claim and remains the outstanding work.
+
+Two honest qualifications belong with the table. The figures are *synthetic*,
+and every tool that prints them says so. And `ApplyDisagreementGate`'s
+three-or-more-view majority branch cannot execute on a two-camera rig: it is
+covered by a unit test, but the deliverable hardware never reaches it, so the
+gate's behaviour on the real rig is entirely the two-view tie-break path.
 
 ### Measured: rig geometry, derived rather than chosen
 

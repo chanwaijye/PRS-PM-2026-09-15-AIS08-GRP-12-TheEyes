@@ -145,11 +145,32 @@ def main() -> int:
     # 2 px allowance covers rounding-order differences without hiding a genuine
     # coordinate-mapping bug, which would be off by far more.
     parser.add_argument("--box-tol", type=int, default=2)
-    # RGB-D needs a looser score tolerance than RGB. The training cache stores
-    # depth as uint8 (ultralytics divides by 255), while the C++ runtime encodes
-    # depth as an exact float -- up to ~1/510 difference in the depth channel,
-    # which propagates to small score differences. The boxes are unaffected.
-    parser.add_argument("--score-tol", type=float, default=1e-3)
+    # RGB-D needs a looser score tolerance than RGB, and the old 1e-3 default was
+    # tighter than the effect this comment already described. The training cache
+    # stores depth as uint8 (ultralytics divides by 255) while the C++ runtime
+    # encodes depth as an exact float, so the two paths see depth channels up to
+    # ~1/510 apart. That is a property of the CACHE, not of either inference
+    # path, and it propagates to small score differences.
+    #
+    # MEASURED 2026-09-05 over 40 val frames / 109 paired detections, C++ CPU EP
+    # against ultralytics CPU, both on ONNX Runtime 1.29.0:
+    #
+    #     unpaired detections   0        (identical objects and classes, every frame)
+    #     box delta             max 1 px (tolerance 2 px)
+    #     score delta           median 4.2e-5, p95 1.16e-3, max 2.27e-3
+    #
+    # 7 of 109 exceeded the old 1e-3. The largest spread is red_cube (max
+    # 2.27e-3), the smallest object -- fewest pixels, so a per-pixel depth
+    # quantisation difference moves its logit most. 3e-3 clears the measured
+    # maximum with margin while staying orders of magnitude below what a real
+    # defect looks like: a decode-layout or letterbox-inversion bug shifts
+    # scores by O(0.1) and boxes by tens of pixels, neither of which this hides.
+    #
+    # The cleaner fix is to remove the confound rather than tolerate it -- feed
+    # the reference the same float depth the C++ encodes, instead of the uint8
+    # cache -- but that means handing ultralytics a pre-normalised float array,
+    # whose predict path would rescale it again. Left as a known limitation.
+    parser.add_argument("--score-tol", type=float, default=3e-3)
     args = parser.parse_args()
 
     reference = reference_detections(args.model, args.image, args.imgsz, args.conf, args.iou,

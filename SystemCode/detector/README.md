@@ -75,9 +75,10 @@ named explicitly.
 
 | Criterion (`AGENTS.md` §3) | Status |
 |---|---|
-| C++ inference matches the Python reference within float tolerance | **Met** — 12/12 val images, 32 detections, scores within 1e-3, boxes within 2 px |
+| C++ inference matches the Python reference within float tolerance | **Met against the trained RGB-D network** — 40/40 val frames, 109 detections, 0 unpaired, boxes within 1 px, scores within 2.27e-3. See `docs/results/detector_parity_rgbd_50k_v2.md` |
 | Mock mode from a fixture | Met |
+| **Modality ablation:** RGB-only vs RGB-D mAP, per class | **Run — negative result.** +0.00076 pooled mAP@0.5:0.95; `red_cube`, the class with headroom and the one predicted to move, moved +0.00026. Reported per AGENTS.md rather than withheld. See `docs/results/modality_rgb_vs_rgbd_50k_v2.json` |
 | Detections whose class has no registered mesh are dropped with a warning | Met at `pose_agent`, which owns the mesh registry; asserted at the "never reaches the estimator" level |
-| mAP@0.5 ≥ 0.90 on the synthetic validation split | **Not met on real data.** 0.994 on the procedural stand-in set, which is a plumbing check, not a result — see `training/detector/README.md` |
-| Real-capture mAP measured and reported | **Blocked** — no real captures yet |
-| Dataset-size ablation at ~5k / 20k / 50k frames | **Blocked** — harness written (`evaluate.py --ablation`), needs the Replicator dataset |
+| mAP@0.5 ≥ 0.90 on the synthetic validation split | **Met** — 0.9937 mAP@0.5, 0.9574 mAP@0.5:0.95 on `synth50k_v2` (40 epochs, 9,988 val frames). Note that mAP@0.5 is saturated here and cannot support the ablations; report mAP@0.5:0.95 and per class |
+| Real-capture mAP measured and reported | **Blocked** — no real captures yet; gated on printed objects, rig mounting and calibration |
+| Dataset-size ablation at ~5k / 20k / 50k frames | **Unblocked, not yet run** — the dataset exists; `train.py --fraction 0.125 / 0.5` gives the 5k and 20k points against an identical val split |

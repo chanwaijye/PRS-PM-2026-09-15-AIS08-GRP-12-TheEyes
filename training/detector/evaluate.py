@@ -39,6 +39,19 @@ def evaluate_one(weights: Path, data: Path, imgsz: int, device: str) -> dict:
         "recall": float(box.mr),
         "per_class_mAP50": {name: float(v) for name, v in
                             zip(metrics.names.values(), box.ap50)} if box.ap50 is not None else {},
+        # Per-class mAP@0.5:0.95. This is the one that can actually register a
+        # difference: measured on synth50k_v2, mAP@0.5 converged to 0.9937 with
+        # 0.006 of headroom left, so a per-class dict keyed on mAP@0.5 alone
+        # collects the metric that is already at its ceiling. mAP@0.5:0.95
+        # retains 0.044 pooled and 0.085 on red_cube, which is where a modality
+        # or dataset-size effect has room to appear at all.
+        "per_class_mAP50_95": {name: float(v) for name, v in
+                               zip(metrics.names.values(), box.ap)} if box.ap is not None else {},
+        # Per-class recall, for the same reason: red_cube is the smallest and
+        # most-occluded class and is the one that goes missing, which a pooled
+        # mean recall hides.
+        "per_class_recall": {name: float(v) for name, v in
+                             zip(metrics.names.values(), box.r)} if box.r is not None else {},
     }
 
 

@@ -1,4 +1,4 @@
-# Project status — 2026-08-20
+# Project status — 2026-09-05
 
 Snapshot for picking the work back up. Module detail lives in each
 `SystemCode/*/README.md`; this is the cross-cutting picture and the next action.
@@ -7,16 +7,16 @@ Snapshot for picking the work back up. Module detail lives in each
 
 ## Where things stand
 
-All six MVP-path agents in `AGENTS.md` are built. **249 tests pass**,
+All six MVP-path agents in `AGENTS.md` are built. **303 tests pass**,
 clean build under `-Wall -Wextra -Wpedantic`.
 
 | # | Agent | State |
 |---|---|---|
 | 1 | `camera_agent` | Built. **Dual-camera verified on hardware: 30 fps each; hardware-synced, jitter 4.51 ms sigma.** |
 | 2 | `calib_agent` | Built. Mock mode recovers known intrinsics/extrinsics. Hardware run pending. |
-| 3 | `detector_agent` | **C++ input path is RGB-D** (sentinel encoding, 2026-08-23). Training pipeline still RGB-only. |
+| 3 | `detector_agent` | **Complete end to end.** RGB-D C++ input path (sentinel encoding), 4-channel training pipeline, trained on the 50k v2 set, exported to ONNX, C++/Python parity re-verified against the trained network. |
 | 4 | `pose_agent` | Built. Verified end-to-end against the real FoundationPose server. |
-| 5 | `fusion_agent` ★ | Built. Ablation harness produces the headline result on synthetic input. |
+| 5 | `fusion_agent` ★ | Built. Ablation harness runs **four** arms — two single views, a naive baseline, and the full policy. The claim is fused-vs-naive; see proposal §7A. |
 | 6 | `scenegraph_agent` ★ | Built. PDDL emission, contract-tested against fusion. |
 | 7 | `cluster_agent` | Not built — above MVP, cut order #2. |
 | 8 | `twin_agent` | Not built — stretch, cut order #4. |
@@ -32,44 +32,62 @@ Risks R1 (retired) and R4 (downgraded, measured) are recorded in
 
 ---
 
-## Detector is now RGB-D — the built module does not match
+## Detector: RGB-D, trained, deployed — DONE 2026-09-05
 
-`CLAUDE.md` and `AGENTS.md` (2026-08-23 revision) specify the detector as the
-project's **student-built multimodal network**: YOLOv8 with a 4-channel
-early-fusion stem taking RGB + aligned metric depth, depth channel initialised
-by inflating the pretrained COCO stem weights. It is explicitly not to be
-simplified back to RGB-only; RGB-only survives as an ablation baseline.
+The 2026-08-23 revision specified the detector as the project's **student-built
+multimodal network**: YOLOv8 with a 4-channel early-fusion stem taking RGB +
+aligned metric depth, the depth channel initialised by inflating the pretrained
+COCO stem weights. All six items that were outstanding are closed.
 
-`SystemCode/detector/` as built is **RGB-only** — `DetectorInput` carries no
-depth, `OnnxDetector` builds a 3-channel NCHW tensor, and
-`training/detector/generate_dataset.py` emits RGB frames. The letterbox, decode,
-NMS, tracking, and parity harness all carry over unchanged; the work is in the
-input path and the training pipeline.
+- `DetectorInput` carries aligned depth; a frame without depth is skipped, never
+  zero-filled.
+- Invalid depth uses the **sentinel** encoding, decided and documented once in
+  `depth_encoding.hpp`. `training/detector/depth_simulation.py` implements the
+  identical formula, verified as an exact round trip (0/255 levels of error).
+- Depth is normalised in metric metres clipped to 0.20–1.50 m, never raw uint16.
+- `train.py --inflate-stem` (default on) seeds the depth channel from the mean
+  of the pretrained RGB filters before the first gradient step. Measured:
+  ultralytics 8.4.123 leaves it at random init otherwise.
+- Replicator renders depth through the measured D435i noise law
+  (~4.5·z² mm), reproduced to 0.01 mm.
+- **Modality ablation: run, and it is a negative result.** See below.
 
-Required to close the gap:
+Trained: `runs/detector/rgbd_50k_v2`, 40 epochs on 40,012 train / 9,988 val.
+Exported to ONNX (opset 17, fixed 1×4×640×640 in, 1×7×8400 out) and wired into
+`config/detector.yaml`, whose `[VERIFY]` placeholder path is now closed.
+The ONNX itself is gitignored; the regeneration command is in that file.
 
-1. `DetectorInput` gains an aligned depth channel; skip frames with no depth
-   rather than substituting zeros — a zero-filled depth channel is
-   indistinguishable from "object at zero range" to the network.
-2. Decide and document the invalid-depth encoding (sentinel vs. validity mask).
-   RealSense returns 0 for stereo holes.
-3. Depth normalised to metric metres clipped to ~0.2–1.5 m, not raw uint16.
-4. Training: 4-channel stem, depth channel initialised from the mean of the
-   pretrained RGB stem weights — random init on one channel destabilises early
-   training.
-5. Replicator must render depth with realistic noise, or the depth channel
-   becomes the dominant sim-to-real gap. The `camera_agent` depth-noise report
-   is the input to that.
-6. New acceptance criterion: **modality ablation**, RGB-only vs RGB-D mAP with a
-   per-class breakdown.
+**`docs/RGBD_REWORK.md` is superseded by this section.**
 
-This raises the value of the depth-noise characterisation: it now feeds the
-detector's sim-to-real fidelity as well as the evaluation error budget.
+### The modality ablation says the depth channel is not earning its place
 
-**Full scope in `docs/RGBD_REWORK.md`.** Headline: ultralytics 8.4.123 already
-supports `ch=4`, 4-channel `.npy` loading, and guards HSV augmentation on channel
-count — so no forking. One decision is needed first (invalid-depth encoding), and
-the C++ input path is buildable now without Isaac Sim or new hardware.
+RGB-only vs RGB-D, same 9,988 val frames, byte-identical PNGs and labels,
+differing only in whether the loader reads the 3-channel PNG or the 4-channel
+`.npy` — so any difference is attributable to depth and nothing else:
+
+| | RGB-only | RGB-D | delta |
+|---|---|---|---|
+| mAP@0.5 | 0.99325 | 0.99371 | +0.00046 |
+| mAP@0.5:0.95 | 0.95662 | 0.95738 | +0.00076 |
+| recall | 0.98272 | 0.98260 | −0.00012 |
+| `mustard_bottle` mAP@.5:.95 | 0.98872 | 0.98861 | −0.00011 |
+| `red_cube` mAP@.5:.95 | 0.91565 | 0.91590 | +0.00026 |
+| `bowl` mAP@.5:.95 | 0.96551 | 0.96763 | +0.00212 |
+
+`red_cube` was the class predicted to move — smallest, most occluded, and the
+only one with real headroom at 0.085 below ceiling. It moved by 0.0003. Two of
+the three classes are marginally *worse* on recall with depth.
+
+`AGENTS.md` anticipated this outcome and set the policy: "if they do not, that
+is a reportable negative result, not a failure to hide." It is reported as one.
+The likely reading is that at 100% depth validity, three geometrically distinct
+classes on an uncluttered plane, and a COCO-pretrained backbone, RGB already
+saturates the task and leaves depth nothing to add — which is a statement about
+*this benchmark*, not about RGB-D detection. The place it could still show is
+real captures, where depth validity is 97.8% rather than 100% and the appearance
+gap is real. That test has not run.
+
+Raw metrics: `docs/results/modality_rgb_vs_rgbd_50k_v2.json`.
 
 ## Hardware on order
 
@@ -84,25 +102,26 @@ Calibration itself is a day's work once the board exists, so that is workable �
 but it is the whole critical path, and it has no slack for a second attempt if
 the first capture set is bad. Shoot generously on day one.
 
-### Do NOT wait for hardware — two things are unblocked right now
+### Both no-hardware tracks are now DONE
 
-**1. Depth-noise characterisation.** Needs only a flat matte wall and a tape
-measure. No board, no sync cable. It is a listed deliverable feeding the
-evaluation error budget, and the tooling is written and validated synthetically:
+**1. Depth-noise characterisation — DONE.** Three distances, both units, matched
+patch. Numbers under "What is measured vs. what is assumed" below.
 
-```bash
-for d in 0.4 0.6 0.8 1.0; do
-  build/camera/depth_characterise config/cameras.yaml cam_front --distance $d
-  build/camera/depth_characterise config/cameras.yaml cam_over  --distance $d
-done
-```
+**2. The Replicator dataset — DONE.** Isaac Sim 5.1.0, 50k v2 generated, and the
+detector trained on it. What it gated has now largely been collected: synthetic
+mAP, the modality ablation (above). Still outstanding and still gated on real
+captures: real-capture mAP. Still outstanding and NOT gated on hardware: the
+5k/20k/50k dataset-size ablation, runnable today via `train.py --fraction
+0.125 / 0.5` against the identical val split.
 
-**2. The Replicator dataset.** The long pole, entirely independent of both
-deliveries, and mostly GPU wall-clock rather than effort. It gates *every*
-reportable detection number — mAP@0.5 ≥ 0.90, real-capture mAP, and the
-5k/20k/50k ablation. `training/detector/replicator_dataset.py` has never been
-run; Isaac Sim is not installed. Starting this now costs nothing but time
-already being spent waiting.
+### What is genuinely unblocked right now
+
+The **physical objects**. Proposal §6.2 resolves all three classes to 3D
+printed, and §6.3 puts the ArUco ground-truth seats *inside* the printed parts —
+so printing gates the objects and the ground-truth mechanism together, and it
+sits on the critical path beside the ChArUco board rather than after it.
+Calibration must in any case follow final rigid mounting, so the real order is
+**print → calliper-verify → mount → calibrate → capture**.
 
 ### Hardware sync: DONE 2026-08-27 (R4b mitigated)
 
@@ -220,16 +239,11 @@ The depth channel is the one part that IS right: `depth_simulation.py` applies
 the measured noise law and reproduces it to within 0.01 mm at all three
 measured distances.
 
-## The other independent track (superseded)
+## Note on the procedural dataset
 
-`training/detector/replicator_dataset.py` is written but **has never been run** —
-Isaac Sim is not installed. It gates every reportable detection number:
-mAP@0.5 ≥ 0.90, real-capture mAP, and the 5k/20k/50k dataset-size ablation.
-
-The procedural `generate_dataset.py` exists only to have made the C++ inference
-path verifiable; its 0.994 mAP is a plumbing check and **is not reportable**.
-
-These two tracks are independent — Isaac Sim work does not wait on the cameras.
+`generate_dataset.py` exists only to have made the C++ inference path verifiable
+before Replicator worked. Its 0.994 mAP is a plumbing check and **is not
+reportable**. Reportable detection numbers come from `synth50k_v2`.
 
 ---
 

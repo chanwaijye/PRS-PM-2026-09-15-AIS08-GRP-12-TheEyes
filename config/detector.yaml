@@ -2,7 +2,15 @@
 
 model:
   # ONNX exported from the YOLOv8 fine-tune (training/detector/export_onnx.py).
-  # [VERIFY] placeholder path until the first real training run lands.
+  #
+  # PRESENT as of 2026-09-05, exported from runs/detector/rgbd_50k_v2/weights/
+  # best.pt -- the 40-epoch RGB-D run on the 50k v2 synthetic set. opset 17,
+  # fixed 1x4x640x640 input, 1x7x8400 output (4 box + 3 classes). The file is
+  # not tracked in git; regenerate with:
+  #
+  #   python training/detector/export_onnx.py \
+  #       --weights runs/detector/rgbd_50k_v2/weights/best.pt \
+  #       --imgsz 640 --out assets/models/yolov8_the_eyes.onnx
   onnx_path: "assets/models/yolov8_the_eyes.onnx"
   # Network input side. YOLOv8 is trained square; letterboxing preserves aspect
   # ratio and the transform is inverted when boxes are mapped back.

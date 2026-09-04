@@ -1,0 +1,71 @@
+{
+  "_provenance": {
+    "measured": "2026-09-05",
+    "question": "AGENTS.md detector acceptance criterion: modality ablation, RGB-only vs RGB-D mAP with a per-class breakdown.",
+    "val_split": "/opt/the-eyes-data/synth50k_v2 (4ch) and _rgb (3ch), 9988 frames",
+    "fairness_check": "val PNG filenames identical, PNGs byte-identical, labels identical, train/val counts identical (40012/9988). The two arms differ only in whether the loader reads the 3-channel PNG or the 4-channel .npy, so any delta is attributable to the depth channel.",
+    "checkpoints": {
+      "rgb_only": "runs/detector/rgb_only_50k_v2/weights/best.pt",
+      "rgbd": "runs/detector/rgbd_50k_v2/weights/best.pt"
+    },
+    "training": "40 epochs each, same schedule, seed 20260820, yolov8n.pt COCO init; the RGB-D arm additionally inflates the depth stem from mean(RGB).",
+    "finding": "NEGATIVE. The depth channel produces no measurable gain: +0.00076 pooled mAP@0.5:0.95. red_cube, the class with the most headroom (0.085 below ceiling) and the one predicted to move, moved +0.00026. Two of three classes are marginally worse on recall. Reported as a negative result per AGENTS.md rather than withheld."
+  },
+  "rgb_only": {
+    "mAP50": 0.9932491291722078,
+    "mAP50_95": 0.9566243934291055,
+    "precision": 0.9886134485320112,
+    "recall": 0.9827204925055716,
+    "per_class_mAP50": {
+      "mustard_bottle": 0.9948611622375573,
+      "red_cube": 0.9905916053108507,
+      "bowl": 0.9942946199682154
+    },
+    "per_class_mAP50_95": {
+      "mustard_bottle": 0.9887176411708383,
+      "red_cube": 0.9156459885700343,
+      "bowl": 0.9655095505464442
+    },
+    "per_class_recall": {
+      "mustard_bottle": 0.9976972366840208,
+      "red_cube": 0.9635515611502226,
+      "bowl": 0.9869126796824715
+    }
+  },
+  "rgbd": {
+    "mAP50": 0.9937070286886259,
+    "mAP50_95": 0.9573812510894242,
+    "precision": 0.9910541684231333,
+    "recall": 0.982598463128766,
+    "per_class_mAP50": {
+      "mustard_bottle": 0.9948245245189429,
+      "red_cube": 0.9918627515251391,
+      "bowl": 0.9944338100217956
+    },
+    "per_class_mAP50_95": {
+      "mustard_bottle": 0.9886120366696567,
+      "red_cube": 0.9159018193426036,
+      "bowl": 0.9676298972560125
+    },
+    "per_class_recall": {
+      "mustard_bottle": 0.9984981978374049,
+      "red_cube": 0.9631113704443395,
+      "bowl": 0.9861858211045536
+    }
+  },
+  "delta_rgbd_minus_rgb": {
+    "mAP50": 0.00045789951641816984,
+    "mAP50_95": 0.0007568576603186328,
+    "precision": 0.002440719891122156,
+    "recall": -0.00012202937680561021,
+    "per_class_mAP50::mustard_bottle": -3.663771861439624e-05,
+    "per_class_mAP50::red_cube": 0.0012711462142884766,
+    "per_class_mAP50::bowl": 0.00013919005358020708,
+    "per_class_mAP50_95::mustard_bottle": -0.0001056045011815776,
+    "per_class_mAP50_95::red_cube": 0.00025583077256929876,
+    "per_class_mAP50_95::bowl": 0.002120346709568288,
+    "per_class_recall::mustard_bottle": 0.0008009611533841277,
+    "per_class_recall::red_cube": -0.0004401907058830812,
+    "per_class_recall::bowl": -0.0007268585779179881
+  }
+}
