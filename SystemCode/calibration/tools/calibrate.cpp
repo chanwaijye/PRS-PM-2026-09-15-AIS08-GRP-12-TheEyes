@@ -25,6 +25,7 @@
 #include <thread>
 #include <vector>
 
+#include <opencv2/highgui.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
@@ -388,6 +389,124 @@ bool CapturePair(std::vector<CaptureCamera>& cameras, const CharucoDetector& det
 //
 // `run` takes the alphabetically LAST image in each directory as the
 // registration view, so it is written as zz_register.png.
+// Live aiming view. Positioning tripods by eye and only finding out at `run`
+// time that the two cameras never shared enough of the board is the expensive
+// failure this exists to prevent -- by then the board, the lighting and the
+// operator have all moved.
+//
+// It draws the SAME numbers `capture` gates on, live: per-camera corner count,
+// board sharpness, and the shared-corner count across the pair. Aim until the
+// banner is green, then shoot.
+//
+// Deliberately NOT a capture path -- it writes nothing. Same colour-only 1080p
+// profile as `capture`, so what you aim at is what you will shoot.
+int RunAim(const std::string& cameras_path, const std::string& config_path) {
+  const BoardSpec board = LoadBoardSpec(config_path);
+  const QualityThresholds quality = LoadQualityThresholds(config_path);
+  const CharucoDetector detector(board);
+
+  the_eyes::camera::CameraAgentConfig config =
+      the_eyes::camera::LoadCameraAgentConfig(cameras_path);
+  if (config.cameras.size() != 2) {
+    throw std::runtime_error("aim expects exactly two cameras in " + cameras_path);
+  }
+  config.streams.color_width = 1920;
+  config.streams.color_height = 1080;
+  config.streams.fps = 30;
+  config.streams.color_only = true;   // same hardware limit as `capture`
+
+  std::vector<CaptureCamera> cameras;
+  for (const auto& entry : config.cameras) {
+    CaptureCamera cam;
+    cam.camera_id = entry.first;
+    cam.serial = entry.second.serial;
+    cam.camera =
+        std::make_unique<the_eyes::camera::RealSenseCamera>(entry.second, config.streams);
+    std::cout << "opened " << cam.camera_id << " serial " << cam.camera->serial() << "\n";
+    cameras.push_back(std::move(cam));
+  }
+
+  // Same reason as `capture`: auto-exposure needs frames to settle, and aiming
+  // against the transient shows corner counts the settled stream will not.
+  std::cout << "warming up...\n";
+  for (int i = 0; i < 15; ++i) {
+    for (CaptureCamera& entry : cameras) entry.camera->NextFrame();
+  }
+
+  std::cout << "\naim: live view at 1920x1080, colour only. Nothing is written.\n"
+            << "  move the tripods until BOTH corner counts and the shared count are green\n"
+            << "  q or ESC to quit\n\n";
+
+  const std::string window = "calibrate aim -- shared corners is the number that matters";
+  cv::namedWindow(window, cv::WINDOW_AUTOSIZE);
+  const int kPanelW = 860;
+  std::map<std::string, double> best_sharpness;
+
+  for (;;) {
+    // discard=0: latency matters more than pair simultaneity here, because
+    // nothing is being measured off these frames.
+    std::vector<the_eyes::camera::CameraFrame> frames = GrabPair(cameras, 0);
+    std::vector<BoardObservation> observations;
+    std::vector<cv::Mat> panels;
+
+    for (size_t i = 0; i < cameras.size(); ++i) {
+      cv::Mat bgr;
+      cv::cvtColor(frames[i].rgb, bgr, cv::COLOR_RGB2BGR);
+      BoardObservation obs = detector.Detect(bgr, cameras[i].camera_id, frames[i].stamp_ns);
+      const double sharp = BoardSharpness(bgr, obs);
+      double& best = best_sharpness[cameras[i].camera_id];
+      best = std::max(best, sharp);
+
+      for (const cv::Point2f& pt : obs.image_points) {
+        cv::circle(bgr, pt, 7, cv::Scalar(0, 220, 255), 2);
+      }
+      if (!obs.image_points.empty()) {
+        cv::rectangle(bgr, cv::boundingRect(obs.image_points), cv::Scalar(0, 220, 255), 2);
+      }
+
+      cv::Mat panel;
+      const double k = static_cast<double>(kPanelW) / bgr.cols;
+      cv::resize(bgr, panel, cv::Size(), k, k, cv::INTER_AREA);
+
+      const bool corners_ok = static_cast<int>(obs.size()) >= quality.min_shared_corners;
+      // Half this session's best is the same blur heuristic `capture` gates on.
+      const bool sharp_ok = best <= 0.0 || sharp >= 0.5 * best;
+      const cv::Scalar colour = corners_ok && sharp_ok ? cv::Scalar(80, 220, 80)
+                                                       : cv::Scalar(60, 60, 235);
+      cv::rectangle(panel, cv::Rect(0, 0, panel.cols, 64), cv::Scalar(30, 30, 30), cv::FILLED);
+      std::ostringstream line;
+      line << cameras[i].camera_id << "   " << obs.size() << " corners";
+      if (!corners_ok) line << " (need " << quality.min_shared_corners << ")";
+      line << "   sharp " << std::fixed << std::setprecision(0) << sharp;
+      if (!sharp_ok) line << " BLURRED";
+      cv::putText(panel, line.str(), cv::Point(12, 42), cv::FONT_HERSHEY_SIMPLEX, 0.85,
+                  colour, 2);
+      cv::rectangle(panel, cv::Rect(0, 0, panel.cols, panel.rows), colour, 3);
+      panels.push_back(panel);
+      observations.push_back(std::move(obs));
+    }
+
+    cv::Mat view;
+    cv::hconcat(panels, view);
+
+    const std::vector<int> shared = SharedCorners(observations[0], observations[1]);
+    const bool shared_ok = static_cast<int>(shared.size()) >= quality.min_shared_corners;
+    const cv::Scalar banner = shared_ok ? cv::Scalar(80, 220, 80) : cv::Scalar(60, 60, 235);
+    cv::Mat strip(70, view.cols, view.type(), cv::Scalar(30, 30, 30));
+    std::ostringstream msg;
+    msg << (shared_ok ? "READY   " : "NOT READY   ") << "shared corners " << shared.size()
+        << " / " << quality.min_shared_corners << " needed";
+    cv::putText(strip, msg.str(), cv::Point(16, 48), cv::FONT_HERSHEY_SIMPLEX, 1.0, banner, 2);
+    cv::vconcat(view, strip, view);
+
+    cv::imshow(window, view);
+    const int key = cv::waitKey(1);
+    if (key == 'q' || key == 27) break;
+  }
+  cv::destroyAllWindows();
+  return EXIT_SUCCESS;
+}
+
 int RunCapture(const std::string& cameras_path, const std::string& config_path,
                const std::string& out_dir, const CaptureOptions& options) {
   const BoardSpec board = LoadBoardSpec(config_path);
@@ -727,6 +846,7 @@ int main(int argc, char** argv) {
   if (argc < 3 && !bare_command) {
     std::cerr << "usage:\n"
               << "  calibrate board <out.png>\n"
+              << "  calibrate aim     <cameras.yaml> <cfg>\n"
               << "  calibrate capture <cameras.yaml> <cfg> <out_dir> [options]\n"
               << "  calibrate mock  <out.yaml>\n"
               << "  calibrate run   <cfg> <front_dir> <front_serial> <over_dir> "
@@ -764,6 +884,13 @@ int main(int argc, char** argv) {
       return EXIT_SUCCESS;
     }
 #ifdef THE_EYES_CALIBRATE_CAN_CAPTURE
+    if (command == "aim") {
+      if (argc < 4) {
+        std::cerr << "aim needs: <cameras.yaml> <calibration.yaml>\n";
+        return EXIT_FAILURE;
+      }
+      return RunAim(argv[2], argv[3]);
+    }
     if (command == "capture") {
       if (argc < 5) {
         std::cerr << "capture needs: <cameras.yaml> <calibration.yaml> <out_dir>\n";
@@ -797,9 +924,9 @@ int main(int argc, char** argv) {
       return RunCapture(argv[2], argv[3], argv[4], options);
     }
 #else
-    if (command == "capture") {
-      std::cerr << "this build has no librealsense (or no opencv_aruco), so capture is "
-                   "unavailable.\n";
+    if (command == "capture" || command == "aim") {
+      std::cerr << "this build has no librealsense (or no opencv_aruco), so " << command
+                << " is unavailable.\n";
       return EXIT_FAILURE;
     }
 #endif
@@ -827,7 +954,7 @@ int main(int argc, char** argv) {
     }
 #else
     if (command == "board" || command == "run" || command == "reregister" ||
-        command == "capture") {
+        command == "capture" || command == "aim") {
       std::cerr << "this build has no opencv_aruco, so ChArUco detection is unavailable. "
                    "Only 'mock' works.\n";
       return EXIT_FAILURE;

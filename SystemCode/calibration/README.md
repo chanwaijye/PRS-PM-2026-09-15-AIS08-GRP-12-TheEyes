@@ -99,6 +99,11 @@ meaningless pass.
 ## Usage on the real rig
 
 ```bash
+# 0. aim: live view of both cameras with the gates drawn on it. Writes nothing.
+#    Use it BEFORE tightening the tripods -- the bottom banner is the shared
+#    corner count, which is what extrinsics actually depend on.
+build/calibration/calibrate aim config/cameras.yaml config/calibration.yaml
+
 # 1. sweep: board handheld, varied distance and tilt. ENTER shoots, q finishes.
 build/calibration/calibrate capture config/cameras.yaml config/calibration.yaml captures
 
@@ -121,6 +126,10 @@ the board and the lighting are still where they were.
 
 Re-running against an existing directory **extends** the sweep rather than
 overwriting it.
+
+`aim` shares `capture`'s stream profile and its detector, so the corner counts
+and sharpness figures it draws are the ones `capture` will gate on. It is a
+positioning aid only: it saves nothing and has no acceptance criteria of its own.
 
 ### capture opens the colour stream only
 

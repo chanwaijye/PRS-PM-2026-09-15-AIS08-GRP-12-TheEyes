@@ -1,4 +1,4 @@
-find_package(OpenCV REQUIRED COMPONENTS core imgproc calib3d imgcodecs)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc calib3d imgcodecs highgui)
 
 set(CALIB_SOURCES
   src/board.cpp
