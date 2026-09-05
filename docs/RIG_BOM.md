@@ -275,17 +275,95 @@ angle gauges over a metre.
 ## H. Objects
 
 The three classes in `config/detector.yaml` are `mustard_bottle`, `red_cube`,
-`bowl`. Current `config/meshes.yaml` extents are **placeholders**.
+`bowl`. `config/meshes.yaml` extents are **measured** (2026-09-04) and
+`MeshRegistry.MeshesAreCentredOnTheirAabb` re-derives them from the OBJ files at
+test time, so they cannot drift.
 
 | Item | Spec | Note |
 |---|---|---|
-| Mustard bottle | YCB 006 is a French's 14 oz | Matching YCB lets you reuse the FoundationPose demo mesh |
-| Cube | 50 mm, red, matte | 3D print it — then the mesh is exact by construction |
-| Bowl | ~150 mm dia, matte, **non-metallic** | A shiny bowl returns no IR and produces a hole where the object is |
-| Distractor objects | 3–5 assorted | For clutter and occlusion in the ablation |
+| `mustard_bottle` | YCB 006 = French's Classic Yellow **20 oz** (not 14 oz — identified from the texture atlas, "40% MORE THAN OUR 14 OZ", and corroborated by the YCB paper's 603 g) | 97.2 × 66.6 × 191.4 mm. **3D printed** — the 20 oz is not retail-available in Singapore (§6.2) |
+| `red_cube` | 50 mm, authored, exact by construction | 50.0 × 50.0 × 50.0 mm. The printed part is what must match the mesh, not the reverse |
+| `bowl` | YCB 024 `google_16k` | 161.5 × 161.2 × 55.0 mm, scanned wall **0.99 mm** |
+| Distractor objects | 8 in the renders; 3–5 physical is enough | Must be in the trained palette — see "Distractors need colour too" below |
 
 **Everything must be matte.** One specular object will dominate your ADD-S
 error and it will look like a fusion bug.
+
+### Test print — do this BEFORE the filament arrives
+
+The calliper check in §6.2 is mandatory ("the printer's dimensional accuracy
+verified with callipers against a test print before any object is relied upon")
+and it is **colour-blind**. So is every other mechanical question. Printing a
+test part in whatever filament is on hand converts the delivery wait into
+de-risking, and finds a printer 1% out of true now rather than on the day the
+real spools land.
+
+**Print `red_cube` as the test part, not a generic 20 mm calibration cube.** It
+is authored rather than scanned, so it is exact by construction and any deviation
+is printer error with nothing else to blame. At 50 mm it also gives 2.5× the
+measurement precision of a 20 mm coupon for the same callipers, and you need the
+part anyway. Measure all three axes; a bed-slinger's Y is the axis most likely to
+differ from X.
+
+What a test print settles, none of which depends on colour:
+
+- **Dimensional accuracy** — the §6.2 gate. 1% out reintroduces exactly the
+  object/mesh mismatch that printing was chosen to avoid, and it is invisible
+  afterwards: the detector still fires, FoundationPose still returns a pose, and
+  only ADD-S silently carries the difference.
+- **The ArUco seat geometry fits**, once authored. §6.3 makes the seat the
+  ground-truth mechanism, so a seat that does not hold a marker flush is a
+  ground-truth defect, not a cosmetic one.
+- **The bowl's 0.99 mm wall actually prints.** Thinner than two perimeters at a
+  0.4 mm nozzle, so it comes out as a solid thin wall with the infill setting
+  inert. Do NOT thicken it — ADD-S is computed over mesh vertices.
+- **Whether the bowl's 6 stray two-face fragments leave debris** on the plate.
+
+**Colour: anything except grey.** The detector was trained on exactly six
+colours — the three targets plus three distractor neutrals (`#E7E7E7`,
+`#898989`, `#BCB3AA`). Grey is not merely unseen, it is trained as a *distractor*,
+i.e. an explicit negative, so a grey test part is the one wrong colour the network
+was actively taught not to fire on. An off-palette colour is only unknown, which
+is strictly better.
+
+Two constraints still apply even to a throwaway part, because they affect
+**depth** rather than detection: **matte** (gloss defeats the IR projector) and
+**mid-tone** (dark absorbs it). A black or shiny test print gives unrepresentative
+depth even with perfect geometry, so pick the most matte mid-tone spool on hand if
+you want the part to say anything about point-cloud quality.
+
+**No detection metric from an off-palette part is reportable.** It is out of
+distribution for the RGB half and comparable to nothing. It *is* worth running as
+a deliberate robustness probe — if the detector still fires on an off-colour cube,
+colour is not the only cue it learned, which is worth knowing given the modality
+ablation showed depth contributing nothing. Record it as an ablation, never as a
+headline number.
+
+### Bambu Lab A1 notes
+
+All three objects fit the 256 × 256 × 256 mm volume with room to spare; the
+bottle at 191.4 mm is the tallest. The bowl (161 mm) and bottle (97 mm) do not
+sit side by side across a 256 mm bed with skirt clearance, so plan two plates
+rather than letting auto-arrange decide.
+
+- **Turn off any scale-to-fit.** §6.2 requires 100% with no bed-fitting rescale.
+  Nothing here is near the volume limit, so a rescale would be silent and
+  gratuitous — and it would invalidate every mesh-derived number in
+  `config/meshes.yaml`.
+- **The bottle is 191 mm of tall, narrow part on a bed-slinger.** Y-axis bed
+  motion is the ringing axis; slow the outer wall rather than accepting surface
+  artefacts, since layer texture on this object is what the depth channel sees.
+- **Enable thin-wall detection for the bowl** so the 0.99 mm wall is emitted as
+  solid extrusions rather than dropped as an unfillable gap. Verify in preview
+  that the wall exists before committing 41 g to it.
+- **Layer lines are beneficial**, not a defect — they add surface texture for
+  active stereo. Do not chase a glossy finish.
+- **ArUco markers: paper in the modelled recess, not printed two-tone.** An AMS
+  lite makes a black-on-white printed marker possible, but module edges are then
+  limited by nozzle width — roughly 10% edge error on a 3.75 mm module — and that
+  lands directly in corner localisation, i.e. in the ground truth itself. A
+  laser-printed paper marker seated in the modelled recess keeps §6.3's
+  exact-by-construction offset while giving sharp corners.
 
 ---
 
