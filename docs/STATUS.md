@@ -395,3 +395,9 @@ characterisation is DONE** — three distances, both units, matched patch — an
   rejects it while streaming, and the failure is otherwise silent.
 - OpenCV here is **4.6**, so the ChArUco API is the old `cv::aruco` one — code
   from current tutorials targets 4.7's `objdetect` and will not compile.
+- OpenCV 4.6's highgui is **QT5**, and on this Wayland session Qt's default
+  `wayland` plugin makes `imshow` open **no window and raise no error** — the
+  render loop runs into the void, with only a `QSocketNotifier` warning to hint
+  at it. `QT_QPA_PLATFORM=xcb` routes it through XWayland and the window maps.
+  `calibrate aim` sets this itself; any future tool calling `imshow` needs the
+  same.

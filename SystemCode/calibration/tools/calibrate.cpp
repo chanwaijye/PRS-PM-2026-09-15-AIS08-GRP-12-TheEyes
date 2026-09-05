@@ -440,6 +440,29 @@ int RunAim(const std::string& cameras_path, const std::string& config_path,
   }
 
   const bool headless = !save_path.empty();
+
+  // OpenCV 4.6's highgui is built against QT5 (see cv::getBuildInformation),
+  // and on a Wayland session Qt picks its `wayland` platform plugin by default.
+  // MEASURED on this box: under that plugin imshow creates NO window at all --
+  // no error, no exception, the loop runs happily and draws to nothing, with
+  // only a "QSocketNotifier: Can only be used with threads started with QThread"
+  // warning to hint at it. Forcing `xcb` routes highgui through XWayland and the
+  // window maps normally.
+  //
+  // Set with overwrite=0, so an explicit QT_QPA_PLATFORM from the caller wins.
+  if (!headless && std::getenv("WAYLAND_DISPLAY") != nullptr &&
+      std::getenv("QT_QPA_PLATFORM") == nullptr) {
+    ::setenv("QT_QPA_PLATFORM", "xcb", 0);
+    std::cout << "wayland session: forcing QT_QPA_PLATFORM=xcb, without which "
+                 "OpenCV 4.6 opens no window\n";
+  }
+  if (!headless && std::getenv("DISPLAY") == nullptr &&
+      std::getenv("WAYLAND_DISPLAY") == nullptr) {
+    throw std::runtime_error(
+        "aim: no DISPLAY and no WAYLAND_DISPLAY, so no window can be opened. Use "
+        "--frames n --save <png> to run headless -- that is the intended path when "
+        "driving the rig over SSH.");
+  }
   std::cout << "\naim: live view at 1920x1080, colour only. Nothing is written"
             << (headless ? " but the snapshot.\n" : ".\n")
             << "  move the tripods until BOTH corner counts and the shared count are green\n"

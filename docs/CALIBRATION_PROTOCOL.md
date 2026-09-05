@@ -286,6 +286,14 @@ cannot fix that; redo Phase 1 onward.
 - **OpenCV here is 4.6**, so this is the old `cv::aruco` API. Code from current
   tutorials targets 4.7's `objdetect` (`CharucoDetector`, `ArucoDetector`) and
   will not compile.
+- **`aim` opens no window on a Wayland session unless Qt is forced to `xcb`.**
+  OpenCV 4.6's highgui is built against QT5, and on Wayland Qt picks its
+  `wayland` plugin, under which `imshow` creates nothing at all — no error, no
+  exception, the loop runs happily and draws into the void, with only a
+  `QSocketNotifier: Can only be used with threads started with QThread` warning
+  to hint at it. `aim` now sets `QT_QPA_PLATFORM=xcb` itself when
+  `WAYLAND_DISPLAY` is set and the variable is unset, and says so on stdout. An
+  explicit `QT_QPA_PLATFORM` from you still wins.
 - **`capture` extends, never overwrites.** Delete `captures/` if you want a clean
   set.
 - **`inter_cam_sync_mode` must be set before `pipeline.start()`**, and sync mode
