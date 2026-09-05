@@ -36,8 +36,9 @@ a 324 × 324 mm panel. Arrived 2026-08-28.
 
 Confirmed on the physical board, from a real capture: markers decode under
 `DICT_5X5_250` with ids 0–31, i.e. 32 markers, i.e. 8 × 8 squares. **The square
-length is still `[VERIFY]`** — callipers across eight squares divided by eight,
-not one square. That value scales every distance in the system while every
+length is still `[VERIFY]`** — span as many squares as the callipers reach and
+divide by that count, never one square. The BOM's 150 mm callipers reach 3
+squares (114 mm); eight would need a 305 mm tool. That value scales every distance in the system while every
 reprojection error stays small.
 
 ### It only decodes at 1920 × 1080 — capture there

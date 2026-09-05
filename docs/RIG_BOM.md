@@ -376,7 +376,8 @@ rather than letting auto-arrange decide.
 **ARRIVED 2026-08-28:** ChArUco board, 324 × 324 mm, 8 × 8 @ 38 mm. Decode
 verified on a real capture — ids 0–31 under `DICT_5X5_250`, measured reach
 1.85 m (`261722073945`) / 1.84 m (`261822074567`) at 1920 × 1080. The square
-length is still `[VERIFY]`: callipers across eight squares divided by eight.
+length is still `[VERIFY]`: span as many squares as the callipers reach and
+divide by that count — 3 squares (114 mm) with the 150 mm callipers below.
 Capture
 calibration at 1920 × 1080 — see §D.
 

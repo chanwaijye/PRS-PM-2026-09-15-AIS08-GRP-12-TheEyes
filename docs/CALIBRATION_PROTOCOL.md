@@ -23,7 +23,7 @@ every downstream number if it is wrong.
 
 | # | Measure | Into | Why it cannot be skipped |
 |---|---|---|---|
-| 0.1 | **Square length: callipers across EIGHT squares, divide by 8** | `config/calibration.yaml` `board.square_length_m` | Boards are routinely 1–2% off nominal. This value scales *every distance in the system* while every reprojection error stays small — the calibration looks excellent and every fused pose is wrong by a constant factor |
+| 0.1 | **Square length: span as many squares as the callipers reach, divide by that count.** The BOM's 150 mm callipers reach **3 squares (114 mm)**; 8 squares would need a 305 mm tool. Never measure a single square | `config/calibration.yaml` `board.square_length_m` | Boards are routinely 1–2% off nominal. This value scales *every distance in the system* while every reprojection error stays small — the calibration looks excellent and every fused pose is wrong by a constant factor. Spanning n squares divides your placement error by n: one square leaves ~0.13%, three leaves ~0.04% |
 | 0.2 | **Count the squares.** Should be 8 × 8, 49 interior corners, 32 markers | `board.squares_x/y` | A wrong count maps corner ids to the wrong 3D points — the classic ChArUco bug. The 0.5 px gate catches it, but the message will not say so |
 | 0.3 | **Board thickness, callipers on the panel edge** | `world.T_world_board` **z** | Currently `0.000`, which puts world z = 0 at the board's printed surface rather than the tabletop. Every absolute height handed to PM1 then carries that bias. Bounded, not blocking — but it is a few mm of pure fiction and takes ten seconds to remove |
 | 0.4 | **Confirm the dictionary is `DICT_5X5_250`** | `board.dictionary` | Must match what is printed or *nothing* decodes |
