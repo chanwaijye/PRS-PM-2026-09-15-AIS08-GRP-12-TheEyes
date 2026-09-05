@@ -32,23 +32,34 @@ board:
   # detecting -- a board that cannot decode returns zero corners from images
   # that look perfectly good.
   #
-  # [VERIFY] EVERY VALUE BELOW, on the physical board, before trusting a run:
-  #   squares_x/y      8 x 8 per the listing. COUNT them anyway on arrival: a
-  #                    wrong count maps corner ids to the wrong 3D points -- the
-  #                    classic ChArUco bug. It shows up as a large reprojection
-  #                    RMSE, so the 0.5 px gate catches it, but the message will
-  #                    not say so.
-  #   square_length_m  CALIPERS. 38 mm is nominal; boards are routinely 1-2%
-  #                    off, and this value scales every distance in the system
-  #                    while every reprojection error stays small.
-  #   marker_length_m  CALIPERS. 28.5 mm assumes the usual 0.75 ratio.
-  #   dictionary       Must match what is printed or NOTHING decodes. All of
-  #                    DICT_4X4/5X5/6X6 have margin at 1080p (7.5/6.4/5.6
-  #                    px/module), so this is about matching, not reach.
+  # MEASURED on the physical board 2026-09-05. Three of the four values are now
+  # closed; only marker_length_m is still derived.
+  #   squares_x/y      8 x 8. CONFIRMED: `calibrate aim` resolved 49 corners on
+  #                    both cameras, and 7 x 7 = 49 is exactly what an 8 x 8
+  #                    board gives. A wrong count maps corner ids to the wrong 3D
+  #                    points -- the classic ChArUco bug, which shows up as a
+  #                    large reprojection RMSE the 0.5 px gate catches without
+  #                    the message ever saying so.
+  #   square_length_m  MEASURED: callipers spanning 4 squares read 152.1 mm, so
+  #                    152.1 / 4 = 38.025 mm. That is +0.066% against the 38 mm
+  #                    nominal -- comfortably inside the 1-2% that printed boards
+  #                    routinely drift, and worth carrying because this value
+  #                    scales every distance in the system while every
+  #                    reprojection error stays small.
+  #   marker_length_m  [VERIFY] DERIVED, not measured. The board is one printed
+  #                    image, so the +0.066% scale applies to the markers too:
+  #                    0.75 * 38.025 = 28.519 mm. Strictly better than 28.5,
+  #                    which now assumes a scale factor of exactly 1.0 that the
+  #                    square measurement has disproved -- but callipers on a
+  #                    marker would close it properly. Low stakes either way: the
+  #                    chessboard corners carry the solve, and marker length only
+  #                    feeds decode reach and marker identification.
+  #   dictionary       DICT_5X5_250. CONFIRMED by the fact that markers decoded
+  #                    at all -- a mismatch decodes NOTHING.
   squares_x: 8
   squares_y: 8
-  square_length_m: 0.038
-  marker_length_m: 0.0285
+  square_length_m: 0.038025
+  marker_length_m: 0.028519
   dictionary: "DICT_5X5_250"
 
 world:
@@ -98,20 +109,19 @@ world:
   #   z = board thickness -- the pattern is on the TOP face, and world z = 0 is
   #       the tabletop, the plane objects actually rest on.
   #
-  # [VERIFY] 0.152 is 4 x square_length_m. If callipers change square_length_m,
-  # BOTH of these change with it.
+  # 0.1521 is 4 x square_length_m, updated with the measured 38.025 mm. These
+  # two ALWAYS move with square_length_m -- editing one without the other is a
+  # silent, self-consistent error.
   #
-  # [VERIFY] z is 0.000 because the board thickness has NOT been measured yet.
-  # Callipers on the panel edge, then put the real number here. Left at zero,
-  # world z = 0 is the board's printed surface rather than the tabletop, and
-  # every absolute world height handed to PM1 carries that bias. It does not
-  # affect the round trip, the reprojection RMSE, or the ablation -- those are
-  # all invariant to this matrix -- so it is a bounded error, not a blocking
-  # one. It is still a few millimetres of pure fiction and takes ten seconds to
-  # remove.
-  T_world_board: [ 1,  0,  0, -0.152,
-                   0, -1,  0,  0.152,
-                   0,  0, -1,  0.000,
+  # z = 0.0071 is the MEASURED board thickness (callipers on the panel edge,
+  # 2026-09-05). The pattern is on the TOP face and world z = 0 is the tabletop,
+  # the plane objects actually rest on, so this offset is what keeps the two
+  # apart. Left at zero it was 7.1 mm of bias on every absolute world height
+  # handed to PM1 -- invisible downstream, because the round trip, the
+  # reprojection RMSE and the ablation are all invariant to this matrix.
+  T_world_board: [ 1,  0,  0, -0.1521,
+                   0, -1,  0,  0.1521,
+                   0,  0, -1,  0.0071,
                    0,  0,  0,  1]
 
 quality:

@@ -16,10 +16,21 @@ redoing the setup rather than the capture.
 
 ---
 
-## Phase 0 — callipers, before anything is mounted
+## Phase 0 — callipers, before anything is mounted — **DONE 2026-09-05**
 
 Four measurements. None is guessable, and each one silently scales or biases
 every downstream number if it is wrong.
+
+| # | result |
+|---|---|
+| 0.1 square length | **38.025 mm** — callipers spanning 4 squares read 152.1 mm. +0.066% vs nominal |
+| 0.2 square count | **8 × 8 confirmed** — `calibrate aim` resolved 49 corners on both cameras, and 7 × 7 = 49 is exactly an 8 × 8 board |
+| 0.3 board thickness | **7.1 mm** — now `T_world_board` z, so world z = 0 is the tabletop rather than the printed surface |
+| 0.4 dictionary | **`DICT_5X5_250` confirmed** — a mismatch decodes nothing, and markers decoded |
+
+`marker_length_m` is the one value still `[VERIFY]`: 28.519 mm **derived** from
+the measured square under uniform print scale, not measured. Low stakes — the
+chessboard corners carry the solve — but callipers on a marker would close it.
 
 | # | Measure | Into | Why it cannot be skipped |
 |---|---|---|---|

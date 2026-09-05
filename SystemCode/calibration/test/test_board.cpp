@@ -1,4 +1,5 @@
 #include "the_eyes/calibration/board.hpp"
+#include "the_eyes/calibration/report.hpp"
 
 #include <gtest/gtest.h>
 
@@ -75,18 +76,21 @@ TEST(BoardSpec, RejectsDegenerateGeometry) {
 }
 
 TEST(BoardSpec, LoadsTheShippedConfig) {
-  // The physical board ordered 2026-08-26: a 324 x 324 mm panel carrying 8 x 8
-  // squares at 38 mm = 304 x 304 mm of squares, so a ~10 mm border each side.
+  // The physical board, MEASURED 2026-09-05: a 324 x 324 mm panel carrying 8 x 8
+  // squares. Callipers spanning 4 squares read 152.1 mm, so the square is
+  // 152.1 / 4 = 38.025 mm -- +0.066% against the 38 mm nominal, and now the
+  // value the whole system is scaled by.
   //
-  // [VERIFY] on arrival with calipers. This test failing after the board
-  // arrives is the intended behaviour, not a bug: it means the config and the
-  // physical board disagree, and both must be corrected before any calibration
-  // is trusted.
+  // These numbers are pinned deliberately. This test failing means the config
+  // and the physical board disagree, which must be resolved before any
+  // calibration is trusted -- it failing when the board was measured was the
+  // intended behaviour, not a bug.
   const BoardSpec s = LoadBoardSpec(std::string(THE_EYES_CONFIG_DIR) + "/calibration.yaml");
   EXPECT_EQ(s.squares_x, 8);
   EXPECT_EQ(s.squares_y, 8);
-  EXPECT_NEAR(s.square_length_m, 0.038, 1e-12);
-  EXPECT_NEAR(s.marker_length_m, 0.0285, 1e-12);
+  EXPECT_NEAR(s.square_length_m, 0.038025, 1e-12);
+  // Derived from the measured square under uniform print scale, not measured.
+  EXPECT_NEAR(s.marker_length_m, 0.028519, 1e-12);
   EXPECT_LT(s.marker_length_m, s.square_length_m);
   EXPECT_EQ(s.corner_count(), 49);
   EXPECT_NO_THROW(s.Validate());
@@ -104,17 +108,48 @@ TEST(BoardSpec, ShippedBoardMarkersFitTheConfiguredDictionary) {
 
 TEST(BoardSpec, ShippedBoardSpansTheExpectedPhysicalSize) {
   // Guards a typo in squares_x/y or square_length_m against the board actually
-  // bought -- nominally 304 x 304 mm of squares within a 324 x 324 mm panel.
+  // bought: 8 x 8 squares within a 324 x 324 mm panel, measured at 38.025 mm per
+  // square (2026-09-05), so 304.2 x 304.2 mm of squares.
+  //
+  // The geometric relations below are derived from the spec rather than
+  // hardcoded. An earlier version pinned 0.304 and 0.038 literally and failed
+  // the moment the board was measured -- for a 0.2 mm difference that changed
+  // nothing it was actually testing. What it exists to catch is a wrong square
+  // COUNT or a decimal-place typo, both of which these still catch.
   const BoardSpec s = LoadBoardSpec(std::string(THE_EYES_CONFIG_DIR) + "/calibration.yaml");
-  EXPECT_NEAR(s.squares_x * s.square_length_m, 0.304, 1e-9);
-  EXPECT_NEAR(s.squares_y * s.square_length_m, 0.304, 1e-9);
+  const double span_x = s.squares_x * s.square_length_m;
+  const double span_y = s.squares_y * s.square_length_m;
+
+  // Sanity band on the measured square, wide enough for the 1-2% a printed
+  // board drifts and narrow enough to catch a decimal-place error.
+  EXPECT_GT(s.square_length_m, 0.037);
+  EXPECT_LT(s.square_length_m, 0.039);
   // The printed squares must fit inside the 324 mm panel that was ordered.
-  EXPECT_LE(s.squares_x * s.square_length_m, 0.324);
-  EXPECT_LE(s.squares_y * s.square_length_m, 0.324);
+  EXPECT_LE(span_x, 0.324);
+  EXPECT_LE(span_y, 0.324);
+  EXPECT_NEAR(span_x, span_y, 1e-12);  // square board
   // Furthest interior corner sits one square in from each far edge.
   const Eigen::Vector3d far = s.CornerPosition(s.corner_count() - 1);
-  EXPECT_NEAR(far.x(), 0.304 - 0.038, 1e-9);
-  EXPECT_NEAR(far.y(), 0.304 - 0.038, 1e-9);
+  EXPECT_NEAR(far.x(), span_x - s.square_length_m, 1e-9);
+  EXPECT_NEAR(far.y(), span_y - s.square_length_m, 1e-9);
+}
+
+TEST(BoardSpec, WorldPlacementTracksTheMeasuredSquare) {
+  // T_world_board's x/y translation is +/-(squares * square_length)/2, so it
+  // MUST move whenever square_length_m does. Editing one without the other is a
+  // silent, self-consistent error: every reprojection residual stays small while
+  // the world origin sits in the wrong place.
+  const BoardSpec s = LoadBoardSpec(std::string(THE_EYES_CONFIG_DIR) + "/calibration.yaml");
+  const WorldConfig w = LoadWorldConfig(std::string(THE_EYES_CONFIG_DIR) + "/calibration.yaml");
+  const double half_x = s.squares_x * s.square_length_m / 2.0;
+  const double half_y = s.squares_y * s.square_length_m / 2.0;
+  EXPECT_NEAR(w.T_world_board.translation().x(), -half_x, 1e-9);
+  EXPECT_NEAR(w.T_world_board.translation().y(), +half_y, 1e-9);
+  // z is the measured board thickness: the pattern is on the TOP face and world
+  // z = 0 is the tabletop. Zero here would put the world plane on the printed
+  // surface and bias every absolute height handed to PM1.
+  EXPECT_GT(w.T_world_board.translation().z(), 0.0);
+  EXPECT_LT(w.T_world_board.translation().z(), 0.020);
 }
 
 TEST(BoardSpec, MissingFileThrows) {
