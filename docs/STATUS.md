@@ -139,7 +139,7 @@ Plot: `docs/results/dataset_size_ablation_rgbd_50k_v2.png`.
 |---|---|---|
 | Sync cable | ~~2026-08-25~~ **ARRIVED, installed, verified 08-27** | R4b hardware sync — master/slave streams; see "Hardware sync: DONE" |
 | ChArUco board | ~~first week of Sept~~ **ARRIVED 2026-08-28**, decode-verified on a real capture | calibration → real extrinsics → ablation on real poses |
-| Matte PLA, 3 × 1 kg (yellow / red / blue) | **ORDERED 2026-09-05**, ETA ~09-12 | printing the three objects → real ADD-S ground truth |
+| Matte PLA, 4 × 1 kg (yellow / red / blue / grey) | **ORDERED 2026-09-05**, ETA ~09-12 | printing the three objects and their ArUco trays → real ADD-S ground truth. Grey is a distractor neutral, which is what a tray must be |
 
 **No rig hardware is outstanding.** Filament is the only open delivery, and it
 gates only the object track — see "The critical path" below.
@@ -199,7 +199,7 @@ because `synth50k_v2` was rendered from the unmodified meshes, so modifying a
 target object would open a sim-to-real gap the detector has never seen. Measured
 worst-case socket clearance **0.23 mm**, which bounds ground-truth translation
 error at 1.2% of the bottle's ADD-S threshold. Trays add **385 g** of filament in
-a neutral colour, which is a fourth spool.
+a neutral colour; the grey spool for them was ordered 2026-09-05.
 
 Filament was ordered 2026-09-05, ETA ~2026-09-12, so track A is blocked on
 delivery for a week and track B is blocked on nothing. **Track B is the work for
