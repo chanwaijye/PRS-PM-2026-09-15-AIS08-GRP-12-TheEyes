@@ -80,14 +80,58 @@ the three classes are marginally *worse* on recall with depth.
 
 `AGENTS.md` anticipated this outcome and set the policy: "if they do not, that
 is a reportable negative result, not a failure to hide." It is reported as one.
-The likely reading is that at 100% depth validity, three geometrically distinct
-classes on an uncluttered plane, and a COCO-pretrained backbone, RGB already
-saturates the task and leaves depth nothing to add — which is a statement about
-*this benchmark*, not about RGB-D detection. The place it could still show is
-real captures, where depth validity is 97.8% rather than 100% and the appearance
-gap is real. That test has not run.
+The reading is that at 100% depth validity, three geometrically distinct classes
+on an uncluttered plane, and a COCO-pretrained backbone, depth adds nothing this
+task needs — a statement about *this benchmark*, not about RGB-D detection.
+
+Note that "the benchmark is saturated" would be the wrong way to put it, and the
+dataset-size ablation below is what rules it out: on the same val split, 8× more
+training data moves mAP@0.5:0.95 by +0.0322 and `red_cube` by +0.0514. There is
+headroom; depth simply does not reach it, while more RGB examples do.
+
+The place depth could still show is real captures, where depth validity is 97.8%
+rather than 100% and the appearance gap is real. That test has not run.
 
 Raw metrics: `docs/results/modality_rgb_vs_rgbd_50k_v2.json`.
+
+### The dataset-size ablation — DONE 2026-09-05, and it qualifies the above
+
+Same val split, same seed, same 40-epoch schedule; only `--fraction` differs, so
+all three arms share one generator config and one scene-sampling distribution.
+Arms are named for the dataset they subset — the actual **train** counts are
+5,001 / 20,006 / 40,012, because `synth50k_v2` is 50k *total* (40,012 train +
+9,988 val).
+
+| train frames | mAP@0.5 | mAP@0.5:0.95 | recall | `red_cube` @.5:.95 |
+|---|---|---|---|---|
+| 5,001 | 0.98805 | 0.92520 | 0.97093 | 0.86445 |
+| 20,006 | 0.99333 | 0.94695 | 0.98274 | 0.89714 |
+| 40,012 | 0.99371 | **0.95738** | 0.98260 | 0.91590 |
+
+Three readings, in order of how much they matter:
+
+1. **Recall saturates at 20k; mAP@0.5:0.95 does not.** Recall moves 0.97093 →
+   0.98274 → 0.98260, i.e. it is flat past 20k, while mAP@0.5:0.95 still gains
+   +0.0104 over the same interval. Data beyond 20k is not finding more objects —
+   it is localising the ones it already finds more precisely.
+2. **`red_cube` takes most of the benefit**, +0.0514 across the 8× against +0.0322
+   pooled. It is the smallest class and the one with the most headroom, and it is
+   the class the modality ablation predicted would move on depth and did not.
+3. **The curve has not flattened**, so 40k train frames is justified rather than
+   merely affordable, and more data would still buy accuracy. Worth knowing before
+   the sim-to-real work, where the temptation is to generate less.
+
+**This changes how the modality negative result should be read.** That section
+attributes depth's non-effect to RGB having "already saturated the task". On the
+same val split, 8× more data buys +0.0322 pooled and +0.0514 on `red_cube`, so the
+task is demonstrably *not* saturated — there is headroom, and more RGB examples
+reach it while an added depth channel does not. The honest statement is narrower
+than the original: the remaining headroom is in localisation precision, and
+early-fusion depth does not help with that here. The claim above is corrected
+accordingly rather than left standing.
+
+Raw metrics: `docs/results/dataset_size_ablation_rgbd_50k_v2.json`.
+Plot: `docs/results/dataset_size_ablation_rgbd_50k_v2.png`.
 
 ## Hardware on order
 

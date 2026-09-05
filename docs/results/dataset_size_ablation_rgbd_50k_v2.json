@@ -1,0 +1,83 @@
+{
+  "_provenance": {
+    "measured": "2026-09-05",
+    "question": "AGENTS.md detector acceptance criterion: dataset-size ablation, mAP at ~5k / 20k / 50k training frames.",
+    "val_split": "/opt/the-eyes-data/synth50k_v2, 9988 frames, IDENTICAL across all three arms",
+    "method": "train.py --fraction subsets the TRAIN split only, so all three arms share one generator config, one scene-sampling distribution and one val split. Three separate generations would have differed in scene sampling as well as in size, confounding the comparison.",
+    "training": "40 epochs, batch 64, imgsz 640, seed 20260820, patience 15, deterministic, yolov8n.pt COCO init, depth stem inflated from mean(RGB). Identical across arms; only --fraction differs.",
+    "note_50k": "The 50k arm is runs/detector/rgbd_50k_v2, trained 2026-09-04 and NOT retrained for this ablation. Same script, same hyperparameters, same seed.",
+    "evaluation": "All three best.pt re-evaluated here in one pass via evaluate_one(), rather than reading final-epoch rows out of each results.csv, so the three points come from one consistent val invocation."
+  },
+  "5k": {
+    "mAP50": 0.9880498537842,
+    "mAP50_95": 0.9251950907653362,
+    "precision": 0.9797722686419063,
+    "recall": 0.9709279786515962,
+    "per_class_mAP50": {
+      "mustard_bottle": 0.9944827691907447,
+      "red_cube": 0.978290975566557,
+      "bowl": 0.9913758165952982
+    },
+    "per_class_mAP50_95": {
+      "mustard_bottle": 0.9755857514889776,
+      "red_cube": 0.8644470854840035,
+      "bowl": 0.9355524353230272
+    },
+    "per_class_recall": {
+      "mustard_bottle": 0.9972967561073288,
+      "red_cube": 0.9440218290643663,
+      "bowl": 0.9714653507830937
+    },
+    "fraction": 0.125,
+    "train_frames": 5001,
+    "checkpoint": "runs/detector/rgbd_5k_v2/weights/best.pt"
+  },
+  "20k": {
+    "mAP50": 0.9933288732296802,
+    "mAP50_95": 0.946949513586153,
+    "precision": 0.9876149948344272,
+    "recall": 0.9827443738227339,
+    "per_class_mAP50": {
+      "mustard_bottle": 0.9948694503327289,
+      "red_cube": 0.99089433024022,
+      "bowl": 0.9942228391160918
+    },
+    "per_class_mAP50_95": {
+      "mustard_bottle": 0.9846894309980293,
+      "red_cube": 0.8971439956443511,
+      "bowl": 0.9590151141160789
+    },
+    "per_class_recall": {
+      "mustard_bottle": 0.9983298292688658,
+      "red_cube": 0.9648142555119299,
+      "bowl": 0.9850890366874061
+    },
+    "fraction": 0.5,
+    "train_frames": 20006,
+    "checkpoint": "runs/detector/rgbd_20k_v2/weights/best.pt"
+  },
+  "50k": {
+    "mAP50": 0.9937070286886259,
+    "mAP50_95": 0.9573812510894242,
+    "precision": 0.9910541684231333,
+    "recall": 0.982598463128766,
+    "per_class_mAP50": {
+      "mustard_bottle": 0.9948245245189429,
+      "red_cube": 0.9918627515251391,
+      "bowl": 0.9944338100217956
+    },
+    "per_class_mAP50_95": {
+      "mustard_bottle": 0.9886120366696567,
+      "red_cube": 0.9159018193426036,
+      "bowl": 0.9676298972560125
+    },
+    "per_class_recall": {
+      "mustard_bottle": 0.9984981978374049,
+      "red_cube": 0.9631113704443395,
+      "bowl": 0.9861858211045536
+    },
+    "fraction": 1.0,
+    "train_frames": 40012,
+    "checkpoint": "runs/detector/rgbd_50k_v2/weights/best.pt"
+  }
+}

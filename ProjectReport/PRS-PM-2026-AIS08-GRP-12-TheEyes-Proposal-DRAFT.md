@@ -431,7 +431,7 @@ not.
 Real-capture detection mAP, ADD-S on real captures, and predicate accuracy —
 each of which requires the physical objects and a real calibration. The modality
 ablation **has now run** and is reported above as a negative result; the
-dataset-size ablation is running as of 2026-09-05.
+dataset-size ablation has run and is reported below.
 
 **No delivery gates anything any more.** The inter-camera sync cable arrived and
 was verified on 2026-08-27; the ChArUco board arrived on 2026-08-28 and was
@@ -522,6 +522,50 @@ predicates are to be evaluated against.
 
 ---
 
+### Measured: the dataset-size ablation, and what it says about the modality result
+
+AGENTS.md makes this an explicit deliverable. All three arms share one generator
+config, one scene-sampling distribution, one 9,988-frame val split, one seed and
+one 40-epoch schedule; only `--fraction` differs. That matters: three separate
+generations would have differed in scene sampling as well as in size, and the
+comparison could not then attribute a difference to size alone. Arms are named
+for the dataset they subset — the actual **train** counts are 5,001 / 20,006 /
+40,012, because `synth50k_v2` is 50k *total* (40,012 train + 9,988 val).
+
+| train frames | mAP@0.5 | mAP@0.5:0.95 | recall | `red_cube` @.5:.95 |
+|---|---|---|---|---|
+| 5,001 | 0.98805 | 0.92520 | 0.97093 | 0.86445 |
+| 20,006 | 0.99333 | 0.94695 | 0.98274 | 0.89714 |
+| 40,012 | 0.99371 | **0.95738** | 0.98260 | 0.91590 |
+
+The prediction made above — that these ablations must be read on mAP@0.5:0.95 and
+per class rather than on mAP@0.5 — is borne out. mAP@0.5 moves 0.0057 across an
+8× change in training data and would have supported no conclusion at all.
+
+**Recall saturates at 20k; localisation accuracy does not.** Recall is flat past
+20,006 frames (0.98274 → 0.98260) while mAP@0.5:0.95 still gains +0.0104 over the
+same interval. The additional data is not finding more objects — it is placing
+the boxes it already finds more precisely. `red_cube`, the smallest class and the
+one with the most headroom, takes most of the benefit: +0.0514 across the 8×
+against +0.0322 pooled. The curve has not flattened, so the full generation is
+justified empirically rather than by assertion, and more data would still buy
+accuracy — worth knowing before the sim-to-real work, where the temptation under
+schedule pressure is to generate less.
+
+**This qualifies the modality result above.** That section attributes depth's
+non-effect to RGB having already saturated the task. On the same val split, 8×
+more training data buys +0.0322 pooled and +0.0514 on `red_cube`, so the task is
+demonstrably not saturated. The defensible statement is narrower than the one
+first offered: the remaining headroom is in localisation precision, and an
+early-fusion depth channel does not reach it on this benchmark while more RGB
+examples do. Both ablations are reported as measured, including where the second
+constrains the first.
+
+Raw metrics and plot: `docs/results/dataset_size_ablation_rgbd_50k_v2.json`
+and `docs/results/dataset_size_ablation_rgbd_50k_v2.png`.
+
+---
+
 ## 8. Project Timeline
 
 | Phase | Period | Milestones |
@@ -529,7 +573,7 @@ predicates are to be evaluated against.
 | P0 — Environment | now – mid Jul 2026 | **DONE.** Ubuntu 24.04; FoundationPose verified on sm_120, R1 retired |
 | P1 — Perception baseline | mid Jul – early Aug | **DONE.** FoundationPose end-to-end via the C++ pose_agent; detector C++/Python parity verified |
 | P2 — Fusion + hardware | Aug | **Done bar calibration.** Fusion, scene graph, dual-camera bring-up and hardware sync complete; rig geometry derived from measured intrinsics; calibration awaits the ChArUco board (~05 Sep) |
-| P3 — Dataset + evaluation | late Aug – Sep | **Largely done.** `synth50k_v2` generated (40,012 train / 9,988 val), RGB-D detector trained and exported to ONNX, C++/Python parity re-verified against the trained network, modality ablation run (negative result, §7A), dataset-size ablation running. Outstanding: real-capture evaluation, which needs the printed objects |
+| P3 — Dataset + evaluation | late Aug – Sep | **Largely done.** `synth50k_v2` generated (40,012 train / 9,988 val), RGB-D detector trained and exported to ONNX, C++/Python parity re-verified against the trained network, both ablations run — modality (negative result) and dataset-size — see §7A. Outstanding: real-capture evaluation, which needs the printed objects |
 | P4 — Proposal | by **15 Sep 2026** | Proposal submitted (this document, finalised) |
 | — First Presentation | **30 Sep 2026**, 6:30–10:30 pm, Zoom | Goals, data resources, techniques, progress |
 | P5 — Hardening + integration | Oct | Full evaluation, PM1 integration demo, unknown-object path, Jetson test |
