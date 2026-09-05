@@ -186,9 +186,20 @@ from the rig. They converge only at capture:
 
 ```
 track A   author seats ──→ print ──→ calliper-verify ──┐
-                                                       ├──→ capture → ADD-S
+             DONE 09-05                                ├──→ capture → ADD-S
 track B   rigid mounting ──→ calibrate ────────────────┘
 ```
+
+**Track A's CAD is authored (2026-09-05).** `training/author_marker_trays.py`
+emits `assets/trays/*.stl`, printable marker sheets and `config/marker_trays.yaml`.
+The design changed from §6.3's original "seat in the part" to a tray whose socket
+is boolean-subtracted from the object's own mesh, because the bottle has no flat
+region (7.5 mm sagitta over 24 mm) and the bowl's wall is 0.99 mm — and, decisively,
+because `synth50k_v2` was rendered from the unmodified meshes, so modifying a
+target object would open a sim-to-real gap the detector has never seen. Measured
+worst-case socket clearance **0.23 mm**, which bounds ground-truth translation
+error at 1.2% of the bottle's ADD-S threshold. Trays add **385 g** of filament in
+a neutral colour, which is a fourth spool.
 
 Filament was ordered 2026-09-05, ETA ~2026-09-12, so track A is blocked on
 delivery for a week and track B is blocked on nothing. **Track B is the work for

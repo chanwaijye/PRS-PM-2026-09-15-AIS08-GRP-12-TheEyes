@@ -404,6 +404,15 @@ Quantity, computed from the meshes: **227 g per object set** — `mustard_bottle
 sets plus a 20 mm test cube per colour plus 10% waste comes to ~303 g yellow,
 ~110 g red, ~93 g blue, so 1 kg spools leave room for printed distractors.
 
+**A fourth spool is needed, in a neutral.** The ArUco ground-truth trays (§H,
+`training/author_marker_trays.py`) come to **385 g** — `red_cube` 74 g,
+`mustard_bottle` 119 g, `bowl` 193 g. A tray is not a detected class, so it must
+NOT be printed in a target colour: that would put a large slab of a class's own
+colour directly under the object. Print them in one of the three distractor
+neutrals the renderer already samples — `#E7E7E7`, `#898989` or `#BCB3AA` — which
+also means any grey or taupe filament already on hand qualifies. Only one set of
+trays is needed, unlike the objects.
+
 Two print constraints that follow from the meshes rather than from taste:
 
 - **The bowl's scanned wall is 0.99 mm**, thinner than two perimeters at a

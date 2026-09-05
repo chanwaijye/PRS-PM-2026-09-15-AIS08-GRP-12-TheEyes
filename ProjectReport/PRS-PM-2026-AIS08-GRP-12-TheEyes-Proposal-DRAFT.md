@@ -237,11 +237,37 @@ Printed objects must be sliced at 100% with no bed-fitting rescale, and the prin
 
 Manually captured dual-camera RGB-D sequences of tabletop scenes, including staged occlusion cases. Ground-truth poses obtained via fiducial (ArUco) mounts; the fiducials are used only for evaluation, never at inference time.
 
-**Fiducial mounts are designed into the printed objects rather than attached to them.** A marker glued to a finished object gives a ground-truth pose only as good as the subsequent measurement of the offset between marker and object frame — an error that enters every ADD/ADD-S figure as a constant bias, and one that is invisible because it leaves all results self-consistent. For the printed classes the marker seat is instead modelled into the part at a known offset from the object frame origin, which §6.2 defines as the mesh AABB centre. The offset is then exact by construction rather than measured, and the ground truth is as accurate as the print.
+**Fiducial mounts are derived from the object meshes rather than attached to the objects.** A marker glued to a finished object gives a ground-truth pose only as good as the subsequent measurement of the offset between marker and object frame — an error that enters every ADD/ADD-S figure as a constant bias, and one that is invisible because it leaves all results self-consistent. The offset must therefore come from CAD, not from callipers.
 
-An earlier revision of this section carved out the mustard bottle as a purchased object admitting no such mount, requiring a measured attachment, and therefore carrying higher ground-truth uncertainty reported separately from the printed classes. That carve-out no longer applies: §6.2 resolves the bottle to the printed group, because the YCB original is the 20 oz French's Classic Yellow and it is not retail-available in Singapore. Being printed, it takes a modelled marker seat like the other two, so **all three classes have ground truth that is exact by construction** and none is reported separately. The change removes a limitation rather than adding one — it was forced by sourcing, but its effect on evaluation is strictly positive.
+An earlier revision of this section put the marker seat *inside* the printed part. Measurement on the actual meshes rules that out for two of the three classes. `mustard_bottle` has no flat region anywhere — its front face carries **7.5 mm of sagitta over a 24 mm patch**, and its only truly flat area is the cap top at **17.7 mm diameter**, below the ArUco decode floor at the 0.7 m standoff. `bowl` has a scanned wall of **0.99 mm**, so a flush recess has no surviving material behind it. Only `red_cube`, with six flat 50 mm faces, admits the original design.
 
-Distractor objects used for clutter and false-positive testing require no meshes, as they are never detected classes.
+The decisive objection is not printability, though — it is the dataset. `synth50k_v2` was rendered from the **unmodified** meshes, so cutting a facet or adding a boss to a target object introduces a sim-to-real gap the trained detector has never seen, and closing it means regenerating 88 GB for a change that serves evaluation rather than perception.
+
+**The marker therefore moves off the object and onto a tray the object sits in.** `training/author_marker_trays.py` generates one tray per class: a plate whose socket is **boolean-subtracted from that object's own mesh**, so the fit is derived from the geometry rather than measured, plus recessed seats for 40 mm `DICT_5X5_250` markers in the same plate. The ground-truth chain is
+
+`T_cam_object = T_cam_marker · T_marker_tray · T_tray_object`
+
+where only `T_cam_marker` is observed; the other two are chosen in CAD and written to `config/marker_trays.yaml`. Every class keeps the exact-by-construction property the original design was chosen for, and the objects themselves are untouched — so `assets/meshes/*.obj` remain the meshes FoundationPose registers against, and `config/meshes.yaml`'s `diameter_m`, `extent` and `symmetric` flags remain true statements about the physical objects.
+
+The generator verifies what it produces rather than asserting it:
+
+| | `red_cube` | `mustard_bottle` | `bowl` |
+|---|---|---|---|
+| plate (mm) | 170 × 90 × 10.5 | 216 × 100 × 14.5 | 210 × 210 × 8.5 |
+| socket depth | 8.0 mm | 12.0 mm | 6.0 mm |
+| **measured socket clearance** | 0.20 mm | 0.12–0.23 mm | 0.08–0.12 mm |
+| card-to-socket gap | 5.8 mm | 5.5 mm | 10.0 mm |
+| markers visible per camera | 1 of 2 | 1 of 2 | 3 of 4 |
+| marker ids | 100–101 | 102–103 | 104–107 |
+
+**Socket clearance is the ground-truth error budget**, and it is the reason the figure is measured rather than nominal: the object can sit anywhere within it, so the worst case — **0.23 mm** — bounds the ground-truth translation error. Against the bottle's 19.6 mm ADD-S threshold that is 1.2%, so it cannot move a verdict. Marker ids are allocated globally (the ChArUco board holds 0–31), because per-tray numbering would make id 100 ambiguous the moment two objects share a scene, which is every scene in the occlusion ablation.
+
+Marker visibility is ray-cast against the seated object at the rig's actual 35° elevation and ±40° azimuth rather than argued: each camera sees at least one marker on every tray. Because the two cameras generally read *different* markers on the wing trays, agreement between their independently derived object poses is a free check on the print.
+
+Distractor objects used for clutter and false-positive testing require no meshes, as they are never detected classes. The trays are likewise not a detected class, so they are printed in one of the three **distractor neutrals** the renderer already samples (§6.2) rather than a target colour — a tray in a class colour would put a large slab of that class's colour directly beneath the object.
+
+An earlier revision of this section carved out the mustard bottle as a purchased object admitting no such mount, requiring a measured attachment, and therefore carrying higher ground-truth uncertainty reported separately from the printed classes. That carve-out no longer applies: §6.2 resolves the bottle to the printed group, because the YCB original is the 20 oz French's Classic Yellow and it is not retail-available in Singapore. It takes a marker tray like the other two, so **all three classes have ground truth that is exact by construction** and none is reported separately. The change removes a limitation rather than adding one — it was forced by sourcing, but its effect on evaluation is strictly positive.
+
 
 ### 6.4 Benchmark Scenes
 
