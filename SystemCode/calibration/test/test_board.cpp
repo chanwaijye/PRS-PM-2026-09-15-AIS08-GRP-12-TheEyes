@@ -89,8 +89,9 @@ TEST(BoardSpec, LoadsTheShippedConfig) {
   EXPECT_EQ(s.squares_x, 8);
   EXPECT_EQ(s.squares_y, 8);
   EXPECT_NEAR(s.square_length_m, 0.038025, 1e-12);
-  // Derived from the measured square under uniform print scale, not measured.
-  EXPECT_NEAR(s.marker_length_m, 0.028519, 1e-12);
+  // MEASURED 28.0 mm, so the ratio is 0.7364 and not the 0.75 this config
+  // assumed sight-unseen. The board is a 38/28 design.
+  EXPECT_NEAR(s.marker_length_m, 0.028, 1e-12);
   EXPECT_LT(s.marker_length_m, s.square_length_m);
   EXPECT_EQ(s.corner_count(), 49);
   EXPECT_NO_THROW(s.Validate());
@@ -181,11 +182,12 @@ TEST(BoardSpec, MarkerModulesRejectsUnparseableDictionaries) {
 // calibration_backup/ (worst unit). This is the test that says the purchase
 // works: it fails at the streaming resolution and passes at capture resolution.
 TEST(BoardSpec, OrderedBoardNeedsFullResolutionCapture) {
-  BoardSpec board;
-  board.squares_x = board.squares_y = 8;
-  board.square_length_m = 0.038;
-  board.marker_length_m = 0.0285;
-  board.dictionary = "DICT_5X5_250";
+  // Loads the SHIPPED config rather than restating it. Hardcoding the nominal
+  // here meant the test kept asserting a decode reach the physical board does
+  // not have: measured at 28.0 mm rather than the assumed 28.5, every reach
+  // below is 1.8% shorter than this test used to claim.
+  const BoardSpec board =
+      LoadBoardSpec(std::string(THE_EYES_CONFIG_DIR) + "/calibration.yaml");
 
   // The far corner of this board on the table, seen obliquely at 35 deg from
   // 0.70 m, sits 0.884 m away -- not 0.70.
@@ -195,6 +197,8 @@ TEST(BoardSpec, OrderedBoardNeedsFullResolutionCapture) {
   EXPECT_GT(board.MaxDecodeDistance(1357.72), kObliqueFarCorner);  // 1920x1080
 
   // And with margin, not marginally, at the resolution we will actually use.
+  // Measured marker: 1.81 m against 1.768 m, i.e. 2.05x. That is thinner than
+  // the nominal 28.5 mm implied and worth knowing if it ever trips.
   EXPECT_GT(board.MaxDecodeDistance(1357.72), 2.0 * kObliqueFarCorner);
 }
 

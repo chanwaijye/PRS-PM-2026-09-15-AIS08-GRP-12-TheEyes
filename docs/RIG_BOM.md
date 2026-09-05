@@ -198,7 +198,7 @@ table sits **884 mm** from the camera.
 |---|---|---|---|---|
 | 848 × 480 (streaming) | 603.43 | **2.8** | 0.82 m | ✗ fails |
 | 1280 × 720 | 905.15 | 4.2 | 1.23 m | ✓ |
-| **1920 × 1080** | **1357.72** | **6.3** | **1.84 m** | ✓ 2× margin |
+| **1920 × 1080** | **1357.72** | **6.1** | **1.81 m** | ✓ 2.05× margin |
 
 **So the board works — capture calibration at 1920 × 1080.** It also frames
 fully at that resolution, and sits in the 440 mm table depth with 58 mm margin
@@ -219,7 +219,7 @@ from images that look perfectly good to a human: in frame, lit, in focus.
 |---|---|---|
 | `squares_x` / `squares_y` | **8 × 8** per the listing — count them anyway. | A wrong count maps corner ids to the wrong 3D points — the classic ChArUco bug. The 0.5 px gate catches it, but the message will not say so. |
 | `square_length_m` | **Calipers.** 38 mm is nominal. | Boards are routinely 1–2% off. This value scales *every distance in the system* while every reprojection error stays small. |
-| `marker_length_m` | **Calipers.** Config assumes 28.5 mm (the usual 0.75 ratio). | Feeds the decode reach and the pose solve. |
+| `marker_length_m` | **MEASURED 28.0 mm** (2026-09-05). The ratio is 0.7364, not the 0.75 assumed sight-unseen. | Feeds the decode reach and the pose solve. |
 | `dictionary` | Read the listing. | Must match what is printed or **nothing** decodes. Reach is not the issue — DICT_4X4/5X5/6X6 give 7.5/6.4/5.6 px/module at 1080p. |
 
 `BoardSpec.LoadsTheShippedConfig` asserts all of these. **It is meant to fail
@@ -375,7 +375,7 @@ rather than letting auto-arrange decide.
 
 **ARRIVED 2026-08-28:** ChArUco board, 324 × 324 mm, 8 × 8 @ 38 mm. Decode
 verified on a real capture — ids 0–31 under `DICT_5X5_250`, measured reach
-1.85 m (`261722073945`) / 1.84 m (`261822074567`) at 1920 × 1080. The square
+1.82 m (`261722073945`) / 1.81 m (`261822074567`) at 1920 × 1080. The square
 length is still `[VERIFY]`: span as many squares as the callipers reach and
 divide by that count — 3 squares (114 mm) with the 150 mm callipers below.
 Capture

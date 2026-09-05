@@ -27,10 +27,14 @@ every downstream number if it is wrong.
 | 0.2 square count | **8 × 8 confirmed** — `calibrate aim` resolved 49 corners on both cameras, and 7 × 7 = 49 is exactly an 8 × 8 board |
 | 0.3 board thickness | **7.1 mm** — now `T_world_board` z, so world z = 0 is the tabletop rather than the printed surface |
 | 0.4 dictionary | **`DICT_5X5_250` confirmed** — a mismatch decodes nothing, and markers decoded |
+| — marker length | **28.0 mm** — ratio 0.7364, not the assumed 0.75 |
 
-`marker_length_m` is the one value still `[VERIFY]`: 28.519 mm **derived** from
-the measured square under uniform print scale, not measured. Low stakes — the
-chessboard corners carry the solve — but callipers on a marker would close it.
+**Phase 0 is fully closed** — `marker_length_m` measured at **28.0 mm**, so the
+ratio is 0.7364 and the board is a 38/28 design, not the 38/28.5 the config
+assumed sight-unseen. A derivation from the "usual 0.75 ratio" gave 28.519 and
+was wrong by 1.8%; the callipers were worth taking. Decode reach drops with it,
+from 1.85/1.84 m to **1.82/1.81 m** — still over 2× the 0.884 m far corner, but
+the margin is 2.05× rather than comfortable.
 
 | # | Measure | Into | Why it cannot be skipped |
 |---|---|---|---|
@@ -128,7 +132,7 @@ you that, and it is the value that scales every distance in the system.
 board lies flat and the cameras are oblique, so its far corner sits 884 mm away.
 At 848 × 480 that is 2.8 px/module against a ~3 px/module decode floor — the
 board returns *zero corners from images that look perfectly good*. At 1080p the
-measured reach is 1.85 m (`261722073945`) and 1.84 m (`261822074567`). The
+measured reach is 1.82 m (`261722073945`) and 1.81 m (`261822074567`). The
 recovered camera pose is resolution-independent, so 1080p captures stay valid
 while the pipeline streams 848 × 480.
 

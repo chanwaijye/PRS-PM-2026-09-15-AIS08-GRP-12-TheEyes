@@ -22,7 +22,7 @@ board:
   #
   #     848 x 480    fx  603    2.8 px/module   FAILS   (reach 0.82 m)
   #     1280 x 720   fx  905    4.2 px/module   ok      (reach 1.23 m)
-  #     1920 x 1080  fx 1358    6.3 px/module   good    (reach 1.84 m)
+  #     1920 x 1080  fx 1358    6.1 px/module   good    (reach 1.81 m)
   #
   # So this board REQUIRES calibration captures at 1920x1080. That is not a
   # workaround: the recovered camera POSE is resolution-independent (same
@@ -46,20 +46,17 @@ board:
   #                    routinely drift, and worth carrying because this value
   #                    scales every distance in the system while every
   #                    reprojection error stays small.
-  #   marker_length_m  [VERIFY] DERIVED, not measured. The board is one printed
-  #                    image, so the +0.066% scale applies to the markers too:
-  #                    0.75 * 38.025 = 28.519 mm. Strictly better than 28.5,
-  #                    which now assumes a scale factor of exactly 1.0 that the
-  #                    square measurement has disproved -- but callipers on a
-  #                    marker would close it properly. Low stakes either way: the
-  #                    chessboard corners carry the solve, and marker length only
-  #                    feeds decode reach and marker identification.
+  #   marker_length_m  MEASURED: 28.0 mm. The ratio is therefore
+  #                    28.0 / 38.025 = 0.7364, NOT the 0.75 this config assumed
+  #                    before the board was in hand -- so the board is a 38/28
+  #                    design, not 38/28.5. A derivation from 0.75 gave 28.519
+  #                    and was wrong by 1.8%; the callipers were worth taking.
   #   dictionary       DICT_5X5_250. CONFIRMED by the fact that markers decoded
   #                    at all -- a mismatch decodes NOTHING.
   squares_x: 8
   squares_y: 8
   square_length_m: 0.038025
-  marker_length_m: 0.028519
+  marker_length_m: 0.028
   dictionary: "DICT_5X5_250"
 
 world:

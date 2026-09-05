@@ -50,12 +50,12 @@ Against the measured factory colour intrinsics:
 
 | capture | fx | px/module @ 0.884 m | reach | |
 |---|---|---|---|---|
-| 848 × 480 (streaming) | 603.43 | 2.8 | 0.82 m | fails |
-| 1280 × 720 | 905.15 | 4.2 | 1.23 m | ok |
-| **1920 × 1080** | **1357.72** | **6.3** | **1.84 m** | 2× margin |
+| 848 × 480 (streaming) | 603.43 | 2.7 | 0.80 m | fails |
+| 1280 × 720 | 905.15 | 4.1 | 1.21 m | ok |
+| **1920 × 1080** | **1357.72** | **6.1** | **1.81 m** | 2.05× margin |
 
-Measured reach at 1920 × 1080 on this rig: **1.85 m** (`261722073945`) and
-**1.84 m** (`261822074567`).
+Measured reach at 1920 × 1080 on this rig: **1.82 m** (`261722073945`) and
+**1.81 m** (`261822074567`), against a 0.884 m far corner.
 
 The recovered camera *pose* is resolution-independent — same projection centre,
 differently sampled — so captures taken at 1080p stay valid while the pipeline

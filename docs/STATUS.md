@@ -270,7 +270,7 @@ solved locally, and that needs one shared view rather than a 40-view sweep.
 The board lies flat and the cameras are oblique at 35°, so its far corner sits
 884 mm away, and a `DICT_5X5` marker stops decoding below ~3 px/module: 848 × 480
 gives 2.8 px/module and reach 0.82 m, i.e. it fails. 1920 × 1080 gives 6.3 and a
-measured reach of 1.85 m / 1.84 m. The recovered pose is resolution-independent,
+measured reach of 1.82 m / 1.81 m. The recovered pose is resolution-independent,
 so 1080p captures stay valid while the pipeline streams 848 × 480 — that is what
 `run --factory` is for. Measure the square length with callipers (span as many squares as they reach,
 divide by that count) and put the real number in `config/calibration.yaml`.

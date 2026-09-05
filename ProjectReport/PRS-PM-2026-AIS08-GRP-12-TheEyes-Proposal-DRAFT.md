@@ -432,7 +432,7 @@ the board on the table, 884 mm** away at 35° elevation:
 |---|---|---|---|
 | 848 × 480 (streaming) | 603.43 | 2.8 — fails | 0.82 m |
 | 1280 × 720 | 905.15 | 4.2 | 1.23 m |
-| **1920 × 1080** | **1357.72** | **6.3** | **1.84 m** |
+| **1920 × 1080** | **1357.72** | **6.1** | **1.81 m** |
 
 Calibration is therefore captured at 1920 × 1080 while the pipeline streams
 848 × 480. This is not a workaround for an undersized board: the recovered
@@ -462,7 +462,7 @@ dataset-size ablation has run and is reported below.
 **No delivery gates anything any more.** The inter-camera sync cable arrived and
 was verified on 2026-08-27; the ChArUco board arrived on 2026-08-28 and was
 decode-verified against a real capture (ids 0–31 under `DICT_5X5_250`, measured
-reach 1.85 m / 1.84 m per unit at 1920 × 1080). Isaac Sim 5.1.0 is installed and
+reach 1.82 m / 1.81 m per unit at 1920 × 1080). Isaac Sim 5.1.0 is installed and
 the Replicator script has been run and debugged. Object meshes were acquired on
 2026-09-04.
 
