@@ -77,6 +77,11 @@ the lighting and the operator have all moved.
 ```bash
 build/calibration/calibrate aim config/cameras.yaml config/calibration.yaml
 # q or ESC to quit. Writes nothing.
+
+# No display? The tripods occupy the seat position, so this is the SSH path:
+build/calibration/calibrate aim config/cameras.yaml config/calibration.yaml \
+    --frames 5 --save /tmp/aim.png
+# prints the counts per frame and writes the same composed view as a PNG
 ```
 
 It shows both colour streams side by side at the **same colour-only 1080p
@@ -96,6 +101,13 @@ re-check the banner: tightening a ball head usually moves it.
 
 Leave it running while you tape the tabletop; it costs nothing and it will tell
 you if you knock something.
+
+**Verified on hardware 2026-09-05** against both units on a bench setup — not the
+mounted rig — with the physical board in view of both cameras: **49 / 49 corners
+per camera, 49 shared**. An 8 × 8 ChArUco board has 7 × 7 = 49 interior corners,
+so full detection on both views also confirms `squares_x/y: 8` matches the panel
+(Phase 0.2). The square *length* is still `[VERIFY]` — corner count cannot tell
+you that, and it is the value that scales every distance in the system.
 
 ---
 

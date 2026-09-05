@@ -103,6 +103,8 @@ meaningless pass.
 #    Use it BEFORE tightening the tripods -- the bottom banner is the shared
 #    corner count, which is what extrinsics actually depend on.
 build/calibration/calibrate aim config/cameras.yaml config/calibration.yaml
+#    --frames n --save <png> runs headless and writes the composed view instead
+#    of opening a window, for driving the rig over SSH.
 
 # 1. sweep: board handheld, varied distance and tilt. ENTER shoots, q finishes.
 build/calibration/calibrate capture config/cameras.yaml config/calibration.yaml captures

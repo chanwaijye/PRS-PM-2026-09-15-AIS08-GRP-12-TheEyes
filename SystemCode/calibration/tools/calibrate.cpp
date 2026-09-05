@@ -400,7 +400,13 @@ bool CapturePair(std::vector<CaptureCamera>& cameras, const CharucoDetector& det
 //
 // Deliberately NOT a capture path -- it writes nothing. Same colour-only 1080p
 // profile as `capture`, so what you aim at is what you will shoot.
-int RunAim(const std::string& cameras_path, const std::string& config_path) {
+// `save_path` writes the composed view instead of opening a window, and
+// `frames` bounds the loop. Both exist because the tripods occupy the seat
+// position during capture (docs/RIG_BOM.md §A), so aiming is often driven over
+// SSH with no display -- and because a tool that cannot run without a GUI cannot
+// be tested without one either.
+int RunAim(const std::string& cameras_path, const std::string& config_path,
+           int frames, const std::string& save_path) {
   const BoardSpec board = LoadBoardSpec(config_path);
   const QualityThresholds quality = LoadQualityThresholds(config_path);
   const CharucoDetector detector(board);
@@ -433,16 +439,19 @@ int RunAim(const std::string& cameras_path, const std::string& config_path) {
     for (CaptureCamera& entry : cameras) entry.camera->NextFrame();
   }
 
-  std::cout << "\naim: live view at 1920x1080, colour only. Nothing is written.\n"
+  const bool headless = !save_path.empty();
+  std::cout << "\naim: live view at 1920x1080, colour only. Nothing is written"
+            << (headless ? " but the snapshot.\n" : ".\n")
             << "  move the tripods until BOTH corner counts and the shared count are green\n"
-            << "  q or ESC to quit\n\n";
+            << (headless ? "  headless: writing " + save_path + "\n" : "  q or ESC to quit\n")
+            << "\n";
 
   const std::string window = "calibrate aim -- shared corners is the number that matters";
-  cv::namedWindow(window, cv::WINDOW_AUTOSIZE);
+  if (!headless) cv::namedWindow(window, cv::WINDOW_AUTOSIZE);
   const int kPanelW = 860;
   std::map<std::string, double> best_sharpness;
 
-  for (;;) {
+  for (int iteration = 0; frames <= 0 || iteration < frames; ++iteration) {
     // discard=0: latency matters more than pair simultaneity here, because
     // nothing is being measured off these frames.
     std::vector<the_eyes::camera::CameraFrame> frames = GrabPair(cameras, 0);
@@ -499,11 +508,24 @@ int RunAim(const std::string& cameras_path, const std::string& config_path) {
     cv::putText(strip, msg.str(), cv::Point(16, 48), cv::FONT_HERSHEY_SIMPLEX, 1.0, banner, 2);
     cv::vconcat(view, strip, view);
 
-    cv::imshow(window, view);
-    const int key = cv::waitKey(1);
-    if (key == 'q' || key == 27) break;
+    if (headless) {
+      // Report to the terminal too -- the whole point when there is no window.
+      std::cout << "  " << observations[0].camera_id << " " << std::setw(3)
+                << observations[0].size() << "  " << observations[1].camera_id << " "
+                << std::setw(3) << observations[1].size() << "   shared " << std::setw(3)
+                << shared.size() << "/" << quality.min_shared_corners << "  "
+                << (shared_ok ? "READY" : "NOT READY") << std::endl;
+      if (!cv::imwrite(save_path, view)) {
+        throw std::runtime_error("cannot write '" + save_path + "'");
+      }
+    } else {
+      cv::imshow(window, view);
+      const int key = cv::waitKey(1);
+      if (key == 'q' || key == 27) break;
+    }
   }
-  cv::destroyAllWindows();
+  if (!headless) cv::destroyAllWindows();
+  if (headless) std::cout << "\nwrote " << save_path << "\n";
   return EXIT_SUCCESS;
 }
 
@@ -846,7 +868,7 @@ int main(int argc, char** argv) {
   if (argc < 3 && !bare_command) {
     std::cerr << "usage:\n"
               << "  calibrate board <out.png>\n"
-              << "  calibrate aim     <cameras.yaml> <cfg>\n"
+              << "  calibrate aim     <cameras.yaml> <cfg> [--frames n] [--save <png>]\n"
               << "  calibrate capture <cameras.yaml> <cfg> <out_dir> [options]\n"
               << "  calibrate mock  <out.yaml>\n"
               << "  calibrate run   <cfg> <front_dir> <front_serial> <over_dir> "
@@ -886,10 +908,22 @@ int main(int argc, char** argv) {
 #ifdef THE_EYES_CALIBRATE_CAN_CAPTURE
     if (command == "aim") {
       if (argc < 4) {
-        std::cerr << "aim needs: <cameras.yaml> <calibration.yaml>\n";
+        std::cerr << "aim needs: <cameras.yaml> <calibration.yaml> [--frames n] "
+                     "[--save <png>]\n";
         return EXIT_FAILURE;
       }
-      return RunAim(argv[2], argv[3]);
+      int frames = 0;
+      std::string save_path;
+      for (int i = 4; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--frames" && i + 1 < argc) frames = std::stoi(argv[++i]);
+        else if (arg == "--save" && i + 1 < argc) save_path = argv[++i];
+        else {
+          std::cerr << "aim: unknown option '" << arg << "'\n";
+          return EXIT_FAILURE;
+        }
+      }
+      return RunAim(argv[2], argv[3], frames, save_path);
     }
     if (command == "capture") {
       if (argc < 5) {
