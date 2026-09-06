@@ -109,7 +109,7 @@ Tobin et al. (2017) showed that randomising textures, lighting and camera pose i
 
 ### 3.6 Related Systems & What This Project Adds
 
-Mature components are deliberately adopted, not reimplemented: Isaac ROS ships a single-view FoundationPose pipeline, and detection, calibration (OpenCV), clustering (PCL) and Kalman filtering are established tooling. No packaged solution exists for the integration this project targets — object-level fusion of two RGB-D viewpoints into one consistent world state with disagreement gating, emitting relational predicates in the exact state language of a downstream PDDL planner. Published multi-view pose fusion exists as papers, not deployable components. The posture mirrors PM1: established components at the edges, from-first-principles C++ at the integration core (★ modules, §5.2).
+Mature components are deliberately adopted, not reimplemented: Isaac ROS ships a single-view FoundationPose pipeline, and detection, calibration (OpenCV), clustering (PCL) and Kalman filtering are established tooling. No packaged solution exists for the integration this project targets — object-level fusion of two RGB-D viewpoints into one consistent world state with disagreement gating, emitting relational predicates in the exact state language of a downstream PDDL planner. Published multi-view pose fusion exists as papers, not deployable components. The posture mirrors PM1: established components at the edges, from-first-principles C++ at the integration core — cross-view association, multi-view fusion and the scene-graph bridge, marked ★ in §5.2. Those three are where an off-the-shelf library would substitute for the work being assessed, which is why they are the modules the occlusion ablation tests and the last ones cut (§1.3).
 
 ---
 
@@ -123,8 +123,6 @@ The module requires the project to develop, integrate and demonstrate at least t
 | ② | Machine learning / deep learning techniques | **Multimodal RGB-D CNN detector:** YOLOv8 with a 4-channel early-fusion input stem (RGB + aligned metric depth), transfer-learned from COCO weights with stem inflation. FoundationPose transformer-based pose refinement and scoring, itself an RGB-D multimodal network. Both deployed via ONNX Runtime / TensorRT. |
 | ③ | Hybrid / ensemble approach | Object-level multi-view fusion: two independent per-camera detection+pose estimates treated as ensemble members, fused by confidence-weighted pose averaging with outlier rejection (disagreement gating). Hybrid DL + classical estimation: learned per-view poses refined by a classical temporal filter (per-object EKF). |
 | ④ | Intelligent sensing / sense-making | Dual RGB-D sensing with extrinsic calibration; C++ scene-graph bridge converting fused poses into relational predicates (on, in, clear, occluded_from(view)); occlusion reasoning across viewpoints. |
-
-> **Note:** The multi-view fusion module and the C++ scene-graph bridge are the primary technical contributions. The fusion module is written from first principles (no off-the-shelf fusion library), demonstrating mastery of the estimation techniques rather than black-box usage.
 
 ---
 
@@ -153,7 +151,7 @@ flowchart TD
     S --> O2(["PDDL state facts<BR>→ The Planner (PM1)"])
 ```
 
-★ = primary technical contribution, implemented from first principles in C++.
+★ = written from first principles in C++; no off-the-shelf fusion or scene-graph library, per §3.6.
 
 **Frames.** Each camera reports poses in its own optical frame. `calib_agent`
 supplies `T_world_cam` per unit (`config/extrinsics.yaml`, world frame
