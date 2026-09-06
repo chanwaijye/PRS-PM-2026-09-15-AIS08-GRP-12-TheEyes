@@ -157,6 +157,7 @@ response to an ordinary desk and no accuracy number is claimed from these runs.
 | `replay`, ONNX (CPU) + **FoundationPose**, 100 pairs, 1–2 objects per view | steady state 13.9 pairs/s; total p50 53.7 ms, p95 85.8 ms, max 3859 ms (first registration); pose_agent p50 24.2 ms (cam_front, 2 tracks) / 12.4 ms (cam_over, 1 track) |
 | `live --record`, ONNX (CPU) + **FoundationPose**, 120 pairs | 8.7 pairs/s over the run including a 2.1 s registration; steady state p50 51.7 ms per pair (≈19 pairs/s), p95 78.2 ms; pose_agent p50 25.3 ms (cam_front) with p95 36.2 ms; the registration stall surfaced as `frames_dropped_since_last = 56` on the next pair and as 554 ring-trimmed frames in the pairer stats — nothing silent |
 | replay determinism, mock backends, 6-pair synthetic session, two runs | 42 of 42 logged facts identical |
+| detector on **CUDA**, replay of the cube session, 300 inferences | p50 3.60 / 3.43 ms per view, p95 4.14 / 4.08 ms; pipeline total p50 7.13 ms with the mock pose |
 | `live` on a printed 50 mm cube, fixed boxes + FoundationPose, 150 pairs | **both views fused into one object on every pair**; per-view world poses disagree by **11 mm**; fused pose sd 0.1 mm, EKF sigma 6.6 mm; `(on red_cube_01 table_01)` on all 150 pairs; 22.3 pairs/s, p50 23.6 ms per pair, pose p50 12.3 / 11.2 ms per view |
 
 Track churn is visible in the logs (`red_cube_01` … `red_cube_05` over 100
@@ -165,14 +166,44 @@ clutter at scores 0.39–0.54, each flicker is a new IoU track, and each new
 track is a new fusion object. That is a detector-on-real-data finding for the
 sim-to-real section, recorded in `detections` / `objects`, not a runner fault.
 
-**The ONNX Runtime at `~/opt/onnxruntime-linux-x64-1.29.0` is the CPU-only
-distribution** (its `lib/` has no `libonnxruntime_providers_cuda.so`), so the
-detector's `provider: cuda` has never been loadable from C++ on this box and
-every C++ detector figure so far — including `detector_parity` — is a CPU
-figure. The runner records the active provider in `runs.detector_provider`
-and warns at startup. Installing the `onnxruntime-linux-x64-gpu` package and
-pointing `THE_EYES_ONNXRUNTIME_ROOT` at it is the fix; nothing in the runner
-changes.
+### The detector runs on the GPU as of 2026-09-06
+
+Every C++ detector figure before that date was a **CPU** figure: the install at
+`~/opt/onnxruntime-linux-x64-1.29.0` is the CPU-only distribution and has no
+`libonnxruntime_providers_cuda.so`, so `provider: cuda` had never once loaded
+from C++ and `allow_cpu_fallback: true` meant it never said so beyond a
+warning. Measured on the same 150-pair session, 300 inferences each:
+
+| provider | detector p50, per view | p95 | pipeline total p50 |
+|---|---|---|---|
+| `cuda` | **3.60 / 3.43 ms** | 4.14 / 4.08 ms | **7.13 ms** |
+| `cpu` | 12.60 / 12.37 ms | 14.44 / 13.69 ms | 25.14 ms |
+
+3.5x, and it moves the detector from half the frame budget to a tenth of it.
+The two providers return the **same detections** on every frame compared:
+same classes, same counts, scores within 0.0024 and boxes within 1 px, which
+is float noise rather than a behaviour change.
+
+Reproducing the setup on this box:
+
+1. `onnxruntime-linux-x64-gpu_cuda13-1.29.0.tgz` from the ONNX Runtime v1.29.0
+   release, extracted to `~/opt/`. The **cuda13** variant, not cuda12: the
+   toolkit here is 13.3 and the provider links `libcudart.so.13`.
+2. cuDNN 9 is not installed system-wide; the copy inside the venv
+   (`nvidia/cudnn/lib/`) is symlinked into that distribution's `lib/`,
+   including an unversioned `libcudnn.so` because that is the name the CUDA
+   provider dlopens.
+3. `cmake -S SystemCode -B build -DTHE_EYES_ONNXRUNTIME_ROOT=<that dir> -U ORT_INCLUDE_DIR -U ORT_LIBRARY`.
+   **The `-U` matters**: `ORT_INCLUDE_DIR` and `ORT_LIBRARY` are `find_*` cache
+   entries, so changing the root alone silently keeps the old CPU install.
+
+`SystemCode/detector/CMakeLists.txt` links consumers with
+`-Wl,--disable-new-dtags` and an rpath to the ORT `lib/`. The CUDA provider
+dlopens cuDNN and carries no runpath of its own; DT_RPATH is inherited by
+dlopen across the process where DT_RUNPATH (CMake's default) is not. Without
+it the provider cannot find cuDNN, the session falls back to CPU, and the run
+reports CPU latency while looking entirely healthy — so the path is baked into
+the binary rather than left to `LD_LIBRARY_PATH` at the call site.
 
 ## Tests (`test_runtime`, 30, no hardware)
 

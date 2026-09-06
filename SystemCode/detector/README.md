@@ -66,6 +66,12 @@ boxes that spill into the padding band.
 **NMS is per class.** A bowl overlapping a bottle is two objects; class-agnostic
 NMS would silently delete one of them.
 
+**Measured on CUDA 2026-09-06: p50 3.6 ms per 848x480 frame** (RTX 5070 Ti,
+ONNX Runtime 1.29.0 `gpu_cuda13`, 300 inferences over a real capture), against
+12.6 ms on CPU. Every detector latency figure recorded before that date was a
+CPU figure — the ONNX Runtime installed until then had no CUDA provider at
+all. Setup is in `SystemCode/runtime/README.md`.
+
 **A silent CPU fallback invalidates a benchmark.** `active_provider()` reports
 what actually ran, not what was requested, and the fallback is recorded as a
 warning. `detector_parity` sets `allow_cpu_fallback=false` when a provider is

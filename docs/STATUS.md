@@ -58,10 +58,15 @@ the runtime README):
   pair (~19 pairs/s)**, p95 78 ms; 8.7 pairs/s over the whole run because the
   first registration took 2.1 s. That stall is visible as 56 dropped frames on
   the next pair, not hidden.
-- **Detector 13 ms per view on CPU.** The ONNX Runtime install is the
-  CPU-only distribution, so `provider: cuda` has never loaded from C++ and no
-  GPU detector latency exists yet. The runner flags the fallback; the fix is
-  the `-gpu` package, `[VERIFY]` once installed.
+- **Detector 3.6 ms per view on the GPU — DONE 2026-09-06.** The ONNX Runtime
+  install was the CPU-only distribution, so `provider: cuda` had never loaded
+  from C++ and every earlier C++ detector figure, `detector_parity` included,
+  was a CPU figure at ~13 ms. With the `gpu_cuda13` build installed, the same
+  150-pair session gives **p50 3.60 / 3.43 ms per view** against 12.60 / 12.37
+  on CPU, and the pipeline total falls from 25.14 ms to **7.13 ms**. Both
+  providers return the same detections (scores within 0.0024, boxes within
+  1 px). Setup and the two traps it hid — a cached `find_library` result and
+  DT_RUNPATH defeating the provider's cuDNN dlopen — are in the runtime README.
 - **Hardware-sync jitter is 0.14–1.1 ms sigma**, not 4.51 ms: with one
   grabber thread per camera the pairer sees the shutters, where
   `camera_probe`'s serial reads saw queue jitter (as its README suspected).
@@ -117,9 +122,11 @@ the runtime README):
   ("failed to set power state"); a replug fixed it. `check --live` catches it
   before a demo.
 
-Still `[VERIFY]`: GPU detector latency; end-to-end FPS with three tracked
-objects per view (R4's 9.7 FPS estimate); real ADD-S via `ablation_from_log`
-once the ArUco trays exist and a tool fills `ground_truth`.
+Still `[VERIFY]`: end-to-end FPS with three tracked objects per view (R4's
+9.7 FPS estimate) — now that the detector costs 7 ms rather than 25 ms per
+pair, FoundationPose is essentially the whole budget; real ADD-S via
+`ablation_from_log` once the ArUco trays exist and a tool fills
+`ground_truth`.
 
 ---
 

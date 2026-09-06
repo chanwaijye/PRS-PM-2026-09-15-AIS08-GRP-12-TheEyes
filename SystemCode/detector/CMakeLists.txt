@@ -47,6 +47,19 @@ if(THE_EYES_HAVE_ORT)
   target_include_directories(the_eyes_detector PUBLIC ${ORT_INCLUDE_DIR})
   target_link_libraries(the_eyes_detector PUBLIC ${ORT_LIBRARY})
   target_compile_definitions(the_eyes_detector PUBLIC THE_EYES_WITH_ONNXRUNTIME=1)
+
+  # The CUDA execution provider dlopens libcudnn.so from
+  # libonnxruntime_providers_cuda.so, which carries no RUNPATH of its own.
+  # DT_RPATH is inherited by dlopen from anywhere in the process; DT_RUNPATH
+  # (CMake's default, "new dtags") is not. Without --disable-new-dtags the
+  # provider cannot find cuDNN, the session falls back to CPU, and -- because
+  # detector.yaml allows that fallback -- the run still succeeds while quietly
+  # reporting CPU latency as if it were GPU latency. That is the one failure
+  # this project must not have, so the path is baked in rather than left to
+  # LD_LIBRARY_PATH at the call site.
+  get_filename_component(ORT_LIB_DIR "${ORT_LIBRARY}" DIRECTORY)
+  target_link_options(the_eyes_detector INTERFACE
+    "-Wl,--disable-new-dtags" "-Wl,-rpath,${ORT_LIB_DIR}")
 endif()
 
 if(THE_EYES_BUILD_TESTS)
