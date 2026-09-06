@@ -122,8 +122,9 @@ you if you knock something.
 mounted rig — with the physical board in view of both cameras: **49 / 49 corners
 per camera, 49 shared**. An 8 × 8 ChArUco board has 7 × 7 = 49 interior corners,
 so full detection on both views also confirms `squares_x/y: 8` matches the panel
-(Phase 0.2). The square *length* is still `[VERIFY]` — corner count cannot tell
-you that, and it is the value that scales every distance in the system.
+(Phase 0.2). The square *length* was callipered separately (Phase 0.1) — corner
+count cannot tell you that, and it is the value that scales every distance in
+the system.
 
 ---
 
@@ -250,10 +251,31 @@ the table and reported PASS.
 
 ## Phase 5 — after
 
-- [ ] Commit `config/extrinsics.yaml`. Note the registration RMSE it carries:
+- [x] Commit `config/extrinsics.yaml`. Note the registration RMSE it carries:
       that value becomes fusion's own gate, so it must be real.
 - [ ] Leave the tabletop tape in place.
 - [ ] Store the board flat. A curled board makes every corner wrong.
+
+### Result — 2026-09-06, the mounted rig
+
+Sweep skipped by decision: factory intrinsics, registration pair only
+(`captures/*/zz_register.png`, kept on disk, not in git).
+
+| | cam_front `261722073945` | cam_over `261822074567` | gate |
+|---|---|---|---|
+| registration RMSE | **0.393 px** | **0.326 px** | < 0.50 |
+| corners on the registration frame | 48 | 49 | ≥ 12 |
+| world position (mm) | −410, −355, +386 | +339, −402, +392 | BOM ±369, −439, +402 |
+| elevation / azimuth | 34.8° / +49.5° | 37.4° / −38.6° | 35° / ±40° |
+
+Round trip over **48 shared corners: mean 0.10 mm, p95 0.19 mm, max 0.76 mm**
+against the 5 mm gate. Camera spacing 0.750 m (BOM 0.737), optical axes 82°
+apart, both cameras above the table looking down. `RESULT: PASS`, exit 0,
+re-run from the same captures reproduces the file byte-for-byte.
+
+The rig sits ~0.66 m from the workspace centre rather than the planned 0.70 m
+and cam_front is ~10° wider in azimuth than the BOM — real, not a problem, and
+it is what the tape measure should agree with.
 
 ### Re-registration, every session after this one
 

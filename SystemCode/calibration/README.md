@@ -35,11 +35,12 @@ distortion coefficients recovered to ±0.02.
 a 324 × 324 mm panel. Arrived 2026-08-28.
 
 Confirmed on the physical board, from a real capture: markers decode under
-`DICT_5X5_250` with ids 0–31, i.e. 32 markers, i.e. 8 × 8 squares. **The square
-length is still `[VERIFY]`** — span as many squares as the callipers reach and
-divide by that count, never one square. The BOM's 150 mm callipers reach 3
-squares (114 mm); eight would need a 305 mm tool. That value scales every distance in the system while every
-reprojection error stays small.
+`DICT_5X5_250` with ids 0–31, i.e. 32 markers, i.e. 8 × 8 squares. **Square
+length callipered 2026-09-05 at 38.025 mm** (four squares read 152.1 mm; span
+as many squares as the tool reaches and divide, never measure one), marker
+length 28.0 mm, panel 7.1 mm thick. The square length scales every distance in
+the system while every reprojection error stays small, which is why it was
+measured rather than taken from the order.
 
 ### It only decodes at 1920 × 1080 — capture there
 
@@ -240,10 +241,10 @@ guards it.
 | Criterion (`AGENTS.md` §2) | Status |
 |---|---|
 | Mock mode: synthetic observations recover known extrinsics | **Met** |
-| Reprojection RMSE < 0.5 px | **Met in mock** — 0.00 px noiseless, < 0.5 px at 0.2 px corner noise. Real capture pending |
-| Round-trip: a point seen by both maps to the same world coordinate | **Met in mock** — and shown to catch an error per-camera RMSE cannot see |
+| Reprojection RMSE < 0.5 px | **Met on the rig 2026-09-06** — registration RMSE 0.393 px / 0.326 px with factory intrinsics. Mock: 0.00 px noiseless, < 0.5 px at 0.2 px corner noise |
+| Round-trip: a point seen by both maps to the same world coordinate | **Met on the rig 2026-09-06** — 48 shared corners, mean 0.10 mm / p95 0.19 mm / max 0.76 mm against 5 mm. Mock: shown to catch an error per-camera RMSE cannot see |
 | Output is loadable by fusion | **Met** — `integration/test_calibration_contract.cpp` writes with calib and reads with fusion, including the failing-calibration path |
-| Calibration run after final rigid mounting; re-run documented | **Documented** here and in the generated file's header. **Not yet done** — the rig is not mounted |
+| Calibration run after final rigid mounting; re-run documented | **Done 2026-09-06** on the mounted rig, `docs/CALIBRATION_PROTOCOL.md` Phase 5 has the numbers. Re-run and re-registration documented here and in the generated file's header |
 
 ## Session re-registration
 

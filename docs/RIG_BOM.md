@@ -375,11 +375,11 @@ rather than letting auto-arrange decide.
 
 **ARRIVED 2026-08-28:** ChArUco board, 324 × 324 mm, 8 × 8 @ 38 mm. Decode
 verified on a real capture — ids 0–31 under `DICT_5X5_250`, measured reach
-1.82 m (`261722073945`) / 1.81 m (`261822074567`) at 1920 × 1080. The square
-length is still `[VERIFY]`: span as many squares as the callipers reach and
-divide by that count — 3 squares (114 mm) with the 150 mm callipers below.
-Capture
-calibration at 1920 × 1080 — see §D.
+1.82 m (`261722073945`) / 1.81 m (`261822074567`) at 1920 × 1080. Square
+length callipered 2026-09-05 at **38.025 mm** (four squares, 152.1 mm), marker
+28.0 mm, panel 7.1 mm. Calibrated on the mounted rig 2026-09-06 — see
+`docs/CALIBRATION_PROTOCOL.md` Phase 5. Capture calibration at 1920 × 1080 —
+see §D.
 
 **Now (cheap, blocks the build):** tabletop mat 1180 × 440 mm matte mid-grey,
 **digital calipers**, masking + gaffer tape.
