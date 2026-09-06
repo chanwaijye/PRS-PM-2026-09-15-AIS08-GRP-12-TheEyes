@@ -37,14 +37,9 @@ The system perceives a tabletop manipulation scene containing up to 6 rigid obje
 
 ### 1.3 Minimum Viable Product
 
-The MVP is the minimum slice that satisfies every graded deliverable and all four PRS technique categories:
+The MVP is the minimum slice satisfying every graded deliverable and all four PRS technique categories: the **single-camera pipeline** on a real camera; the **second camera + multi-view fusion ★** with its occlusion ablation (§7.1), which *is* the ensemble claim ③ and is non-negotiable; the **scene-graph bridge ★** emitting PDDL init facts; and the **evaluation numbers**. Acceptance criteria for each are in §11.1.
 
-- **Single-camera pipeline** — YOLOv8 → FoundationPose → 6-DoF poses on the YCB object set, running on a real camera (not simulation only).
-- **Second camera + multi-view fusion ★** — the C++ fusion module with the occlusion ablation result (§7). Non-negotiable: this *is* the ensemble claim (③) and the headline experiment.
-- **Scene-graph bridge ★** — fused poses → relational predicates → PDDL init facts.
-- **Evaluation numbers** — detection mAP, ADD-S single-view vs. fused, predicate accuracy on the benchmark suite.
-
-Items above MVP, cut in this order under schedule pressure (cross-referenced in Risk R5): (1) Jetson Orin Nano deployment test; (2) unknown-object DBSCAN path — cutting it loses the unsupervised half of category ①, but the supervised half still satisfies it; (3) live PM1 integration demo — the interface contract remains demonstrable via logged output; (4) digital-twin reconstruction viewport (§5.5).
+Items above MVP are cut in this order under schedule pressure (Risk R5): (1) Jetson deployment test; (2) unknown-object DBSCAN path — losing the unsupervised half of category ①, though the supervised half still satisfies it; (3) live PM1 integration demo — the contract stays demonstrable via logged output; (4) digital-twin viewport (§5.5).
 
 ---
 
@@ -54,7 +49,15 @@ Items above MVP, cut in this order under schedule pressure (cross-referenced in 
 
 Industrial pick-and-place deployments spend a disproportionate share of engineering effort on perception, not motion. Structured environments sidestep the problem with fixtures, presenters, and barcodes — at high capital cost and zero flexibility. Unstructured bin-picking and tabletop manipulation require the robot to answer three questions continuously: *what* objects are present, *where* are they (full 6-DoF, not just 2D), and *how do they relate* (which object is on top, which is blocked)?
 
-Single-camera systems fail predictably under occlusion: a mug behind a cereal box is invisible from the front and its pose unrecoverable. Multi-view sensing solves this geometrically, but fusing independent per-view estimates into one consistent world state is a non-trivial pattern recognition problem — and it is the core technical contribution of this project.
+Single-camera systems fail predictably under occlusion: a mug behind a cereal box is invisible from the front and its pose unrecoverable. Multi-view sensing solves the *visibility* problem geometrically — at least one viewpoint usually retains line of sight — but it does not solve the perception problem, and it creates two new ones.
+
+**The problem this project solves is turning two disagreeing views into one usable world state.** Two cameras looking at the same table produce two independent estimates per object, and those estimates conflict: measurably so, at 11 mm of inter-view translation disagreement on a real printed cube in this rig's own first end-to-end run (§7A). A system must therefore answer three questions that a single camera never poses:
+
+1. **Association** — which detection in view A is the same physical object as which in view B, when per-view pose error is large enough that nearest-neighbour matching can pair the wrong instances.
+2. **Arbitration** — when two views disagree, is this ordinary noise to be averaged, or is one view confidently wrong and to be rejected? With only two cameras there is no majority to appeal to.
+3. **Symbolisation** — a continuous 6-DoF pose is not a plan input. `on`, `in` and `clear` are, and deriving them from noisy geometry is where a millimetre of pose error becomes a wrong fact: a pose a centimetre low puts an object *inside* a 20 mm table slab, and the planner then reasons about a scene that does not exist.
+
+Answering those three is the technical contribution. The occlusion ablation (§7.1) is the experiment that tests whether the answer works.
 
 ### 2.2 Relationship to Prior and Future Modules
 
@@ -102,11 +105,11 @@ Scene graphs represent a scene as objects (nodes) and spatial/semantic relations
 
 ### 3.5 Synthetic Data & Domain Randomisation
 
-Tobin et al. (2017) showed that randomising textures, lighting, and camera pose in simulation forces networks to learn transferable features, enabling sim-to-real transfer without real training labels. Omniverse Replicator operationalises this with automatically generated bounding boxes, segmentation masks, and ground-truth poses. The sim-to-real evaluation in this project directly measures how well this transfer holds for the chosen object set.
+Tobin et al. (2017) showed that randomising textures, lighting and camera pose in simulation forces networks to learn transferable features, enabling sim-to-real transfer without real labels. Omniverse Replicator operationalises this with automatically generated boxes, masks and ground-truth poses. §6.2 notes a limitation specific to this project: with all three classes printed and rendered in their own filament, the appearance axis of that randomisation is largely bypassed, so the measured gap tests geometry and sensing rather than appearance transfer.
 
 ### 3.6 Related Systems & What This Project Adds
 
-Mature components are deliberately adopted, not reimplemented: NVIDIA Isaac ROS already ships a single-view FoundationPose inference pipeline, and detection, calibration (OpenCV), clustering (PCL), and Kalman filtering are all established tooling. No packaged solution exists, however, for the integration this project targets: object-level fusion of two RGB-D viewpoints into a single consistent world state with disagreement gating, emitting symbolic relational predicates in the exact state language of a downstream PDDL planner. Published multi-view pose fusion work exists as research papers, not deployable components. The contribution posture mirrors PM1: established components at the edges, from-first-principles C++ at the integration core (★ modules, §5.2) — demonstrating technique mastery rather than black-box assembly.
+Mature components are deliberately adopted, not reimplemented: Isaac ROS ships a single-view FoundationPose pipeline, and detection, calibration (OpenCV), clustering (PCL) and Kalman filtering are established tooling. No packaged solution exists for the integration this project targets — object-level fusion of two RGB-D viewpoints into one consistent world state with disagreement gating, emitting relational predicates in the exact state language of a downstream PDDL planner. Published multi-view pose fusion exists as papers, not deployable components. The posture mirrors PM1: established components at the edges, from-first-principles C++ at the integration core (★ modules, §5.2).
 
 ---
 
@@ -139,7 +142,9 @@ flowchart TD
 
     C1 -. residual point cloud .-> U["Unsupervised Clustering<BR>unknown-object segmentation"]
 
-    P1 & P2 --> F["Multi-View Fusion ★<BR>confidence-weighted pose fusion<BR>+ per-object EKF (C++)"]
+    P1 & P2 --> W["World-Frame Lift<BR>T_world_cam per unit"]
+    W --> A["Cross-View Association ★<BR>which detection is which object<BR>(C++)"]
+    A --> F["Multi-View Fusion ★<BR>disagreement gate + confidence<BR>weighting + per-object EKF (C++)"]
     U --> F
 
     F --> S["Scene-Graph Bridge ★<BR>poses → relational predicates<BR>(C++)"]
@@ -150,6 +155,14 @@ flowchart TD
 
 ★ = primary technical contribution, implemented from first principles in C++.
 
+**Frames.** Each camera reports poses in its own optical frame. `calib_agent`
+supplies `T_world_cam` per unit (`config/extrinsics.yaml`, world frame
+`table_origin`), and fusion lifts every per-view estimate into `table_origin`
+*before* association, so association distances and the disagreement gate are
+both metric world-frame quantities. Fusion refuses to start if any camera's
+reprojection RMSE exceeds 0.5 px, because bad extrinsics poison every fused pose
+while leaving each one self-consistent.
+
 ### 5.2 Component Specifications
 
 | Component | Role | Technology | Implementation Detail |
@@ -157,25 +170,46 @@ flowchart TD
 | Detector (×2) | Per-view object detection, ROI gating | YOLOv8, RGB-D 4-channel early fusion, fine-tuned | Python training / ONNX Runtime or TensorRT inference. Trained on Replicator synthetic data (RGB + depth + labels rendered together) with domain randomisation. Depth channel initialised by inflating COCO stem weights. |
 | Pose Estimator (×2) | Per-view 6-DoF pose from RGB-D + CAD mesh | FoundationPose | PyTorch checkpoints on sm_120 — upstream FoundationPose uses no TensorRT (R1 retired). Runs out-of-process as an inference service behind a byte protocol, keeping all runtime logic in C++17. |
 | Unknown-Object Segmenter | Cluster residual depth points not explained by detected objects | Euclidean clustering / DBSCAN (PCL) | C++. Flags unknown_object nodes in the scene graph with centroid + bounding volume. |
-| Multi-View Fusion ★ | Fuse per-view poses into single world-frame estimate per object | Custom C++ | Extrinsic transform to world frame; quaternion averaging (Markley eigendecomposition); confidence weighting from FoundationPose scores; disagreement gate rejects outlier views; per-object EKF for temporal smoothing. |
+| **Cross-view association ★** | Decide which detection in view A is the same physical object as which in view B | Custom C++ | Runs *before* any averaging and is the precondition for it. Per-view poses are lifted to the world frame, then greedy nearest-neighbour within a class under a 150 mm radius, with the constraint that a cluster holds **at most one estimate per camera** — two detections from one view are by definition two instances. Association order is made deterministic by sorting, so ablation arms differ in fusion policy and never in association. |
+| Multi-View Fusion ★ | Fuse an associated cluster into a single world-frame estimate | Custom C++ | Quaternion averaging (Markley eigendecomposition); confidence weighting from FoundationPose scores; a 50 mm / 30° disagreement gate rejects outlier views; per-object EKF (constant-velocity position, orientation random walk) for temporal smoothing, with measurement noise scaled by 1/confidence. |
 | Scene-Graph Bridge ★ | Convert fused poses into symbolic relational predicates | Custom C++ | Geometric rules over object bounding volumes: on(a,b), in(a,b), clear(a), occluded_from(a, view). Emits scene graph JSON + PDDL init facts. |
 | Calibration Suite | Intrinsics + stereo extrinsics + world-frame registration | OpenCV (ChArUco board) | One-time offline; validated by reprojection error report. |
 
 ### 5.3 Interface Contract (PM1 / PM4 consumers)
 
 ```cpp
-// Scene graph output — consumed by The Planner (PM1) and MANIP-WM (PM4)
+// Scene graph output — consumed by The Planner (PM1) and MANIP-WM (PM4).
+// Normative definition: INTERFACES.md §3.
 struct ObjectState {
-  std::string id;            // "red_cube_01"
-  std::string cls;           // YOLO class or "unknown_object"
-  Eigen::Isometry3d pose_w;  // fused 6-DoF pose, world frame
-  double confidence;         // fused confidence [0,1]
-  std::vector<std::string> relations;  // "on(table)", "clear", ...
-  uint32_t visible_views;    // bitmask: which cameras see it
+  std::string id;              // stable instance id, e.g. "red_cube_01"
+  std::string cls;             // YOLO class, or "unknown_object"
+  Eigen::Isometry3d pose_w;    // fused 6-DoF pose, world frame
+  double confidence;           // fused confidence [0,1]
+  std::vector<std::string> relations;  // filled by scenegraph, empty from fusion
+  uint32_t visible_views;      // bitmask: bit0 = cam_front, bit1 = cam_over
+  Eigen::Vector3d extent;      // bounding volume half-extents (world-axis-aligned)
+  uint64_t stamp_ns;           // fusion output time
+
+  // Belief, not just an estimate. ADDITIVE.
+  double position_sigma_m;         // 1-sigma RMS position uncertainty; <0 = absent
+  double orientation_sigma_rad;    // 1-sigma RMS orientation uncertainty; <0 = absent
+  Eigen::Vector3d velocity_w;      // world-frame linear velocity, m/s
 };
 ```
 
-Interface stability rule: fields may be added, never removed or re-typed, so PM4 can rely on this contract.
+**Interface stability rule: fields may be added, never removed or re-typed**, so
+PM4 can rely on this contract. Two consequences are already visible. First, the
+belief fields exist because PM4's world model is an RSSM over this state — a
+point estimate is not a sufficient input for it, and adding uncertainty later
+would have been legal under the rule but would have left PM1 and PM4 disagreeing
+about what a pose means. Second, `relations` is `vector<string>` and can
+therefore *never* be re-typed to an enum under this same rule; the strings are
+treated as the contract and are validated against `config/predicates.yaml`
+rather than being left free-form.
+
+`visible_views == 0` is invalid and the object is dropped rather than emitted. A
+single-view object **is** emitted, with one bit set, so a consumer can tell a
+fused pose from an unfused one and weight it accordingly.
 
 ### 5.4 Technology Stack
 
@@ -337,7 +371,19 @@ large slab of that class's colour directly beneath the object.
 
 ### 6.4 Benchmark Scenes
 
-A fixed suite of ~10 evaluation scenes graduated by difficulty: isolated objects → clutter → partial occlusion → full single-view occlusion (object visible only from the second camera). The last category is the direct test of the multi-view fusion claim.
+A fixed suite of 10 evaluation scenes in 4 difficulty tiers, recorded once and
+replayed for every ablation arm (§7.1):
+
+| Tier | Scenes | Content | What it tests |
+|---|---|---|---|
+| T1 isolated | 2 | Single object, unoccluded, both views | Per-view pose accuracy floor; the ADD-S baseline everything else is read against |
+| T2 clutter | 3 | 3 targets + 8 distractors, no target occlusion | Detection precision and association under same-palette distractors |
+| T3 partial | 3 | ≥1 target 25–75% occluded from one view | Confidence weighting: the degraded view is present but worse |
+| **T4 full** | **2** | **≥1 target <25% visible from one view** | **The multi-view claim.** Single-view arms must fail here and the fused arm must not |
+
+300 synchronised pairs per scene. T4 is the direct test of the fusion claim and
+is never cut; T1 is required to interpret it, since a fusion gain is only
+meaningful against a known single-view floor.
 
 ---
 
@@ -362,7 +408,65 @@ diameter, so they additionally require the object meshes — acquired 2026-09-04
 with diameters computed exactly rather than sampled, since a sampled diameter
 shifts every ADD-S verdict.
 
-The headline experiment is the **occlusion ablation**: identical scenes evaluated with camera 1 only, camera 2 only, and fused — demonstrating that fusion recovers objects invisible to a single view.
+### 7.1 Test setup for the headline experiment
+
+The headline experiment is the **occlusion ablation**: identical captures scored
+with camera 1 only, camera 2 only, and fused, testing whether fusion recovers
+objects a single view cannot resolve. Because it is the project's entire
+technical claim, its protocol is fixed here rather than decided after seeing the
+data.
+
+**Capture protocol.** 10 benchmark scenes (§6.4), 4 graded difficulty tiers,
+**300 synchronised pairs per scene** recorded once and replayed — not re-captured
+— for every arm. This is what makes the comparison sound: `the_eyes_run replay`
+is bit-exact, so all arms see byte-identical input and any difference is
+attributable to the fusion path alone. Scenes hold 3 target objects; the
+occlusion tier stages at least one object fully occluded from one camera.
+
+**Occlusion is measured, not asserted.** A target counts as occluded from a view
+when the visible fraction of its projected silhouette falls below 25%, computed
+from the ArUco-derived ground-truth pose and the object mesh — the same
+tight-versus-loose ratio used to characterise the synthetic set (§7A), so the
+synthetic and real occlusion figures mean the same thing.
+
+**Arms.** The eight arms of §7A, unchanged: {cam_front, cam_over, naive, gated} ×
+{raw, EKF}. Views, fusion policy and temporal filter each vary independently, so
+no reported delta confounds two changes.
+
+**Deciding whether a difference is real.** Three thresholds are set in advance:
+
+| Source of error | Magnitude | Consequence |
+|---|---|---|
+| Ground truth (socket clearance, §6.3) | ≤ 0.23 mm | Negligible; cannot move a verdict |
+| Depth sensor at working distance (§7A) | 2–4 mm | **The floor.** A fused ADD-S at or below this is sensor noise, not algorithm quality |
+| Calibration residual | 0.39 / 0.33 px RMSE | Enters as a fixed world-frame bias, not scatter |
+
+ADD-S is reported as **mean with a 95% bootstrap confidence interval over
+scenes** (resampling scenes, not frames — frames within a scene are strongly
+correlated by the EKF and treating them as independent would understate the
+interval by roughly the track length). A single-view-versus-fused difference is
+reported as a result only if the interval excludes zero *and* the difference
+exceeds the 2–4 mm sensor floor. Differences below the floor are reported as
+"not resolvable on this rig", which is a finding about the measurement, not a
+result about fusion.
+
+**The negative outcome is specified too.** If the gated policy does not beat
+`naive` on real captures, the reportable conclusion is that at this rig geometry
+FoundationPose does not produce confidently-wrong views often enough for the gate
+to pay, and the second camera's measured value is recall under occlusion while
+the EKF's is accuracy. That is a result, and §7A already states the mechanism
+that would explain it. It is recorded here in advance so the conclusion cannot be
+chosen after seeing the numbers.
+
+**Predicate accuracy** is scored against hand-labelled relations on the same 10
+scenes, reported per predicate rather than pooled, since `on` is common and `in`
+is rare and a pooled figure would hide a broken `in` rule — as one currently is:
+`(in red_cube_01 table_01)` was emitted 26 times in a live run because the rule
+tests centroid containment and volume ratio and a slab is not a container. A
+container flag is required before this metric is scored.
+
+All arms are computed by `ablation_from_log` from the SQLite metrics each run
+writes, so every number in the report regenerates from a recorded session.
 
 ---
 
@@ -373,27 +477,23 @@ Reported from actual runs; nothing in this table is projected. Figures marked
 
 | Module | State | Evidence |
 |---|---|---|
-| `camera` | Built, **verified on hardware** | Both D435i at 30.0 fps each, 848×480 aligned; hardware-synced pair jitter **0.14–1.1 ms sigma** against a 33 ms budget; selection by serial survived four replugs across controllers; depth noise 2–4 mm at working distance |
-| `calibration` | Built, **run on the real rig 2026-09-06** | Real extrinsics committed to `config/extrinsics.yaml`: reprojection RMSE **0.39 px** (cam_front) / **0.33 px** (cam_over). Round-trip check catches a 2 cm misregistration that per-camera RMSE cannot see. **Session re-registration added** (below) |
-| `detector` | Built, **trained and deployed** | Trained on `synth50k_v2` (40 epochs), exported to ONNX, C++/Python parity re-verified against the trained network. On the GPU: **p50 3.60 / 3.43 ms per view** (12.60 / 12.37 on CPU), same detections either provider. Modality ablation run — negative result, below |
+| `camera` | Built, **verified on hardware** | Both D435i at 30.0 fps, 848×480 aligned; hardware-synced pair jitter **0.14–1.1 ms sigma** (33 ms budget); selection by serial survived four replugs |
+| `calibration` | Built, **run on the real rig 2026-09-06** | Real extrinsics committed: reprojection RMSE **0.39 / 0.33 px**. Round-trip check catches a 2 cm misregistration per-camera RMSE cannot see |
+| `detector` | Built, **trained and deployed** | `synth50k_v2`, 40 epochs, ONNX, C++/Python parity re-verified. GPU **p50 3.60 / 3.43 ms per view** (12.60 / 12.37 CPU), same detections either provider |
 | `pose` | Built, **verified end-to-end** | Drives the real FoundationPose server: 30/30 frames, p50 11.1 ms end to end |
-| `fusion` ★ | Built, **first real-object run 2026-09-06** | Eight-arm ablation harness (below, *synthetic*). On 150 live pairs of a printed cube both views associated and fused every pair, `visible_views = 0b11`, 0 gate rejections, per-view disagreement 11 mm |
+| `fusion` ★ | Built, **first real-object run 2026-09-06** | Eight-arm ablation harness (below, *synthetic*). 150 live pairs of a printed cube: both views fused on every pair, 0 gate rejections, per-view disagreement 11 mm |
 | `scenegraph` ★ | Built | Emits PDDL `(:init …)`; contract-tested against fusion |
-| `runtime` | **Built and run on hardware 2026-09-06** | `the_eyes_run check / live / replay`: cameras by serial → RGB-D YOLOv8 → FoundationPose → fusion → scenegraph → PDDL in one C++ process. Live with the real pose server: **p50 51.7 ms per pair**, p95 78 ms. Bit-exact record/replay, SQLite metrics per pair |
+| `runtime` | **Built and run on hardware 2026-09-06** | Whole chain in one C++ process, live with the real pose server: **p50 51.7 ms per pair**, p95 78 ms. Bit-exact record/replay, SQLite metrics per pair |
 | `clustering`, `twin` | Not started | Above MVP; documented cut order |
 | object meshes | **Acquired** | All three classes present, re-centred, config tied to geometry by test (§6.2) |
 
-**336 automated tests pass** across eight suites, covering all six modules plus
-cross-module contract tests, under `-Wall -Wextra -Wpedantic`. Every module runs
-in a mock mode with no hardware, and the project is under version control with
-its full history.
+**336 automated tests pass** across eight suites under `-Wall -Wextra
+-Wpedantic`; every module has a mock mode needing no hardware.
 
-Headline ablation, through the real module chain on *synthetic* input
-(200 frames, 3 objects, 10 mm/axis Gaussian per-view noise, two objects
-occluded from `cam_over` on 3 of 4 frames). Eight arms: which **views** (one
-camera or both), which **policy** (naive unweighted mean, or the gated,
-confidence-weighted, symmetry-aware fuse) and whether the per-object **EKF** is
-applied, each varied on its own:
+Headline ablation through the real module chain on *synthetic* input (200
+frames, 3 objects, 10 mm/axis Gaussian per-view noise, two objects occluded from
+`cam_over` on 3 of 4 frames). Views, policy (naive mean vs. gated
+confidence-weighted fuse) and EKF each vary independently:
 
 | arm | views | policy | filter | ADD-S (mm) | ADD-S (/diam) | recall @0.1d | missed |
 |---|---|---|---|---|---|---|---|
@@ -417,36 +517,27 @@ this module is graded on — is `gated − naive` at the raw tier and
 **That zero is correct, and it is why the design has eight arms rather than
 four.** Under symmetric Gaussian noise with no outliers the gate has nothing to
 reject and equal per-view scores make the weighted mean the plain mean, so the
-policy *cannot* win here; a harness that showed it winning would be measuring
-something else — most likely the EKF's temporal averaging credited to the
-spatial policy. The filter is therefore an independent switch in `FusionConfig`,
-and `Ablation.TheFilterAndThePolicyAreNotConfounded` asserts that the policy
-delta is zero and the filter delta is large on this input, so that confound
-cannot appear unnoticed.
+policy *cannot* win here; a harness showing it win would be measuring something
+else — most likely the EKF's temporal averaging credited to the spatial policy.
+The filter is therefore an independent switch in `FusionConfig`, and
+`Ablation.TheFilterAndThePolicyAreNotConfounded` pins the policy delta at zero
+and the filter delta large on this input, so that confound cannot return
+unnoticed. `naive` shares the world-frame lift, the association and the
+quaternion averaging with `gated` and differs only in gate, weighting and
+symmetry handling — anything else would manufacture a difference rather than
+measure one.
 
-Where the policy does earn its place is a **confidently wrong view** — a bias
-rather than noise, which no amount of temporal averaging removes.
+Where the policy earns its place is a **confidently wrong view** — a bias, which
+temporal averaging cannot remove.
 `GatedFusionBeatsTheNaiveBaselineWhenOneViewIsAnOutlier` injects an 8 cm error
-into one view and asserts the gated arm beats the naive arm at *both* filter
-tiers. Whether FoundationPose produces such views at this rig geometry, and how
-often, is exactly what the real-capture ablation will measure. If it rarely
-does, the honest result is that on this rig the second camera buys recall under
-occlusion, the EKF buys accuracy, and the gate is insurance.
+into one view and asserts the gated arm wins at *both* filter tiers. Whether
+FoundationPose produces such views at this rig geometry, and how often, is what
+the real-capture ablation measures (§7.1).
 
-`naive` is the baseline a reader would reach for unprompted: both views, the
-same world-frame lift and cross-view association, then an unweighted mean with
-no gate and no symmetry case. Quaternion averaging is deliberately shared
-between both policies — at the angular separations two calibrated cameras
-produce on a static object, Markley averaging and naive coefficient-averaging
-agree well inside the per-view noise, so putting it in the baseline would
-manufacture a difference rather than measure one.
-
-Three qualifications belong with the table. The figures are *synthetic*, and
-every tool that prints them says so. `ApplyDisagreementGate`'s three-or-more-view
-majority branch cannot execute on a two-camera rig — it is unit-tested, but the
-deliverable hardware never reaches it, so the gate's real behaviour is entirely
-the two-view tie-break path. And **reproducing this table on real captures is
-the project's central claim and remains the outstanding work** (§7).
+Two qualifications: the figures are *synthetic* and every tool printing them
+says so; and `ApplyDisagreementGate`'s three-or-more-view majority branch is
+unit-tested but unreachable on a two-camera rig, so the gate's real behaviour is
+entirely the two-view tie-break path.
 
 ### Measured: rig geometry, derived rather than chosen
 
@@ -458,25 +549,19 @@ apart, at ~2.2 mm depth noise with 981 mm of horizontal coverage against a
 600 mm workspace. The workspace is a 1180 × 440 mm surface, which the two
 tripods clear by 219 mm.
 
-One consequence is load-bearing for calibration validity. The rig mounts the
-cameras on floor tripods and uses a shared desk as the table, so the tabletop
-moves relative to the cameras between sessions — invalidating every
-`T_world_cam` **silently**, because each fused pose stays perfectly
+One consequence is load-bearing for calibration validity. The cameras sit on
+floor tripods and the table is a shared desk, so the tabletop moves between
+sessions and **silently** invalidates every `T_world_cam` — each fused pose stays
 self-consistent while being wrong by a fixed offset. Only `T_world_cam` is
-affected: intrinsics are rigid to the camera body and `T_camA_camB` to the
-tripods. `calib_agent` therefore gained a **session re-registration** mode that
-re-derives world registration from one board view per camera in ~30 s rather
-than a 40-view intrinsic sweep.
-
-What makes that safe rather than dangerous is the accompanying check. If a
-*tripod* was bumped instead of the desk, re-registration is invalid and would
-otherwise write out plausible-looking garbage. The two cases separate on one
-identity: `T_camA_camB = T_world_camA⁻¹ · T_world_camB` is **invariant to the
-world frame moving**, so recomputing it and comparing against the stored
-calibration distinguishes "the table moved" (recoverable) from "a camera moved"
-(not). The tool refuses to write in the second case. On synthetic input both
-scenarios show identical 13.04 mm of world-frame motion and are separated only
-by the baseline test.
+affected; intrinsics are rigid to the camera body and `T_camA_camB` to the
+tripods. `calib_agent` therefore has a **session re-registration** mode that
+re-derives world registration from one board view per camera in ~30 s instead of
+a 40-view sweep, guarded by a check that makes it safe: `T_camA_camB =
+T_world_camA⁻¹ · T_world_camB` is invariant to the world frame moving, so
+recomputing it separates "the table moved" (recoverable) from "a camera moved"
+(not), and the tool refuses to write in the second case. On synthetic input both
+scenarios show an identical 13.04 mm of world-frame motion and are distinguished
+only by this test.
 
 ### Measured: sensor error budget
 
@@ -489,7 +574,9 @@ patch at every distance, firmware 5.17.3.10:
 | 0.7 m | 2.69 mm (0.38%) | 2.44 mm (0.35%) |
 | 1.0 m | 4.77 mm (0.48%) | 4.27 mm (0.42%) |
 
-Both units follow the expected stereo error law — `RMS ≈ 4.9·z²` mm (cam_front)
+These figures are only comparable across distances because the *physical* wall
+patch was held constant rather than the pixel ROI; the naive method over-reports
+by up to 9.7× (Appendix C.1). Both units follow the expected stereo error law — `RMS ≈ 4.9·z²` mm (cam_front)
 and `4.4·z²` mm (cam_over), power-law exponents 1.73 and 1.92 — and agree with
 each other to 9–10% at 0.7 and 1.0 m.
 
@@ -499,33 +586,10 @@ it is sensor noise rather than an algorithm deficiency, and the occlusion
 ablation must be read against it. It is also the target fidelity for the depth
 channel rendered by Replicator, on which the RGB-D detector depends.
 
-**Calibration target sizing is a resolution constraint, not a size one.** The
-ChArUco board (324 × 324 mm, 8 × 8 squares at 38 mm) carries DICT_5X5 markers,
-7 modules across, which stop decoding below ~3 px/module. Against the measured
-factory colour intrinsics the reach is `fx · marker_length / (3 · modules)`, and
-the relevant distance is not the 0.70 m standoff but the **oblique far corner of
-the board on the table, 884 mm** away at 35° elevation:
-
-| capture resolution | fx (measured) | px/module | reach |
-|---|---|---|---|
-| 848 × 480 (streaming) | 603.43 | 2.8 — fails | 0.82 m |
-| 1280 × 720 | 905.15 | 4.2 | 1.23 m |
-| **1920 × 1080** | **1357.72** | **6.1** | **1.81 m** |
-
-Calibration is therefore captured at 1920 × 1080 while the pipeline streams
-848 × 480. This is not a workaround for an undersized board: the recovered
-camera *pose* is resolution-independent, so a small, inexpensive target is
-sufficient provided the capture resolution is chosen deliberately. The tool
-reports the computed reach before running detection, because a board below the
-decode threshold returns zero corners from images that look entirely correct.
-
-**Methodological note.** Depth RMS is comparable across distances only if the
-*physical* wall patch is held constant, not the pixel ROI — a fixed pixel ROI
-spans 28 × 16 cm at 0.4 m but 70 × 40 cm at 1.0 m, and once it outgrows the flat
-surface, edges enter the plane fit and inflate the residual by up to 9.7×. The
-diagnostic is that the fitted plane's offset and the median point depth agree to
-within 1 mm when the ROI lies on the wall and diverge by 20–27 mm when it does
-not.
+Calibration is captured at 1920 × 1080 while the pipeline streams 848 × 480,
+because DICT_5X5 markers stop decoding below ~3 px/module and the binding
+distance is the board's oblique far corner at 884 mm, not the 0.70 m standoff
+(Appendix C.2).
 
 ### What is not yet measured
 
@@ -534,50 +598,30 @@ each of which requires the physical objects and a real calibration. The modality
 and dataset-size ablations have both run and are reported below — the first as a
 negative result.
 
-**No delivery gates anything any more.** The inter-camera sync cable arrived and
-was verified on 2026-08-27; the ChArUco board arrived on 2026-08-28 and was
-decode-verified against a real capture (ids 0–31 under `DICT_5X5_250`, measured
-reach 1.82 m / 1.81 m per unit at 1920 × 1080). Isaac Sim 5.1.0 is installed and
-the Replicator script has been run and debugged. Object meshes were acquired on
-2026-09-04.
+**No delivery gates anything, and the rig is calibrated.** The sync cable
+(08-27), ChArUco board (08-28, decode-verified on a real capture) and Isaac Sim
+5.1.0 are all in place, meshes acquired 09-04. On 2026-09-06 `calib_agent` ran
+against the mounted rig and the real extrinsics are committed (RMSE 0.39 / 0.33
+px), and `runtime_agent` drives the full pipeline live at p50 51.7 ms per pair.
 
-**The rig is calibrated and the whole chain has run on a real object.** As of
-2026-09-06 `calib_agent` has been run against the mounted rig and the real
-extrinsics are committed (RMSE 0.39 / 0.33 px), and `runtime_agent` drives the
-full pipeline live at p50 51.7 ms per pair. On 150 live pairs of a printed cube
-with fixed boxes standing in for the untrained-on-real-data detector, the two
-views associated and fused into a single object on **every** pair with zero gate
-rejections, the fused pose stable to 0.1 mm sd. The one checkable figure is
-height — a 50 mm cube centres at 25 mm and the fused z reads 29.7 mm, **5 mm
-high**, consistent with 2–4 mm depth noise plus calibration. *This is one
-observation, not a measurement, and it is not an ADD-S number.* It is the first
-evidence on real data that the multi-view claim holds end to end.
+**The whole chain has run on a real object.** On 150 live pairs of a printed cube
+— with fixed boxes standing in for a detector not yet trained on real data — the
+two views associated and fused into a single object on **every** pair, zero gate
+rejections, fused pose stable to 0.1 mm sd. The one checkable figure is height: a
+50 mm cube centres at 25 mm and the fused z reads 29.7 mm, **5 mm high**,
+consistent with 2–4 mm depth noise plus calibration. *This is one observation,
+not a measurement, and it is not an ADD-S number* — but it is the first evidence
+on real data that the multi-view claim holds end to end.
 
-What remains is work, not waiting, and the longest pole is now **the printed
-object set with its ArUco trays** (§6.3): the tray geometry is authored and the
-cube is printed, but the bottle, bowl and tray set are not, and without them
-there is no ground truth and therefore no real ADD-S. The order is print →
-calliper-verify → mount → capture → score.
+The longest pole is now **the printed object set with its ArUco trays** (§6.3):
+the tray geometry is authored and the cube is printed, but the bottle, bowl and
+trays are not, and without them there is no ground truth and so no real ADD-S.
+The order is print → calliper-verify → mount → capture → score.
 
-**Replicator scene fidelity was the remaining blocker and is now closed
-(2026-09-04).** The scene renders the derived rig geometry with the measured
-per-unit camera intrinsics and the real CAD meshes, and its output is verified
-by a `--diagnose` mode that reports what was actually rendered rather than what
-the scene description implies:
-
-| | before | after |
-|---|---|---|
-| depth validity | 4–15% | **100.0%** |
-| labelled targets per frame | ~0 | **3.00** |
-| nearest rendered surface | 1007 mm | **470 mm** (table corner is 458 mm) |
-| invalid-depth sentinel | ~85% | **1.5%** |
-
-Two defects account for it, and both had produced output that looked correct:
-the **USD default near clipping plane of 1 m** clipped the entire subject (the
-camera stands at 0.70 m, the nearest table corner at 0.46 m), and **the scene
-contained no room**, so 69% of every frame hit no geometry and returned the
-invalid sentinel — which would have taught the detector that "sentinel" means
-background, a property the real sensor does not have.
+Synthetic scene fidelity was the last blocker and closed on 2026-09-04: depth
+validity went from 4–15% to **100.0%** and labelled targets per frame from ~0 to
+**3.00** once a 1 m default near-clipping plane and a missing room were fixed
+(Appendix C.3). Both defects had produced output that looked entirely correct.
 
 ### Measured: first detector training, and why mAP@0.5 is the wrong number here
 
@@ -620,12 +664,12 @@ images against the bottle's 100%. A depth channel that helps should help there
 first, which makes it the natural place to look for the RGB-D gain rather than
 in a pooled average that is already close to its ceiling.
 
-A third, subtler defect followed from the object-frame convention of §6.2: with
-the origin at the mesh AABB centre each class rests at its own half-height (96,
-25 and 28 mm), so a single shared placement range buried some classes in the
-table and floated others — while the 2D boxes stayed correct throughout, so the
-label files looked perfect and `(on obj table)` was false in the very data the
-predicates are to be evaluated against.
+A third, subtler defect followed from the object-frame convention (§6.2): with
+the origin at the AABB centre each class rests at its own half-height (96, 25,
+28 mm), so one shared placement range buried some classes in the table and
+floated others — while the 2D boxes stayed correct, so the label files looked
+perfect and `(on obj table)` was false in the very data the predicates are to be
+evaluated against.
 
 ---
 
@@ -735,10 +779,10 @@ and `docs/results/dataset_size_ablation_rgbd_50k_v2.png`.
 
 ## 9. Budget & Resource Requirements
 
-All figures in **Singapore dollars**. Two items were purchased in CNY and are
-converted at the **ECB reference rate for 2026-09-04, 1 CNY = 0.18878 SGD**; the
-original CNY amount is given alongside so the conversion is auditable rather than
-opaque. Every amount is a purchase price from a receipt, not an estimate.
+All figures in **Singapore dollars**, every amount a receipted purchase price
+rather than an estimate. Two items bought in CNY are converted at the ECB
+reference rate for 2026-09-04 (1 CNY = 0.18878 SGD), with the original shown
+alongside.
 
 | Item | Cost | Status |
 |---|---|---|
@@ -750,7 +794,7 @@ opaque. Every amount is a purchase price from a receipt, not an estimate.
 | ChArUco board, 324 × 324 mm, 8 × 8 @ 38 mm | **S$71.81** (¥380.41) | **Acquired 2026-08-28**, decode-verified on a real capture |
 | **Subtotal, hardware acquired** | **S$1,059.42** | Complete — every rig purchase is receipted |
 | Work surface | — | **No purchase.** Existing desk reused; 1180 × 440 mm of free surface is sufficient for the derived rig geometry (§7A) |
-| Matte PLA filament, 4 × 1 kg (yellow, red, blue, grey) | [VERIFY actual — **ordered 2026-09-05**] | To produce. **227 g per object set** computed from the meshes — `mustard_bottle` 137 g, `red_cube` 49 g, `bowl` 41 g — plus **385 g of ArUco trays** (§6.3) in grey. Two object sets are budgeted because §6.2 requires a calliper check that may force a reprint; one tray set suffices. The three class colours are not free choices — they are the per-class values the synthetic dataset was rendered with (§6.2) — and grey is a **distractor** neutral, which is what a tray must be |
+| Matte PLA filament, 4 × 1 kg (yellow, red, blue, grey) | [VERIFY actual — **ordered 2026-09-05**] | 227 g per object set plus 385 g of ArUco trays (§6.3). Two object sets budgeted, since the §6.2 calliper check may force a reprint. Colours are fixed by the rendered dataset, not chosen; tray grey is a distractor neutral |
 | 3D printer | — | **Owned.** Makes the all-printed resolution in §6.2 available at negligible cost, and is what allows fiducial mounts to be exact by construction (§6.3) |
 | Object meshes (YCB 006, 024) | — | **Free**, public research dataset |
 | Cloud compute (detector training bursts) | ≤ US$100/month existing budget | Available |
@@ -759,16 +803,12 @@ opaque. Every amount is a purchase price from a receipt, not an estimate.
 | SO-ARM101 (stretch demo only) | — | Planned purchase, independent of this module |
 
 **Software licensing — verified 2026-09-04 against primary sources.** All
-components are free for this use. Ultralytics YOLOv8 is licensed **AGPL-3.0**,
-and Ultralytics' own licensing guidance names "academic research and university
-coursework" as appropriate for AGPL-3.0, with the Enterprise licence reserved
-for proprietary or commercial products. No Enterprise licence is therefore
-required here. The AGPL obligation is *disclosure of complete corresponding
-source when the work is conveyed*, which a coursework submission satisfies; it
-places no requirement to publish, so the private working repository is not in
-conflict. FoundationPose is used under the NVIDIA Source Code License
-(non-commercial research), and the YCB object and model set is published for
-open research use.
+components are free for this use. YOLOv8 is **AGPL-3.0**, which Ultralytics' own
+guidance names as appropriate for academic coursework; the obligation is
+disclosure of corresponding source when the work is conveyed, which a coursework
+submission satisfies and which places no requirement to publish. FoundationPose
+is used under the NVIDIA Source Code License (non-commercial research), and the
+YCB set is published for open research use.
 
 ---
 
@@ -780,8 +820,8 @@ open research use.
 | R2 | Camera procurement delay | **RETIRED (2026-08-20)** | Both D435i units in hand, firmware levelled to 5.17.3.10, streaming 848×480 aligned depth + colour simultaneously at 30 fps each with cross-camera timestamp skew ≤ 4.3 ms against a 33 ms budget. |
 | R3 | Sim-to-real gap larger than expected | Medium | Domain randomisation breadth; small real fine-tuning set for the detector; gap itself is a reportable finding, not a failure. |
 | R4 | FoundationPose too slow for real-time dual-view | **Downgraded (measured)** | 17.2 ms/frame tracking (58 FPS) for one object on the RTX 5070 Ti → ~29 FPS per camera for two views run serially. Scales roughly linearly in tracked objects (3 objects × 2 views ≈ 9.7 FPS). Detection-gated ROIs and alternate-frame scheduling remain worthwhile but are no longer mandatory. |
-| R4b | Active-IR cross-interference: each RealSense sees the other's projected IR pattern, degrading both depth maps | Medium — **mitigation installed, effect not yet measured** | Hardware sync is in place: the cable is fitted and the master's trigger confirmed reaching the slave, which now streams at 30 fps where it previously delivered no frames at all. `inter_cam_sync_mode` must be written through the device context *before* `pipeline.start()`; librealsense rejects it silently on a streaming device, which cost a false negative. The interference itself remains unquantified because it requires both cameras aimed into the same workspace — measurable only once the rig is physically mounted. The 80° angular separation of the derived geometry (§7A) reduces pattern overlap independently of sync. |
-| R5 | Solo workload | Accepted | Same mitigation pattern as PM1: AI-agent-assisted development (disclosed, Appendix A); strict phase gates; scope cut order pre-defined in §1.3 (MVP is protected; fusion ablation is never cut). |
+| R4b | Active-IR cross-interference: each RealSense sees the other's projected IR pattern, degrading both depth maps | Medium — **mitigation installed, effect not yet measured** | Hardware sync fitted and the master's trigger confirmed reaching the slave, which now streams at 30 fps where it previously delivered none. (`inter_cam_sync_mode` must be written through the device context *before* `pipeline.start()`; librealsense rejects it silently on a streaming device.) The interference itself is still unquantified — the rig is now mounted, so it is measurable. The derived geometry's 80° separation reduces pattern overlap independently of sync. |
+| R5 | Solo workload | Accepted | As PM1: AI-agent-assisted development (disclosed, Appendix A), strict phase gates, and the §1.3 cut order fixed in advance — MVP protected, fusion ablation never cut. |
 
 ---
 
@@ -789,12 +829,23 @@ open research use.
 
 ### 11.1 Final Deliverables (due 31 Oct 2026, Canvas, single ZIP + individual report)
 
-- Runnable perception system (source + build instructions + model files)
-- Datasets (synthetic set specification + real capture set)
-- Final report: tools/techniques, system design/models, system performance, findings and discussion
-- Video presentation (10–15 min, .mp4)
-- Slides of both presentations
-- Individual project report (1–2 pages) and peer review submission
+Each deliverable carries an acceptance criterion, so "done" is checkable rather
+than asserted:
+
+| Deliverable | Accepted when |
+|---|---|
+| Runnable perception system (source, build instructions, model files) | `cmake --build` clean under `-Wall -Wextra -Wpedantic` from the submitted ZIP on a fresh checkout; `ctest` green; `the_eyes_run check --live` passes on the rig; `replay` reproduces a recorded session bit-exact |
+| Datasets | `synth50k_v2` generator config + seed reproduce the set; real capture set ships as recorded sessions with `metrics.sqlite`, so every reported number regenerates via `ablation_from_log` |
+| Final report | Every metric in §7 either reported with its measured value and confidence interval, or explicitly listed as not measured with the reason. No `[VERIFY]` markers remain |
+| Occlusion ablation result ★ | All eight arms on real T4 captures, with the §7.1 significance test applied and the outcome stated either way |
+| Video presentation (10–15 min, .mp4) | Live run on hardware, not a slideshow of results |
+| Slides, individual report (1–2 pp), peer review | Submitted per Canvas |
+
+**Cut order under schedule pressure** (§1.3, mirrored here so the graded list and
+the MVP agree): Jetson deployment test → unknown-object DBSCAN path → live PM1
+integration demo (logged output suffices) → digital-twin viewport. The occlusion
+ablation is never cut; if it cannot be produced on real captures, that fact and
+its cause are the reported result.
 
 ### 11.2 Assessment Alignment
 
@@ -839,3 +890,61 @@ Use of AI tools follows the NUS-ISS Policy for Use of AI in Teaching and Learnin
 | Problem Solving Using Pattern Recognition (PSUPR) | Pattern recognition problem framing (closed-set detection + open-set anomaly path), supervised vs. unsupervised scenario design, evaluation methodology (mAP, PR curves, ADD/ADD-S) |
 | Pattern Recognition and Machine Learning Systems (PRMLS) | Deep learning for vision: CNN detector (YOLOv8 transfer learning), transformer-based pose estimation (FoundationPose), ensemble fusion of independent estimators, ONNX Runtime / TensorRT deployment |
 | Intelligent Sensing and Sense Making (ISSM) | Dual RGB-D sensing and extrinsic calibration, point-cloud clustering (DBSCAN), multi-sensor fusion with EKF temporal filtering, scene-graph relational predicate extraction (sense-making) |
+
+---
+
+## Appendix C — Measurement Methodology
+
+Three measurements in §7A would have produced confident, wrong numbers under the
+obvious method. How each was made trustworthy is recorded here rather than in the
+body, because it concerns *how* the figures were obtained rather than what they
+show.
+
+### C.1 Depth RMS: match the physical patch, not the pixel ROI
+
+Depth RMS is comparable across distances only if the *physical* wall patch is held constant, not the pixel ROI — a fixed pixel ROI
+spans 28 × 16 cm at 0.4 m but 70 × 40 cm at 1.0 m, and once it outgrows the flat
+surface, edges enter the plane fit and inflate the residual by up to 9.7×. The
+diagnostic is that the fitted plane's offset and the median point depth agree to
+within 1 mm when the ROI lies on the wall and diverge by 20–27 mm when it does
+not.
+
+### C.2 Calibration target sizing is a resolution constraint
+
+The ChArUco board (324 × 324 mm, 8 × 8 at 38 mm) carries DICT_5X5 markers, 7 modules
+across, which stop decoding below ~3 px/module; reach is `fx · marker_length /
+(3 · modules)`, and the binding distance is the **oblique far corner of the board
+at 884 mm**, not the 0.70 m standoff:
+
+| capture resolution | fx (measured) | px/module | reach |
+|---|---|---|---|
+| 848 × 480 (streaming) | 603.43 | 2.8 — fails | 0.82 m |
+| 1280 × 720 | 905.15 | 4.2 | 1.23 m |
+| **1920 × 1080** | **1357.72** | **6.1** | **1.81 m** |
+
+Calibration is therefore captured at 1920 × 1080 while the pipeline streams
+848 × 480. The recovered camera *pose* is resolution-independent, so a small
+target suffices provided the capture resolution is chosen deliberately. The tool
+prints the computed reach before detection, because a board below the decode
+threshold returns zero corners from images that look entirely correct.
+
+### C.3 Replicator scene fidelity
+
+Closed 2026-09-04. The scene renders the derived rig geometry with the measured per-unit intrinsics and
+the real CAD meshes, verified by a `--diagnose` mode reporting what was actually
+rendered rather than what the scene description implies:
+
+| | before | after |
+|---|---|---|
+| depth validity | 4–15% | **100.0%** |
+| labelled targets per frame | ~0 | **3.00** |
+| nearest rendered surface | 1007 mm | **470 mm** (table corner is 458 mm) |
+| invalid-depth sentinel | ~85% | **1.5%** |
+
+Two defects account for it, and both had produced output that looked correct:
+the **USD default near clipping plane of 1 m** clipped the entire subject (the
+camera stands at 0.70 m, the nearest table corner at 0.46 m), and **the scene
+contained no room**, so 69% of every frame hit no geometry and returned the
+invalid sentinel — which would have taught the detector that "sentinel" means
+background, a property the real sensor does not have.
+
