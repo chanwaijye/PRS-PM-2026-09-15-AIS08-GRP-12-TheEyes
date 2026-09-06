@@ -53,11 +53,13 @@ RuntimeConfig LoadRuntimeConfig(const std::string& yaml_path) {
 
   const YAML::Node det = RequireSection(root, "detector");
   cfg.detector.backend = RequireString(det, "detector", "backend");
-  if (cfg.detector.backend != "onnx" && cfg.detector.backend != "mock") {
-    throw std::runtime_error("runtime.yaml: detector.backend must be 'onnx' or 'mock', got '" +
+  if (cfg.detector.backend != "onnx" && cfg.detector.backend != "mock" &&
+      cfg.detector.backend != "fixed") {
+    throw std::runtime_error("runtime.yaml: detector.backend must be 'onnx', 'mock' or 'fixed', got '" +
                              cfg.detector.backend + "'");
   }
   cfg.detector.mock_fixture = det["mock_fixture"] ? det["mock_fixture"].as<std::string>() : "";
+  cfg.detector.fixed_boxes = det["fixed_boxes"] ? det["fixed_boxes"].as<std::string>() : "";
 
   const YAML::Node pairing = RequireSection(root, "pairing");
   cfg.pairing.ring_depth =

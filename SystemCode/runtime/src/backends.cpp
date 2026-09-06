@@ -6,6 +6,7 @@
 #include "the_eyes/detector/mock_detector.hpp"
 #include "the_eyes/pose/foundationpose_client.hpp"
 #include "the_eyes/pose/mock_estimator.hpp"
+#include "the_eyes/runtime/fixed_box_detector.hpp"
 #if THE_EYES_WITH_ONNXRUNTIME
 #include "the_eyes/detector/onnx_detector.hpp"
 #endif
@@ -36,6 +37,12 @@ DetectorHandle MakeDetector(const DetectorBackendConfig& cfg, detector::Detector
     h.label = "mock:" + cfg.mock_fixture;
     return h;
   }
+  if (cfg.backend == "fixed") {
+    h.detector = std::make_unique<FixedBoxDetector>(ParseFixedBoxes(cfg.fixed_boxes),
+                                                    detector_cfg.tracking);
+    h.label = "fixed:" + cfg.fixed_boxes;
+    return h;
+  }
   if (cfg.backend == "onnx") {
     detector_cfg.model.onnx_path = ResolveAgainst(repo_root, detector_cfg.model.onnx_path);
     if (!std::filesystem::exists(detector_cfg.model.onnx_path)) {
@@ -57,7 +64,7 @@ DetectorHandle MakeDetector(const DetectorBackendConfig& cfg, detector::Detector
         "(set THE_EYES_ONNXRUNTIME_ROOT at configure time)");
 #endif
   }
-  throw std::runtime_error("unknown detector backend '" + cfg.backend + "' (onnx | mock)");
+  throw std::runtime_error("unknown detector backend '" + cfg.backend + "' (onnx | mock | fixed)");
 }
 
 PoseHandle MakePoseEstimator(const PoseBackendConfig& cfg) {

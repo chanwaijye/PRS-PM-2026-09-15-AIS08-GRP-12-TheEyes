@@ -10,8 +10,9 @@
 namespace the_eyes::runtime {
 
 struct DetectorBackendConfig {
-  std::string backend = "onnx";   // "onnx" | "mock"
+  std::string backend = "onnx";   // "onnx" | "mock" | "fixed"
   std::string mock_fixture;       // for mock; relative to the repo root
+  std::string fixed_boxes;        // for fixed; see fixed_box_detector.hpp
 };
 
 struct PairingConfig {

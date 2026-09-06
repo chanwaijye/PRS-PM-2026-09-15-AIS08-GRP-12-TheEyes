@@ -17,6 +17,7 @@ set(RUNTIME_SOURCES
   src/metrics_log.cpp
   src/runtime_config.cpp
   src/backends.cpp
+  src/fixed_box_detector.cpp
   src/startup_checks.cpp
   src/pipeline.cpp
   src/viewer.cpp)
@@ -58,6 +59,7 @@ if(THE_EYES_BUILD_TESTS)
     test/test_metrics_log.cpp
     test/test_runtime_config.cpp
     test/test_backends.cpp
+    test/test_fixed_box_detector.cpp
     test/test_replay_pipeline.cpp)
   target_link_libraries(test_runtime
     PRIVATE the_eyes_runtime GTest::gtest GTest::gtest_main yaml-cpp SQLite::SQLite3)

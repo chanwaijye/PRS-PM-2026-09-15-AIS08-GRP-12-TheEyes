@@ -5,7 +5,8 @@
 //   the_eyes_run replay <session_dir> [--realtime] [--start N] [--max-pairs N] [--show]
 //
 // Common: --config-dir DIR (default: config)  --repo-root DIR (default: parent
-// of config dir)  --detector onnx|mock:<fixture>  --pose foundationpose|mock
+// of config dir)  --detector onnx|mock:<fixture>|fixed:<cam>=<cls>,<x>,<y>,<w>,<h>[;...]
+// --pose foundationpose|mock
 // --db PATH  --no-log  --print-every N
 //
 // One process, no ROS: cameras -> RGB-D YOLOv8 -> FoundationPose -> fusion ->
@@ -77,7 +78,8 @@ void Usage(std::ostream& os) {
         "  the_eyes_run live   [--record [NAME] | --record-only [NAME]] [--frames N] [--show]\n"
         "  the_eyes_run replay <session_dir> [--realtime] [--start N] [--max-pairs N] [--show]\n"
         "                      [--record [NAME]]\n"
-        "common: --config-dir DIR  --repo-root DIR  --detector onnx|mock:<fixture>\n"
+        "common: --config-dir DIR  --repo-root DIR\n"
+        "        --detector onnx | mock:<fixture> | fixed:<cam>=<cls>,<x>,<y>,<w>,<h>[;<cam>=...]\n"
         "        --pose foundationpose|mock  --db PATH  --no-log  --print-every N\n";
 }
 
@@ -136,8 +138,12 @@ void ApplyOverrides(const Options& o, LoadedConfigs* c) {
       c->runtime.detector.mock_fixture = o.detector_override.substr(5);
     } else if (o.detector_override == "mock") {
       c->runtime.detector.backend = "mock";
+    } else if (o.detector_override.rfind("fixed:", 0) == 0) {
+      c->runtime.detector.backend = "fixed";
+      c->runtime.detector.fixed_boxes = o.detector_override.substr(6);
     } else {
-      throw std::runtime_error("--detector must be onnx or mock:<fixture>");
+      throw std::runtime_error("--detector must be onnx, mock:<fixture>, or "
+                               "fixed:<cam>=<cls>,<x>,<y>,<w>,<h>[;...]");
     }
   }
   if (!o.pose_override.empty()) {
@@ -243,6 +249,7 @@ int Run(const Options& o) {
     if (!pre.ok()) return kExitStartup;
     report = pre;
   }
+  const size_t warnings_already_printed = report.warnings.size();
 
   // --- frame source -------------------------------------------------------
   std::unique_ptr<FrameSource> source;
@@ -350,7 +357,9 @@ int Run(const Options& o) {
     run_id = log->BeginRun(info);
     std::cout << "metrics: " << db << " (run " << run_id << ")\n";
   }
-  for (const std::string& w : report.warnings) std::cout << "  WARNING: " << w << "\n";
+  for (size_t i = warnings_already_printed; i < report.warnings.size(); ++i) {
+    std::cout << "  WARNING: " << report.warnings[i] << "\n";
+  }
 
   std::unique_ptr<Viewer> viewer;
   if (o.show && !o.record_only) viewer = std::make_unique<Viewer>(c.fusion.view_names, c.extrinsics);

@@ -24,7 +24,7 @@ namespace the_eyes::runtime {
 struct DetectorHandle {
   std::unique_ptr<detector::Detector> detector;
   detector::OnnxDetector* onnx = nullptr;   // non-owning; null for mock
-  std::string label;                        // "onnx" | "mock:<fixture>"
+  std::string label;                        // "onnx" | "mock:<fixture>" | "fixed:<spec>"
   std::string requested_provider;           // detector.yaml inference.provider
 };
 

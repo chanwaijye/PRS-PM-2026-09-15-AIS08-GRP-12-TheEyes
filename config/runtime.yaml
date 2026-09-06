@@ -8,10 +8,17 @@ detector:
   # "onnx" runs the trained RGB-D YOLOv8 through ONNX Runtime (detector.yaml).
   # "mock" replays a detection fixture keyed by (camera_id, stamp_ns), which
   # only matches a recorded session -- it is the zero-model replay path.
+  # "fixed" returns hand-placed boxes on every frame (for a real object the
+  # trained detector cannot see, e.g. an off-palette test print) -- NOT a
+  # detection result, and the log labels it so.
   backend: "onnx"
   # Fixture path for the mock backend; ignored for onnx. Relative to the repo
   # root. Overridable on the command line as --detector mock:<path>.
   mock_fixture: ""
+  # Boxes for the fixed backend: "<cam>=<cls>,<x>,<y>,<w>,<h>[;<cam>=...]" in
+  # colour-frame pixels. Overridable as --detector fixed:<spec>. Place them
+  # with `live --show` and read the pixel coordinates off the window.
+  fixed_boxes: ""
 
 pairing:
   # Frames kept per camera while waiting for the other camera to catch up.

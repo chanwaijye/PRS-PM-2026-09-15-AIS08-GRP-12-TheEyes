@@ -13,6 +13,7 @@
 #include <stdexcept>
 
 #include "the_eyes/runtime/backends.hpp"
+#include "the_eyes/runtime/fixed_box_detector.hpp"
 #if THE_EYES_WITH_REALSENSE
 #include "the_eyes/camera/device_registry.hpp"
 #endif
@@ -159,6 +160,23 @@ void CheckDetectorBackend(const LoadedConfigs& c, StartupReport* r) {
       r->Fail("detector backend 'mock' needs an existing fixture; got '" + d.mock_fixture + "'");
     } else {
       r->Info("detector: mock fixture " + fixture);
+    }
+  } else if (d.backend == "fixed") {
+    try {
+      const FixedBoxes boxes = ParseFixedBoxes(d.fixed_boxes);
+      std::ostringstream os;
+      os << "detector: FIXED boxes, not detections --";
+      for (const auto& [cam, list] : boxes) {
+        for (const Detection& b : list) {
+          os << " " << cam << ":" << b.cls << "@" << b.bbox.x << "," << b.bbox.y << "," << b.bbox.width
+             << "x" << b.bbox.height;
+        }
+        if (!c.cameras.cameras.count(cam)) r->Warn("fixed box for unknown camera '" + cam + "'");
+      }
+      r->Info(os.str());
+      r->Warn("fixed-box detector: nothing from this run is a detection result");
+    } catch (const std::exception& e) {
+      r->Fail(e.what());
     }
   } else {
     r->Fail("unknown detector backend '" + d.backend + "'");

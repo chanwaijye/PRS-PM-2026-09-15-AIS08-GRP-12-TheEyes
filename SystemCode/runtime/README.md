@@ -32,7 +32,7 @@ build/runtime/the_eyes_run live --record demo --show               # the demo
 
 Common flags: `--config-dir DIR` (default `config`), `--repo-root DIR` (default
 the config dir's parent; every relative path in the configs resolves against
-it, never the working directory), `--detector onnx|mock:<fixture>`,
+it, never the working directory), `--detector onnx|mock:<fixture>|fixed:<spec>`,
 `--pose foundationpose|mock`, `--db PATH`, `--no-log`, `--print-every N`.
 Replay adds `--realtime`, `--start N`, `--max-pairs N`, and `--record NAME`.
 
@@ -50,6 +50,23 @@ python SystemCode/pose/server/foundationpose_server.py --socket /tmp/the_eyes_fo
 Needs `libsqlite3-dev` (CMake `FindSQLite3`). Everything except the live capture
 path builds and tests without librealsense, ONNX Runtime, a GPU, or cameras —
 verified by configuring with `-DTHE_EYES_ONNXRUNTIME_ROOT=/nonexistent`.
+
+### Fixed boxes: a real object the detector cannot see
+
+```bash
+build/runtime/the_eyes_run live --show --pose foundationpose \
+    --detector 'fixed:cam_front=red_cube,300,200,120,120;cam_over=red_cube,400,180,100,100'
+```
+
+`fixed:` hands the same hand-placed box per camera to the pose estimator on
+every frame, through the normal IoU tracker so FoundationPose registers once.
+It exists for an off-palette test print (the brown cube) and for isolating
+FoundationPose from detector flicker: the pose, fusion, table and predicate
+chain run on a real object while the trained detector still has nothing it
+was trained on. Place the boxes by running `--show` and reading pixel
+coordinates off the window; a box hanging outside the frame is clipped, one
+entirely outside is dropped. The log labels the backend `fixed:<spec>` and
+the startup report warns that nothing from the run is a detection result.
 
 ## What it does per pair
 
