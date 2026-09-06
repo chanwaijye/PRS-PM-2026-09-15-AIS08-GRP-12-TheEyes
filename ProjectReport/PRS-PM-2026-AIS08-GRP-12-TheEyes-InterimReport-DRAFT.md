@@ -88,6 +88,67 @@ outside the code because the module is written from first principles:
 | `calibration.max_reprojection_rmse_px` | 0.5 | Fusion refuses to start above this. Bad extrinsics poison every fused pose while leaving each self-consistent |
 | `ekf.max_coast_s` | 1.0 | A track unseen this long is dropped and its id retired |
 
+### 2.3 Detector network, layer by layer
+
+Read from `runs/detector/rgbd_50k_v2/weights/best.pt` with a forward pass at
+1×4×640×640, so the shapes are observed rather than derived from the YAML.
+Design rationale is in proposal §5.4; this is the as-built record.
+
+| # | Module | Output | Params |
+|---|---|---|---|
+| 0 | `Conv` **stem, 4-channel** | 1×16×320×320 | 608 |
+| 1 | `Conv` | 1×32×160×160 | 4,672 |
+| 2 | `C2f` | 1×32×160×160 | 7,360 |
+| 3 | `Conv` | 1×64×80×80 | 18,560 |
+| 4 | `C2f` → *neck skip* | 1×64×80×80 | 49,664 |
+| 5 | `Conv` | 1×128×40×40 | 73,984 |
+| 6 | `C2f` → *neck skip* | 1×128×40×40 | 197,632 |
+| 7 | `Conv` | 1×256×20×20 | 295,424 |
+| 8 | `C2f` | 1×256×20×20 | 460,288 |
+| 9 | `SPPF` | 1×256×20×20 | 164,608 |
+| 10–11 | `Upsample` + `Concat`(6) | 1×384×40×40 | 0 |
+| 12 | `C2f` | 1×128×40×40 | 148,224 |
+| 13–14 | `Upsample` + `Concat`(4) | 1×192×80×80 | 0 |
+| 15 | `C2f` → **P3 head** | 1×64×80×80 | 37,248 |
+| 16–17 | `Conv` s2 + `Concat`(12) | 1×192×40×40 | 36,992 |
+| 18 | `C2f` → **P4 head** | 1×128×40×40 | 123,648 |
+| 19–20 | `Conv` s2 + `Concat`(9) | 1×384×20×20 | 147,712 |
+| 21 | `C2f` → **P5 head** | 1×256×20×20 | 493,056 |
+| 22 | `Detect`(15, 18, 21) | 8,400 anchors | 751,897 |
+| | **total** | | **3,011,577** |
+
+Backbone 1.27 M, neck 0.99 M, head 0.75 M. The head is the single largest module
+at 25% of the network — worth knowing before any pruning: the backbone is not
+where the parameters are.
+
+The 8,400 anchors are 80²+40²+20² at strides 8/16/32. With `reg_max = 16` the
+raw head emits 67 channels per anchor (4 box edges × 16 DFL bins + 3 classes);
+ONNX export decodes the distribution to four coordinates, giving the deployed
+`1×7×8400`.
+
+### 2.4 Pose networks
+
+FoundationPose ships two checkpoints, both frozen. Parameter counts and module
+groups read directly from the `.pth` files.
+
+| | Refiner | Scorer |
+|---|---|---|
+| checkpoint | `2023-10-28-18-33-37` | `2024-01-11-20-02-45` |
+| parameters | **17,043,797** | **15,986,512** |
+| per-branch encoder | 685,894 | 685,894 |
+| joint encoder | 12,994,057 | 12,994,057 |
+| positional embedding | 204,800 | 204,800 |
+| task modules | `trans_head` 1,579,523 + `rot_head` 1,579,523 | `att` 1,050,624 + `att_cross` 1,050,624 |
+| output | `Linear(512→3)` ×2, axis-angle rotation | `Linear(512→1)`, one score per hypothesis |
+| input | `c_in = 6` (RGB+XYZ), 160×160, `crop_ratio` 1.2 | `c_in = 6`, 160×160, `crop_ratio` 1.1 |
+
+Both use `normalize_xyz` and batch norm. The refiner's transformer heads are
+`d_model = 512` with `in_proj 1536×512` — one 512-wide projection each for Q, K
+and V.
+
+**Runtime totals: 36.04 M parameters**, of which 3.01 M (8.4%) are trained in
+this project and 33.03 M are pretrained and frozen.
+
 ---
 
 ## 3. Rig and sensing

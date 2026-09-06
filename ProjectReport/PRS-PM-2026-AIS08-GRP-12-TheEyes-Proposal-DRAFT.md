@@ -39,7 +39,7 @@ The system perceives a tabletop manipulation scene containing up to 6 rigid obje
 
 The MVP is the minimum slice satisfying every graded deliverable and all four PRS technique categories: the **single-camera pipeline** on a real camera; the **second camera + multi-view fusion ★** with its occlusion ablation (§7.1), which *is* the ensemble claim ③ and is non-negotiable; the **scene-graph bridge ★** emitting PDDL init facts; and the **evaluation numbers**. Acceptance criteria for each are in §11.1.
 
-Items above MVP are cut in this order under schedule pressure (Risk R5): (1) Jetson deployment test; (2) unknown-object DBSCAN path — losing the unsupervised half of category ①, though the supervised half still satisfies it; (3) live PM1 integration demo — the contract stays demonstrable via logged output; (4) digital-twin viewport (§5.5).
+Items above MVP are cut in this order under schedule pressure (Risk R5): (1) Jetson deployment test; (2) unknown-object DBSCAN path — losing the unsupervised half of category ①, though the supervised half still satisfies it; (3) live PM1 integration demo — the contract stays demonstrable via logged output; (4) digital-twin viewport (§5.6).
 
 ---
 
@@ -120,7 +120,7 @@ The module requires the project to develop, integrate and demonstrate at least t
 | # | PRS Aspect | Implementation in The Eyes |
 |---|---|---|
 | ① | Supervised / unsupervised learning scenarios | **Supervised:** YOLOv8 fine-tuned on synthetically generated labelled data (detection). **Unsupervised:** Euclidean/DBSCAN clustering of the residual depth point cloud to segment and flag *unknown* objects that have no CAD model — an anomaly path the closed-set detector cannot cover. |
-| ② | Machine learning / deep learning techniques | **Multimodal RGB-D CNN detector:** YOLOv8 with a 4-channel early-fusion input stem (RGB + aligned metric depth), transfer-learned from COCO weights with stem inflation. FoundationPose transformer-based pose refinement and scoring, itself an RGB-D multimodal network. Both deployed via ONNX Runtime / TensorRT. |
+| ② | Machine learning / deep learning techniques | **Multimodal RGB-D CNN detector:** YOLOv8n with a 4-channel early-fusion input stem (RGB + aligned metric depth), transfer-learned from COCO weights with stem inflation. FoundationPose transformer-based pose refinement and scoring, itself an RGB-D multimodal network. Both deployed via ONNX Runtime / TensorRT. Architectures and parameter counts in §5.4. |
 | ③ | Hybrid / ensemble approach | Object-level multi-view fusion: two independent per-camera detection+pose estimates treated as ensemble members, fused by confidence-weighted pose averaging with outlier rejection (disagreement gating). Hybrid DL + classical estimation: learned per-view poses refined by a classical temporal filter (per-object EKF). |
 | ④ | Intelligent sensing / sense-making | Dual RGB-D sensing with extrinsic calibration; C++ scene-graph bridge converting fused poses into relational predicates (on, in, clear, occluded_from(view)); occlusion reasoning across viewpoints. |
 
@@ -209,7 +209,68 @@ rather than being left free-form.
 single-view object **is** emitted, with one bit set, so a consumer can tell a
 fused pose from an unfused one and weight it accordingly.
 
-### 5.4 Technology Stack
+### 5.4 Network Architectures
+
+Three networks run at inference. Only the first is trained in this project; the
+other two are pretrained and frozen. Every figure below is read from the shipped
+checkpoints, not from the papers.
+
+**Detector — YOLOv8n with a 4-channel early-fusion stem.** `runs/detector/
+rgbd_50k_v2/weights/best.pt`, **3,011,577 parameters**, 23 modules, `nc = 3`.
+
+| Stage | Modules | Output at 640×640 input |
+|---|---|---|
+| Stem | `Conv(16, 4, 3×3, s2)` | 320×320×16 |
+| Backbone (CSPDarknet) | `Conv`/`C2f` ×4, `SPPF` | 160²×32 → 80²×64 → 40²×128 → 20²×256 |
+| Neck (PAN-FPN) | upsample+concat ×2, then stride-2 conv+concat ×2 | 80²×64, 40²×128, 20²×256 |
+| Head (`Detect`) | anchor-free, decoupled, strides 8/16/32 | 3 scales → 80²+40²+20² = **8,400 anchors** |
+
+The head is distribution-focal: `reg_max = 16`, so each box edge is a 16-bin
+distribution and the raw head emits `4×16 + 3 = 67` channels per anchor. Export
+decodes the DFL bins to four coordinates, which is why the deployed ONNX is
+**`1×4×640×640` in, `1×7×8400` out** (4 box + 3 class), opset 17, fixed shape.
+
+**The multimodal claim lives in one 3×3 convolution.** The stem is widened from
+`(16,3,3,3)` to `(16,4,3,3)` and the depth channel is initialised by inflating
+the COCO weights — seeded with the mean of the pretrained RGB filters, so it
+starts as a working edge detector rather than noise. Measured on ultralytics
+8.4.123, `channels: 4` alone leaves that channel at *random* init (|depth −
+mean(RGB)| up to 0.51), which destabilises early training exactly where transfer
+learning is supposed to help.
+
+| | stem weights | total parameters |
+|---|---|---|
+| RGB-only (ablation control) | 432 | 3,011,433 |
+| **RGB-D (deployed)** | **576** | **3,011,577** |
+| difference | +144 | **+144 (+0.005%)** |
+
+That the depth channel costs **144 parameters** is worth stating alongside the
+negative modality result (§7A): the architecture change is essentially free, so
+"depth did not help on this benchmark" is a finding about the task rather than
+about a costly design that failed to pay for itself. Everything downstream of the
+stem — 3.01 M parameters of pretrained backbone, neck and head — is reused
+unchanged, which is the argument for early fusion over a dual-branch design.
+
+**Pose estimator — FoundationPose, two frozen networks.** Both take a 6-channel
+input (RGB + XYZ) at 160×160 with a rendered-versus-observed crop pair, both
+share the same encoder topology, and neither is trained here.
+
+| Network | Parameters | Structure |
+|---|---|---|
+| **Refiner** (`2023-10-28-18-33-37`) | **17,043,797** | Per-branch CNN encoder (686 K) → joint encoder (12.99 M) → learned positional embedding (204,800) → **two transformer heads**, translation and rotation, 1,579,523 each: `d_model = 512`, self-attention `in_proj 1536×512` (QKV), output `Linear(512 → 3)`. Rotation is predicted as **axis-angle**; the pose update is applied iteratively |
+| **Scorer** (`2024-01-11-20-02-45`) | **15,986,512** | Same encoder pair (686 K + 12.99 M) and positional embedding, then **self-attention (1.05 M) and cross-attention (1.05 M)** over the hypothesis set, ending in `Linear(512 → 1)` — a single scalar per pose hypothesis, which is the score the fusion module's confidence weighting consumes |
+
+The scorer's output is the reason confidence weighting is not decorative: it is a
+learned comparison across hypotheses, and on real frames it varies (0.75–0.92
+across 235 estimates) and differs per view on the same object (0.656 vs 0.712),
+so the fused estimate has something real to weight.
+
+**Runtime parameter budget: 36.0 M total** — 3.0 M trained here (8.4%) and 33.0 M
+pretrained and frozen. The project's deep-learning contribution is the 4-channel
+stem and its fine-tune, not the pose networks, and §3.6 states that boundary
+deliberately rather than letting the parameter count imply otherwise.
+
+### 5.5 Technology Stack
 
 C++17 (fusion, scene graph, drivers) · Python 3.11 (training pipelines) · YOLOv8 · FoundationPose · ONNX Runtime C++ API / TensorRT · PCL · OpenCV · Eigen · Isaac Sim + Omniverse Replicator · Ubuntu 24.04 · SQLite (metric logging).
 
@@ -225,7 +286,7 @@ publisher is a thin adapter over the same structs if PM1 or PM4 later wants
 one. This keeps the PM1 integration a contract, not a shared workspace, which
 is what §2.2 required of it.
 
-### 5.5 Digital-Twin Reconstruction (stretch deliverable)
+### 5.6 Digital-Twin Reconstruction (stretch deliverable)
 
 Because the scene graph carries `{class, CAD mesh, world-frame 6-DoF pose}` per object, real-to-sim scene reconstruction is nearly free: each detected object is spawned at its fused pose in Isaac Sim, producing a live digital twin of the physical tabletop. Limitations: known-CAD objects only (unknown objects appear as placeholder bounding volumes); poses are snapped-to-contact or spawned kinematic to avoid physics conflicts from residual pose error; the static environment (table) is pre-modelled. Beyond its demonstration value, the twin validates that the scene-graph representation is a sufficient world-state encoding — the property the PM4 world model depends on. Stretch item: cut fourth under schedule pressure (§1.3).
 
