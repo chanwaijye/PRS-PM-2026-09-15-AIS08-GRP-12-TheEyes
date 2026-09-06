@@ -103,6 +103,7 @@ meaningless pass.
 # 0. aim: live view of both cameras with the gates drawn on it. Writes nothing.
 #    Use it BEFORE tightening the tripods -- the bottom banner is the shared
 #    corner count, which is what extrinsics actually depend on.
+#    A red cross marks each frame centre: aim it at the workspace centre.
 build/calibration/calibrate aim config/cameras.yaml config/calibration.yaml
 #    --frames n --save <png> runs headless and writes the composed view instead
 #    of opening a window, for driving the rig over SSH.

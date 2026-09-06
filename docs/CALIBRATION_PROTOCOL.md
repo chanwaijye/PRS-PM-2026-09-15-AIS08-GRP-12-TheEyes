@@ -106,6 +106,7 @@ live the same three numbers `capture` gates on:
 | on screen | meaning |
 |---|---|
 | detected corners, circled, with a bounding box | where the board is actually resolving — not where you think it is |
+| **red cross** at each frame centre | the optical axis. Put the workspace centre on it in both views and the registration board lands where the rig geometry assumes |
 | per-camera **corner count**, panel border green/red | against `min_shared_corners` |
 | per-camera **sharpness**, flagged `BLURRED` | below half this session's best, the same blur heuristic `capture` uses |
 | bottom banner: **shared corners**, `READY` / `NOT READY` | **the number that matters.** Extrinsics come from corners *both* cameras resolved |

@@ -495,6 +495,18 @@ int RunAim(const std::string& cameras_path, const std::string& config_path,
       if (!obs.image_points.empty()) {
         cv::rectangle(bgr, cv::boundingRect(obs.image_points), cv::Scalar(0, 220, 255), 2);
       }
+      // Red cross at the frame centre, drawn at full resolution so it marks the
+      // true optical-axis pixel rather than the panel's. Aiming both cameras so
+      // the workspace centre sits on this cross is what puts the board where
+      // the registration shot needs it; the corner circles say where it IS.
+      {
+        const cv::Point centre(bgr.cols / 2, bgr.rows / 2);
+        const int arm = bgr.rows / 12;
+        const cv::Scalar red(0, 0, 255);
+        cv::line(bgr, centre - cv::Point(arm, 0), centre + cv::Point(arm, 0), red, 5);
+        cv::line(bgr, centre - cv::Point(0, arm), centre + cv::Point(0, arm), red, 5);
+        cv::circle(bgr, centre, arm / 3, red, 3);
+      }
 
       cv::Mat panel;
       const double k = static_cast<double>(kPanelW) / bgr.cols;
