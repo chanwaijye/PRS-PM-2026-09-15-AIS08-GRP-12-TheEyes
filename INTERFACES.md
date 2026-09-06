@@ -23,6 +23,13 @@ Requirements:
   namespaces must agree within one frame period; assert this at startup.
 - Camera namespace ↔ serial number mapping lives in the launch file, not in code.
 
+*Shipped implementation note (2026-09-06):* the topics above are the documented
+contract; the runner that ships (`SystemCode/runtime/`, `the_eyes_run`) is one
+C++ process with no ROS2 dependency and carries the same payload in-process as
+`camera::CameraFrame` (RGB, aligned depth, K, source timestamp, serial). The
+serial-number mapping lives in `config/cameras.yaml`. No field or semantics
+differ; a topic adapter would sit on top of the same structs.
+
 ---
 
 ## 2. Detector → Pose Estimator
@@ -181,6 +188,14 @@ Predicate vocabulary (must match PM1's domain exactly):
 
 Tolerances live in `config/predicates.yaml` — never hard-coded. Predicate
 extraction must be deterministic: same `SceneState` in, same fact set out.
+
+*Shipped implementation note (2026-09-06):* `the_eyes_run` emits the
+`(:init ...)` block on stdout whenever the fact set changes and logs every
+fact, `ObjectState` and per-view `PoseEstimate` to SQLite
+(`runs/runtime/<session>/metrics.sqlite`); the `/scene_state` and
+`/scene_pddl` topics are not published. The static table object that the
+`on` rule needs comes from `config/scene.yaml`, injected by the runner after
+fusion and before extraction.
 
 ---
 

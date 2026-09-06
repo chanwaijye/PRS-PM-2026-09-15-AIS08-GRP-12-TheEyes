@@ -39,6 +39,9 @@ Phase B (hardware)    │
 Phase C (models)
   detector_agent       synthetic dataset → YOLOv8 fine-tune
   pose_agent           FoundationPose wrapper (gated by R1)
+
+Phase D (integration)
+  runtime_agent        one process: cameras → ... → PDDL, record/replay, SQLite
 ```
 
 R1 (FoundationPose on Blackwell sm_120) is verified **before** Phase C starts. If
@@ -259,3 +262,43 @@ reconstruct the observed scene live.
 **Cut order:** fourth (last). Demonstration value only — but it also evidences
 that the scene graph is a sufficient world-state encoding, which is the property
 PM4 depends on.
+
+---
+
+### 9. `runtime_agent` — live runner, record/replay, metrics log
+
+**Owns:** `SystemCode/runtime/`, `config/runtime.yaml`, `config/scene.yaml`
+
+**Responsibility:** the one process that runs the chain on the real rig:
+open both cameras by serial, pair frames by nearest timestamp, drive the
+detector and one `pose_agent` per view, fuse, inject the static scene (the
+table), extract predicates, emit PDDL; record synchronised RGB-D pairs to disk
+and replay them through the identical pipeline; log every pair to SQLite. Plain
+C++17, no ROS2 — `INTERFACES.md` §1/§6 remain the documented contract and the
+same payloads travel in-process.
+
+**Contract:** consumes every interface §1–§7; produces the `(:init ...)` block
+on stdout and `runs/runtime/<session>/metrics.sqlite`, whose `estimates` table
+carries per-view `PoseEstimate`s so the occlusion ablation can be re-scored
+from a log once ground truth exists (`ablation_from_log`).
+
+**Mock mode:** `the_eyes_run replay <session> --detector mock:<fixture> --pose mock`
+— a recorded session (or one synthesised by `test_replay_pipeline`) through the
+real fusion and scene-graph modules with no camera, GPU, model, or server. This
+is also the camera module's replay mode.
+
+**Acceptance criteria:**
+- `test_runtime` passes with no hardware, in builds with and without
+  librealsense / ONNX Runtime.
+- Startup refuses to run on: a serial that differs between `cameras.yaml` and
+  `extrinsics.yaml`; view order that differs between `fusion.yaml`,
+  `predicates.yaml` and the cameras; extrinsics past the reprojection gate; a
+  missing model; an unreachable FoundationPose server (naming the command to
+  start it); a device whose sync mode did not take; startup skew outside one
+  frame period.
+- A recorded session replays bit-exact, and two replays with mock backends
+  produce identical fact sets.
+- Every processed pair has a `frames` row; frames the pairer did not use are
+  counted on the next pair, never dropped silently.
+- Live: startup jitter logged in the range `camera_probe` measured; end-to-end
+  latency per stage reported from `LatencyStats`, not estimated.

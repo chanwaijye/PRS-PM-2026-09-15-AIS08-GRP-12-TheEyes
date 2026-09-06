@@ -28,3 +28,5 @@ add_subdirectory(calibration)
 add_subdirectory(detector)
 add_subdirectory(pose)
 add_subdirectory(integration)
+# The live runner links every module above, so it comes last.
+add_subdirectory(runtime)

@@ -25,6 +25,8 @@ runs/
 *.npy
 *.bag
 *.mkv
+# Recorded RGB-D sessions from the live runner: ~30 MB/s of PNG pairs.
+captures/runtime/
 
 # USD/Blender scene files stay out -- large, and regenerable from the scripts.
 #

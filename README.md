@@ -70,8 +70,9 @@ All AI-generated outputs are reviewed, tested and validated by the author. Full 
 | Ubuntu | 24.04 LTS (noble) | |
 | NVIDIA GPU | RTX 4070+ (12 GB VRAM min) | RTX 5070 Ti 16 GB used for development |
 | librealsense | 2.x, RSUSB backend | **Do not use the DKMS package** — it fails on the 6.14 kernel |
-| ROS2 | Jazzy | |
-| CMake | 3.20+ | |
+| ROS2 | Jazzy | installed; **not used by the shipped runner** (single C++ process, see `SystemCode/runtime/README.md`) |
+| CMake | 3.22+ | |
+| SQLite3 | `libsqlite3-dev` | metric logging |
 | GCC | 12 | C++17 |
 | CUDA / TensorRT | per FoundationPose requirements | see R1 note in `CLAUDE.md` |
 | NVIDIA Isaac Sim | 4.x | Free — NVIDIA Developer Program. Used for dataset generation |
@@ -97,13 +98,18 @@ mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$(nproc)
 
 # 5. Calibrate (after final rigid mounting)
-ros2 launch the_eyes calibrate.launch.py
+build/calibration/calibrate run config/calibration.yaml \
+    captures/front 261722073945 captures/over 261822074567 config/extrinsics.yaml
 
 # 6. Run the perception pipeline
-ros2 launch the_eyes perception.launch.py
+build/runtime/the_eyes_run check --live      # configs, model, pose server, cameras
+build/runtime/the_eyes_run live --record demo --show
+#    or, with no hardware attached:
+build/runtime/the_eyes_run replay captures/runtime/<session> --detector mock:<fixture> --pose mock
 
 # 7. Occlusion ablation (headline result)
-./scripts/run_ablation.sh
+build/fusion/fusion_ablation_demo               # synthetic input, labelled as such
+build/runtime/ablation_from_log runs/runtime/<session>/metrics.sqlite   # real captures, once ground truth exists
 ```
 
 Every module has a mock mode and can be run without hardware — see `AGENTS.md`.

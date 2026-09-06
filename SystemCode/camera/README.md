@@ -235,4 +235,4 @@ characterisation.
 | Serial mapping survives a USB port swap | **Met incidentally** — the cameras were replugged across four different ports and controllers during bring-up; namespace assignment followed the serial every time |
 | Frame timestamps agree within one frame period, asserted at startup | **Met** — max 4.3 ms against a 33 ms budget |
 | Depth-noise characterisation report | **Tooling done and validated synthetically.** No measured wall yet, so no reportable figures |
-| Mock mode: replay from a recorded bag | **Not built** — `pose_agent` and `fusion` already have their own replay/mock paths, so nothing downstream is currently blocked on it |
+| Mock mode: replay from a recorded bag | **Built 2026-09-06 as `runtime_agent`'s session replay**, not a rosbag: `the_eyes_run live --record-only` writes synchronised RGB-D pairs (PNG, bit-exact) under `captures/runtime/<session>/`, and `the_eyes_run replay <session>` feeds them through the identical pipeline. See `SystemCode/runtime/README.md` |

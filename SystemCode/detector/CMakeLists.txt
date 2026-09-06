@@ -24,10 +24,12 @@ if(ORT_INCLUDE_DIR AND ORT_LIBRARY)
   message(STATUS "detector: ONNX Runtime found at ${ORT_LIBRARY}")
   list(APPEND DETECTOR_SOURCES src/onnx_detector.cpp)
   set(THE_EYES_HAVE_ORT TRUE)
+  set(THE_EYES_HAVE_ORT TRUE PARENT_SCOPE)
 else()
   message(WARNING "detector: ONNX Runtime not found -- building without the "
                   "inference backend. Set THE_EYES_ONNXRUNTIME_ROOT to enable it.")
   set(THE_EYES_HAVE_ORT FALSE)
+  set(THE_EYES_HAVE_ORT FALSE PARENT_SCOPE)
 endif()
 
 add_library(the_eyes_detector ${DETECTOR_SOURCES})

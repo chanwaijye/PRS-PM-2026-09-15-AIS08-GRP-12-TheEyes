@@ -174,5 +174,8 @@ so in its own output.
   reasoned starting point, not a measured one. The gate and association radii in
   particular should be re-derived from the depth-noise characterisation
   (`camera_agent`) once that report exists.
-- **No SQLite metric logging yet.** `CLAUDE.md` asks for it; the ablation result
-  is currently returned in-process and formatted to stdout.
+- **SQLite metric logging lives in `runtime_agent`, not here.** `the_eyes_run`
+  logs every per-view `PoseEstimate` and every fused `ObjectState` to
+  `runs/runtime/<session>/metrics.sqlite`, and `ablation_from_log` rebuilds
+  `AblationFrame`s from that log to run `RunOcclusionAblation` on real captures
+  once ground truth is available. The synthetic demo still prints to stdout.

@@ -14,11 +14,14 @@ estimator:
   # Unix domain socket the FoundationPose Python server listens on.
   # Only used when backend is "foundationpose".
   socket_path: "/tmp/the_eyes_foundationpose.sock"
-  # A per-request ceiling. FoundationPose registration measured ~1258 ms and
-  # tracking ~17 ms on the RTX 5070 Ti (docs/R1_STATUS.md), so this is generous
-  # for tracking and still catches a hung server rather than stalling the
-  # pipeline forever.
-  request_timeout_ms: 5000
+  # A per-request ceiling. FoundationPose registration measured ~1258 ms
+  # typical and 4332 ms worst case on the RTX 5070 Ti (docs/R1_STATUS.md,
+  # SystemCode/pose/README.md), tracking ~11-17 ms. 15 s clears the worst
+  # registration with margin -- the server holds one CUDA lock, so a second
+  # camera's registration can queue behind the first -- and still catches a
+  # hung server rather than stalling the pipeline forever. The live runner
+  # (SystemCode/runtime) warns below 10 s.
+  request_timeout_ms: 15000
 
   # Below this hypothesis score the estimate is discarded rather than passed to
   # fusion. Fusion weights by score, so a very low-confidence pose is not free:

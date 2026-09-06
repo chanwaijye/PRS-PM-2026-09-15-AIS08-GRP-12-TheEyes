@@ -1,4 +1,4 @@
-# Project status — 2026-09-05
+# Project status — 2026-09-06
 
 Snapshot for picking the work back up. Module detail lives in each
 `SystemCode/*/README.md`; this is the cross-cutting picture and the next action.
@@ -7,8 +7,10 @@ Snapshot for picking the work back up. Module detail lives in each
 
 ## Where things stand
 
-All six MVP-path agents in `AGENTS.md` are built. **303 tests pass**,
-clean build under `-Wall -Wextra -Wpedantic`.
+All six MVP-path agents in `AGENTS.md` are built, and the live runner
+(`runtime_agent`, #9) now runs them end to end on the rig. **336 tests pass**,
+clean build under `-Wall -Wextra -Wpedantic`, with and without librealsense /
+ONNX Runtime.
 
 | # | Agent | State |
 |---|---|---|
@@ -20,6 +22,7 @@ clean build under `-Wall -Wextra -Wpedantic`.
 | 6 | `scenegraph_agent` ★ | Built. PDDL emission, contract-tested against fusion. |
 | 7 | `cluster_agent` | Not built — above MVP, cut order #2. |
 | 8 | `twin_agent` | Not built — stretch, cut order #4. |
+| 9 | `runtime_agent` | **Built and run on hardware 2026-09-06.** `the_eyes_run check / live / replay`: cameras by serial → RGB-D YOLOv8 → FoundationPose → fusion → table injection → scenegraph → PDDL, one C++ process, no ROS2. Record/replay of synchronised RGB-D pairs (bit-exact), SQLite metrics per pair, `ablation_from_log`. Live end to end with the real FoundationPose server: p50 51.7 ms per pair. See "Live runner" below. |
 
 ```bash
 cmake -S SystemCode -B build -DCMAKE_BUILD_TYPE=Release
@@ -29,6 +32,69 @@ ctest --test-dir build --output-on-failure
 
 Risks R1 (retired) and R4 (downgraded, measured) are recorded in
 `docs/R1_STATUS.md` and `CLAUDE.md`.
+
+---
+
+## Live runner: DONE 2026-09-06 (review finding 3 closed)
+
+The 2026-09-05 review's third finding — no live end-to-end runner, no ROS2
+code, no SQLite logging — is closed by `SystemCode/runtime/` (README there).
+Decision taken with it: **one C++ process, no ROS2.** `INTERFACES.md` §1/§6
+keep the topics as the documented contract and carry a note that the shipped
+runner passes the same structs in-process. `README.md`'s `ros2 launch` lines
+are replaced.
+
+```bash
+build/runtime/the_eyes_run check --live                 # configs, model, pose server, cameras
+build/runtime/the_eyes_run live --record-only rig --frames 300
+build/runtime/the_eyes_run replay captures/runtime/<session> --pose foundationpose
+build/runtime/the_eyes_run live --record demo --show    # the demo
+```
+
+Measured on the rig (all from `runs/runtime/*/metrics.sqlite`, full table in
+the runtime README):
+
+- **Live, real FoundationPose, 120 pairs:** steady-state **p50 51.7 ms per
+  pair (~19 pairs/s)**, p95 78 ms; 8.7 pairs/s over the whole run because the
+  first registration took 2.1 s. That stall is visible as 56 dropped frames on
+  the next pair, not hidden.
+- **Detector 13 ms per view on CPU.** The ONNX Runtime install is the
+  CPU-only distribution, so `provider: cuda` has never loaded from C++ and no
+  GPU detector latency exists yet. The runner flags the fallback; the fix is
+  the `-gpu` package, `[VERIFY]` once installed.
+- **Hardware-sync jitter is 0.14–1.1 ms sigma**, not 4.51 ms: with one
+  grabber thread per camera the pairer sees the shutters, where
+  `camera_probe`'s serial reads saw queue jitter (as its README suspected).
+  The fixed offset varies run to run (8.7, −5.2 ms) as before.
+- **Recording keeps up at 30 pairs/s** with zero drops (PNG level 1, two
+  writer threads); a recorded session replays bit-exact and two mock replays
+  give identical facts (42/42).
+- **The pairer needed a finality rule.** The first live run paired frames one
+  period apart (−32.5 ms, inside the 33 ms gate) because the true partner had
+  not arrived yet. Fixed: a partner more than half a period away waits for the
+  next frame, mutual-nearest wins, orphans are counted. Pinned by
+  `FramePairer.DoesNotPairOffByOneWhenTheTruePartnerIsStillToCome`.
+- **The synthetic-only detector flickers on real desk clutter** (scores
+  0.39–0.54, five `red_cube` tracks in 100 pairs), and each flicker costs a
+  1–4 s FoundationPose registration. Real-capture mAP and ADD-S stay blocked
+  on the printed objects; this is the first sim-to-real evidence and it is in
+  the `detections` table.
+- **FoundationPose scores are not constant on real frames**: 0.75–0.92 across
+  235 estimates in the live run (review finding 2 assumed ~0.82 always, from
+  the demo clip). Confidence weighting has something to weight after all;
+  whether it helps is now a question the `estimates` table can answer.
+- **`(in red_cube_01 table_01)` was emitted 26 times.** A slab is not a
+  container, but the `in` rule only checks centroid containment and volume
+  ratio, and a pose estimate a centimetre low lands inside a 20 mm thick
+  table. `scenegraph_agent` needs a container flag (or `in` restricted to
+  classes declared as containers) before predicate accuracy is scored.
+- A nuisance seen once: cam_over renegotiated to USB 2.1 during an open
+  ("failed to set power state"); a replug fixed it. `check --live` catches it
+  before a demo.
+
+Still `[VERIFY]`: GPU detector latency; end-to-end FPS with three tracked
+objects per view (R4's 9.7 FPS estimate); real ADD-S via `ablation_from_log`
+once the ArUco trays exist and a tool fills `ground_truth`.
 
 ---
 
@@ -369,8 +435,14 @@ Reportable, from actual runs:
 ablation numbers, all calibration figures, and the detector mAP. Every tool that
 prints them says so in its own output.
 
-Still unmeasured: real extrinsics, ADD-S on real captures, predicate accuracy,
-and IR cross-interference under real rig geometry. **Depth-noise
+- Live runner end to end with FoundationPose: p50 51.7 ms per pair; detector
+  13 ms per view on CPU; hardware-sync jitter 0.14–1.1 ms sigma from grabber
+  threads (2026-09-06, `runs/runtime/`)
+
+Still unmeasured: ADD-S on real captures (needs the printed objects and a
+ground-truth tool), predicate accuracy, GPU detector latency, and IR
+cross-interference under real rig geometry. Real extrinsics are DONE (0.39 /
+0.33 px, 2026-09-06). **Depth-noise
 characterisation is DONE** — three distances, both units, matched patch — and
 **hardware-synced skew is DONE**: jitter 4.51 ms sigma, 2026-08-27.
 

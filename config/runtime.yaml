@@ -1,0 +1,51 @@
+# runtime_agent configuration -- the live end-to-end runner (SystemCode/runtime).
+#
+# Everything the runner needs that no other module owns. Per-module tuning
+# stays in that module's file: cameras.yaml, detector.yaml, pose.yaml,
+# fusion.yaml, predicates.yaml, meshes.yaml, extrinsics.yaml, scene.yaml.
+
+detector:
+  # "onnx" runs the trained RGB-D YOLOv8 through ONNX Runtime (detector.yaml).
+  # "mock" replays a detection fixture keyed by (camera_id, stamp_ns), which
+  # only matches a recorded session -- it is the zero-model replay path.
+  backend: "onnx"
+  # Fixture path for the mock backend; ignored for onnx. Relative to the repo
+  # root. Overridable on the command line as --detector mock:<path>.
+  mock_fixture: ""
+
+pairing:
+  # Frames kept per camera while waiting for the other camera to catch up.
+  # 4 frames at 30 fps is ~133 ms: enough to ride out the -10.97 ms fixed
+  # offset plus jitter, small enough that a slow main loop always sees the
+  # freshest pair rather than a backlog. Max skew itself comes from
+  # cameras.yaml sync.max_skew_ms so the two cannot disagree.
+  ring_depth: 4
+
+live:
+  # Frames discarded per camera before anything is paired. camera_probe
+  # measured 265 ms of start-up skew without this, 4.3 ms with it.
+  warmup_frames: 15
+  # How long the main loop waits for a pair before calling it a stall.
+  stall_timeout_ms: 1000
+  # Consecutive stalls before the run aborts. A camera that stops delivering
+  # is a rig fault; the runner stops loudly rather than continuing single-view.
+  max_consecutive_stalls: 5
+
+recorder:
+  # Pairs buffered between the capture loop and the PNG writer threads. A full
+  # queue DROPS the pair and counts it; it never blocks capture. 64 pairs of
+  # 848x480 RGB + depth x2 is ~130 MB.
+  queue_capacity: 64
+  # PNG compression level 0-9. 1 keeps encode time to a few ms per image,
+  # which two writer threads sustain at 30 fps. Both streams are lossless at
+  # any level; this only trades disk for CPU.
+  png_compression: 1
+  writer_threads: 2
+
+output:
+  # Recorded sessions and metric logs. Both directories are gitignored.
+  captures_dir: "captures/runtime"
+  runs_dir: "runs/runtime"
+  # One status line to stdout every N processed pairs. The PDDL block is
+  # printed only when the fact set changes, so this is the only steady output.
+  print_every: 30

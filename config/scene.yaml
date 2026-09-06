@@ -1,0 +1,27 @@
+# Static scene objects -- things that exist in the world frame without being
+# perceived. The runner injects these into every SceneState after fusion and
+# before predicate extraction, so `(on red_cube_01 table_01)` can be emitted:
+# nothing upstream ever detects the table, and without it no object is `on`
+# anything (project review 2026-09-05, finding 5).
+#
+# Injected objects carry visible_views = every view bit (they are never
+# occluded), confidence 1.0, velocity 0, and NO uncertainty (sigmas -1, per
+# INTERFACES.md §5: no estimator produced them, so "absent" is the honest
+# value rather than "perfectly known").
+#
+# Frame: the world frame from config/extrinsics.yaml (`table_origin`), whose
+# origin is on the table top surface per docs/CALIBRATION_PROTOCOL.md. A
+# box's pose is its CENTRE, so a table of thickness t sits at z = -t/2.
+world_frame: table_origin
+
+objects:
+  - id: table_01
+    cls: table
+    # [VERIFY] Measure the table with a tape and the world-origin position on
+    # it before quoting any predicate result. These are placeholders sized so
+    # the calibration board (324 x 324 mm) and the three objects fit.
+    pose_w:
+      t: [0.0, 0.0, -0.010]      # centre, metres, world frame
+      rpy_deg: [0.0, 0.0, 0.0]
+    # Half-extents, metres, world-axis-aligned (ObjectState::extent).
+    extent: [0.400, 0.300, 0.010]

@@ -19,10 +19,12 @@ if(REALSENSE_INCLUDE_DIR AND REALSENSE_LIBRARY)
   message(STATUS "camera: librealsense found at ${REALSENSE_LIBRARY}")
   list(APPEND CAMERA_SOURCES src/realsense_camera.cpp)
   set(THE_EYES_HAVE_REALSENSE TRUE)
+  set(THE_EYES_HAVE_REALSENSE TRUE PARENT_SCOPE)
 else()
   message(WARNING "camera: librealsense not found -- building without capture. "
                   "Config, sync analysis, and depth-noise maths still build and test.")
   set(THE_EYES_HAVE_REALSENSE FALSE)
+  set(THE_EYES_HAVE_REALSENSE FALSE PARENT_SCOPE)
 endif()
 
 add_library(the_eyes_camera ${CAMERA_SOURCES})
