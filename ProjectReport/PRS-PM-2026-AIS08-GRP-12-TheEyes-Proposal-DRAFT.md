@@ -146,7 +146,7 @@ flowchart TD
 
     F --> S["Scene-Graph Bridge ★<BR>poses → relational predicates<BR>(C++)"]
 
-    S --> O1(["/scene_state topic<BR>scene graph JSON"])
+    S --> O1(["scene_state<BR>scene graph JSON"])
     S --> O2(["PDDL state facts<BR>→ The Planner (PM1)"])
 ```
 
@@ -181,7 +181,19 @@ Interface stability rule: fields may be added, never removed or re-typed, so PM4
 
 ### 5.4 Technology Stack
 
-C++17 (fusion, scene graph, drivers) · Python 3.11 (training pipelines) · YOLOv8 · FoundationPose · ONNX Runtime C++ API / TensorRT · PCL · OpenCV · Eigen · ROS2 Jazzy · Isaac Sim + Omniverse Replicator · Ubuntu 24.04 · SQLite (metric logging).
+C++17 (fusion, scene graph, drivers) · Python 3.11 (training pipelines) · YOLOv8 · FoundationPose · ONNX Runtime C++ API / TensorRT · PCL · OpenCV · Eigen · Isaac Sim + Omniverse Replicator · Ubuntu 24.04 · SQLite (metric logging).
+
+**Runtime process model: one C++ process, not ROS2** (decided 2026-09-06 when
+the live runner was built). The stages above are function calls passing the
+`INTERFACES.md` structs in-process, not nodes exchanging messages. ROS2 Jazzy
+was the original plan and is not used: for a fixed six-stage pipeline on one
+machine it buys nothing over direct calls and costs serialisation on the hot
+path, a second build system, and a distro pin that conflicts with PM1's Humble.
+The message-shaped contract survives the change unaltered — `INTERFACES.md`
+still specifies `scene_state` and the PDDL facts as the boundary, so a ROS2
+publisher is a thin adapter over the same structs if PM1 or PM4 later wants
+one. This keeps the PM1 integration a contract, not a shared workspace, which
+is what §2.2 required of it.
 
 ### 5.5 Digital-Twin Reconstruction (stretch deliverable)
 
@@ -279,9 +291,9 @@ A fixed suite of ~10 evaluation scenes graduated by difficulty: isolated objects
 
 | Component | Metric | Target (provisional) |
 |---|---|---|
-| Detection | mAP@0.5, per-class recall | mAP@0.5 ≥ 0.90 on synthetic val; report real-capture figure |
-| Modality ablation | Detector mAP@0.5: RGB-only vs. RGB-D early fusion | Reported delta; expected gain concentrated on textureless / low-contrast objects |
-| Training methodology | Dataset-size ablation: mAP vs. training set size (~5k / 20k / 50k frames) | Reported curve; justifies final dataset size empirically |
+| Detection | **mAP@0.5:0.95** and per-class, plus recall | Synthetic val **met**: 0.956 pooled (§7A). mAP@0.5 is retired as a target — it reached 0.994 and has 0.006 of headroom, so it can no longer discriminate. Real-capture figure outstanding |
+| Modality ablation | **mAP@0.5:0.95**, per class: RGB-only vs. RGB-D early fusion | **Run — negative on synthetic** (+0.00076 pooled, §7A). Re-run on real captures, where depth validity is 97.8% rather than 100%; `red_cube` is the discriminating class |
+| Training methodology | Dataset-size ablation: mAP@0.5:0.95 vs. training set size (5k / 20k / 40k train frames) | **Run** (§7A): recall saturates at 20k, localisation does not |
 | Pose (single view) | ADD / ADD-S, rotation error (deg), translation error (mm) | ADD-S < 10% object diameter on visible objects |
 | Fusion gain | ADD-S single-view vs. fused, on occlusion suite | Measurable improvement on occluded scenes (primary result) |
 | Sense-making | Predicate accuracy vs. hand-labelled ground truth | ≥ 95% on benchmark suite |
@@ -300,23 +312,24 @@ The headline experiment is the **occlusion ablation**: identical scenes evaluate
 
 ---
 
-## 7A. Implementation Status (as of 2026-09-04)
+## 7A. Implementation Status (as of 2026-09-06)
 
 Reported from actual runs; nothing in this table is projected. Figures marked
 *synthetic* come from generated input and are not evaluation results.
 
 | Module | State | Evidence |
 |---|---|---|
-| `camera` | Built, **verified on hardware** | Both D435i at 30.0 fps each, 848×480 aligned; cross-camera skew max 4.3 ms (budget 33 ms); selection by serial survived four replugs across controllers; depth noise 2–4 mm at working distance |
-| `calibration` | Built, mock verified | Recovers known intrinsics to ≤1 px and known extrinsics from synthetic observations; round-trip check demonstrated to catch a 2 cm misregistration that per-camera RMSE cannot see. **Session re-registration added** (below) |
-| `detector` | Built, **RGB-D input path complete** | C++/Python inference parity: 32 detections over 12 images, scores within 1e-3, boxes within 2 px. 4-channel sentinel depth encoding implemented in C++ and in the training pipeline; **not yet trained — gated on the Replicator dataset** |
+| `camera` | Built, **verified on hardware** | Both D435i at 30.0 fps each, 848×480 aligned; hardware-synced pair jitter **0.14–1.1 ms sigma** against a 33 ms budget; selection by serial survived four replugs across controllers; depth noise 2–4 mm at working distance |
+| `calibration` | Built, **run on the real rig 2026-09-06** | Real extrinsics committed to `config/extrinsics.yaml`: reprojection RMSE **0.39 px** (cam_front) / **0.33 px** (cam_over). Round-trip check catches a 2 cm misregistration that per-camera RMSE cannot see. **Session re-registration added** (below) |
+| `detector` | Built, **trained and deployed** | Trained on `synth50k_v2` (40 epochs), exported to ONNX, C++/Python parity re-verified against the trained network. On the GPU: **p50 3.60 / 3.43 ms per view** (12.60 / 12.37 on CPU), same detections either provider. Modality ablation run — negative result, below |
 | `pose` | Built, **verified end-to-end** | Drives the real FoundationPose server: 30/30 frames, p50 11.1 ms end to end |
-| `fusion` ★ | Built | Occlusion ablation harness produces the headline three-way comparison (*synthetic*) |
+| `fusion` ★ | Built, **first real-object run 2026-09-06** | Eight-arm ablation harness (below, *synthetic*). On 150 live pairs of a printed cube both views associated and fused every pair, `visible_views = 0b11`, 0 gate rejections, per-view disagreement 11 mm |
 | `scenegraph` ★ | Built | Emits PDDL `(:init …)`; contract-tested against fusion |
+| `runtime` | **Built and run on hardware 2026-09-06** | `the_eyes_run check / live / replay`: cameras by serial → RGB-D YOLOv8 → FoundationPose → fusion → scenegraph → PDDL in one C++ process. Live with the real pose server: **p50 51.7 ms per pair**, p95 78 ms. Bit-exact record/replay, SQLite metrics per pair |
 | `clustering`, `twin` | Not started | Above MVP; documented cut order |
 | object meshes | **Acquired** | All three classes present, re-centred, config tied to geometry by test (§6.2) |
 
-**296 automated tests pass** across seven suites, covering all six modules plus
+**336 automated tests pass** across eight suites, covering all six modules plus
 cross-module contract tests, under `-Wall -Wextra -Wpedantic`. Every module runs
 in a mock mode with no hardware, and the project is under version control with
 its full history.
@@ -474,8 +487,8 @@ not.
 
 Real-capture detection mAP, ADD-S on real captures, and predicate accuracy —
 each of which requires the physical objects and a real calibration. The modality
-ablation **has now run** and is reported above as a negative result; the
-dataset-size ablation has run and is reported below.
+and dataset-size ablations have both run and are reported below — the first as a
+negative result.
 
 **No delivery gates anything any more.** The inter-camera sync cable arrived and
 was verified on 2026-08-27; the ChArUco board arrived on 2026-08-28 and was
@@ -484,11 +497,23 @@ reach 1.82 m / 1.81 m per unit at 1920 × 1080). Isaac Sim 5.1.0 is installed an
 the Replicator script has been run and debugged. Object meshes were acquired on
 2026-09-04.
 
-What remains is work, not waiting, and the longest pole is **print-ready object
-geometry**: §6.3 requires the ArUco ground-truth seats to be modelled into the
-printed parts, and that geometry does not exist yet. The order is author seats →
-print → calliper-verify → mount → calibrate → capture, and calibration —
-unblocked since 08-28 — has not yet been run against the real rig.
+**The rig is calibrated and the whole chain has run on a real object.** As of
+2026-09-06 `calib_agent` has been run against the mounted rig and the real
+extrinsics are committed (RMSE 0.39 / 0.33 px), and `runtime_agent` drives the
+full pipeline live at p50 51.7 ms per pair. On 150 live pairs of a printed cube
+with fixed boxes standing in for the untrained-on-real-data detector, the two
+views associated and fused into a single object on **every** pair with zero gate
+rejections, the fused pose stable to 0.1 mm sd. The one checkable figure is
+height — a 50 mm cube centres at 25 mm and the fused z reads 29.7 mm, **5 mm
+high**, consistent with 2–4 mm depth noise plus calibration. *This is one
+observation, not a measurement, and it is not an ADD-S number.* It is the first
+evidence on real data that the multi-view claim holds end to end.
+
+What remains is work, not waiting, and the longest pole is now **the printed
+object set with its ArUco trays** (§6.3): the tray geometry is authored and the
+cube is printed, but the bottle, bowl and tray set are not, and without them
+there is no ground truth and therefore no real ADD-S. The order is print →
+calliper-verify → mount → capture → score.
 
 **Replicator scene fidelity was the remaining blocker and is now closed
 (2026-09-04).** The scene renders the derived rig geometry with the measured
@@ -563,6 +588,51 @@ the origin at the mesh AABB centre each class rests at its own half-height (96,
 table and floated others — while the 2D boxes stayed correct throughout, so the
 label files looked perfect and `(on obj table)` was false in the very data the
 predicates are to be evaluated against.
+
+---
+
+### Measured: the modality ablation, and it is a negative result
+
+This is the ablation that tests the project's own multimodal claim (§4, category
+②), so it is reported whichever way it comes out. RGB-only versus RGB-D on the
+same 9,988 val frames, byte-identical PNGs and labels, identical 40,012/9,988
+split, same 40-epoch schedule and seed, `yolov8n.pt` COCO init both sides —
+differing **only** in whether the loader reads the 3-channel PNG or the
+4-channel `.npy`, so any delta is attributable to the depth channel and nothing
+else:
+
+| | RGB-only | RGB-D | delta |
+|---|---|---|---|
+| mAP@0.5 | 0.99325 | 0.99371 | +0.00046 |
+| **mAP@0.5:0.95** | 0.95662 | 0.95738 | **+0.00076** |
+| recall | 0.98272 | 0.98260 | −0.00012 |
+| `mustard_bottle` @.5:.95 | 0.98872 | 0.98861 | −0.00011 |
+| **`red_cube` @.5:.95** | 0.91565 | 0.91590 | **+0.00026** |
+| `bowl` @.5:.95 | 0.96551 | 0.96763 | +0.00212 |
+
+**The depth channel does not earn its place on this benchmark.** `red_cube` was
+the class predicted to move — smallest, most often occluded, and the only one
+with real headroom at 0.085 below ceiling — and it moved by 0.0003. Two of three
+classes are marginally *worse* on recall with depth.
+
+The reading is narrow and deliberate: at 100% synthetic depth validity, three
+geometrically distinct classes in three distinct colours, and a COCO-pretrained
+backbone, depth adds nothing *this benchmark* needs. That is not a statement
+about RGB-D detection in general, and it is not "the benchmark is saturated" —
+the dataset-size ablation below rules that out, since 8x more training data
+moves the same val split by +0.0322. There is headroom; depth does not reach it
+while more RGB examples do.
+
+Two consequences follow rather than being argued away. The early-fusion stem
+stays in the delivered system because the real-capture condition is the one it
+was chosen for — real depth validity is 97.8%, not 100%, and the appearance gap
+is real — and that test has not run. And if it does not move there either, the
+honest finding is that the RGB-D stem was the right design for the stated risk
+and the risk did not materialise on this object set. `AGENTS.md` set that policy
+in advance: "if they do not, that is a reportable negative result, not a failure
+to hide."
+
+Raw metrics: `docs/results/modality_rgb_vs_rgbd_50k_v2.json`.
 
 ---
 
