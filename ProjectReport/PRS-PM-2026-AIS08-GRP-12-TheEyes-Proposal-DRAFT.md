@@ -322,8 +322,9 @@ because it leaves all results self-consistent. The offset must come from CAD, no
 callipers. Cutting a marker seat *into* the objects was rejected for a second
 reason: `synth50k_v2` was rendered from the **unmodified** meshes, so modifying a
 target object would introduce a sim-to-real gap the trained detector has never
-seen, and closing it would mean regenerating 88 GB for a change that serves
-evaluation rather than perception.
+seen, and closing it would mean regenerating 88 GB
+(`/opt/the-eyes-data/synth50k_v2`) for a change that serves evaluation rather
+than perception.
 
 `training/author_marker_trays.py` therefore generates one tray per class: a plate
 whose socket is **boolean-subtracted from that object's own mesh**, so the fit is
