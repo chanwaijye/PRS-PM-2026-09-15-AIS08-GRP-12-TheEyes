@@ -182,12 +182,27 @@ Predicate vocabulary (must match PM1's domain exactly):
 | Predicate | Meaning | Geometric rule |
 |---|---|---|
 | `(on ?a ?b)` | a rests on b | a's base within tolerance of b's top surface AND horizontal overlap |
-| `(in ?a ?b)` | a inside container b | a's centroid within b's interior volume |
+| `(in ?a ?b)` | a inside container b | b's class is declared in `in.container_classes` AND a's centroid within b's interior volume |
 | `(clear ?a)` | nothing on top of a | no object satisfies `(on ?x ?a)` |
 | `(occluded_from ?a ?view)` | a not visible from view | corresponding `visible_views` bit unset |
 
 Tolerances live in `config/predicates.yaml` — never hard-coded. Predicate
 extraction must be deterministic: same `SceneState` in, same fact set out.
+
+**`in` is default-deny on the container class** (added 2026-09-06). `ObjectState`
+carries a world-axis-aligned box and nothing else, and that is not enough to
+distinguish a container from a slab: on the 2026-09-06 live run a cube pose low
+by more than half the 20 mm table thickness put its centroid between the table's
+faces and emitted `(in red_cube_01 table_01)` 26 times, satisfying the centroid
+and volume-ratio tests while being false. A class absent from
+`in.container_classes` therefore can never be the `?b` argument. The key is
+required and may be empty, but never omitted — a default would either invent
+containers or silently drop the predicate. `unknown_object` never qualifies,
+which follows from default-deny rather than a special case.
+
+The asymmetry is deliberate: `in` suppresses every `on` fact for the contained
+object and PM1 reads it as not directly pickable, so a false positive removes
+actions from the planner while a false negative only forgoes a fact.
 
 *Shipped implementation note (2026-09-06):* `the_eyes_run` emits the
 `(:init ...)` block on stdout whenever the fact set changes and logs every

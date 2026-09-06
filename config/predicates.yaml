@@ -21,6 +21,25 @@ in:
   containment_margin_m: 0.005
   # a is only "in" b if it could plausibly fit: vol(a) <= ratio * vol(b).
   max_volume_ratio: 0.5
+  # Classes that may be the CONTAINER argument of (in ?a ?b). Required, and
+  # legitimately empty ([]) for a scene with no containers -- but never absent,
+  # because a default here would either invent containers or silently suppress
+  # the predicate.
+  #
+  # Geometry cannot decide this. ObjectState carries an axis-aligned box and
+  # nothing else, and a table is a wide thin box: on the 2026-09-06 live run a
+  # cube pose low by more than half the 20 mm table thickness put its centroid
+  # between the slab's faces and emitted `(in red_cube_01 table_01)` 26 times,
+  # passing every geometric test while being false.
+  #
+  # Default-deny, so a class listed nowhere is never a container. `in` is the
+  # expensive direction to get wrong: it suppresses every `on` fact for the
+  # contained object and PM1 reads it as not directly pickable, so a false
+  # positive removes actions from the planner while a false negative only
+  # forgoes a fact. `unknown_object` therefore never qualifies, which is right
+  # -- it has no CAD model and no class semantics.
+  container_classes:
+    - bowl
 
 views:
   # Order defines the ObjectState::visible_views bit positions: index 0 -> bit0.

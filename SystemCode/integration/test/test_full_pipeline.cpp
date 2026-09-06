@@ -25,6 +25,15 @@ namespace the_eyes {
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
+
+// The `in` predicate is default-deny on the container class (predicates.yaml
+// `in.container_classes`), so this fixture's bin has to be declared as one.
+// The shipped config lists `bowl`; `bin` exists only here.
+scenegraph::PredicateConfig FixtureCfg() {
+  scenegraph::PredicateConfig cfg;
+  cfg.in_container_classes = {"bin"};
+  return cfg;
+}
 constexpr int kWidth = 640;
 constexpr int kHeight = 480;
 
@@ -181,7 +190,7 @@ TEST(FullPipeline, DetectionsBecomePddlFactsThroughEveryModule) {
   ASSERT_EQ(state.objects.size(), scene.size());
 
   const scenegraph::PddlResult pddl =
-      scenegraph::EmitInit(state, scenegraph::PredicateConfig{});
+      scenegraph::EmitInit(state, FixtureCfg());
 
   EXPECT_TRUE(Has(pddl.facts, "(on mustard_bottle_01 table_01)"));
   EXPECT_TRUE(Has(pddl.facts, "(on bin_01 table_01)"));
@@ -252,7 +261,7 @@ TEST(FullPipeline, DropoutInOneViewSurfacesAsAnOccludedFromFact) {
   EXPECT_EQ(mustard->visible_views, kViewCamFront);
 
   const scenegraph::PddlResult pddl =
-      scenegraph::EmitInit(state, scenegraph::PredicateConfig{});
+      scenegraph::EmitInit(state, FixtureCfg());
   EXPECT_TRUE(Has(pddl.facts, "(occluded_from mustard_bottle_01 cam_over)"));
   EXPECT_FALSE(Has(pddl.facts, "(occluded_from mustard_bottle_01 cam_front)"));
   EXPECT_FALSE(Has(pddl.facts, "(occluded_from bin_01 cam_over)"));
@@ -280,7 +289,7 @@ TEST(FullPipeline, UnregisteredClassIsDroppedAtPoseAgentAndNeverReachesTheSceneG
   fusion::Fusion fuser(fusion::FusionConfig{}, ex);
   const SceneState state = fuser.Process(estimates, stamp);
   const scenegraph::PddlResult pddl =
-      scenegraph::EmitInit(state, scenegraph::PredicateConfig{});
+      scenegraph::EmitInit(state, FixtureCfg());
 
   for (const std::string& fact : pddl.facts) {
     EXPECT_EQ(fact.find("bin"), std::string::npos) << fact;

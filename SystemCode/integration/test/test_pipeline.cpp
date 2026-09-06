@@ -20,6 +20,15 @@ namespace {
 
 constexpr double kPi = 3.14159265358979323846;
 
+// The `in` predicate is default-deny on the container class (predicates.yaml
+// `in.container_classes`), so this fixture's bin has to be declared as one.
+// The shipped config lists `bowl`; `bin` exists only here.
+scenegraph::PredicateConfig FixtureCfg() {
+  scenegraph::PredicateConfig cfg;
+  cfg.in_container_classes = {"bin"};
+  return cfg;
+}
+
 Eigen::Isometry3d Pose(const Eigen::Vector3d& t, double yaw_deg = 0.0) {
   Eigen::Isometry3d p = Eigen::Isometry3d::Identity();
   p.linear() =
@@ -106,7 +115,7 @@ TEST(Pipeline, FusedSceneProducesTheExpectedPddlInitBlock) {
   ASSERT_EQ(state.objects.size(), 4u);
 
   const scenegraph::PddlResult pddl =
-      scenegraph::EmitInit(state, scenegraph::PredicateConfig{});
+      scenegraph::EmitInit(state, FixtureCfg());
 
   EXPECT_TRUE(Has(pddl.facts, "(on cube_01 table_01)"));
   EXPECT_TRUE(Has(pddl.facts, "(on bin_01 table_01)"));
@@ -137,7 +146,7 @@ TEST(Pipeline, VisibilityBitsSurviveFusionAndBecomeOccludedFromFacts) {
   }
 
   const scenegraph::PddlResult pddl =
-      scenegraph::EmitInit(state, scenegraph::PredicateConfig{});
+      scenegraph::EmitInit(state, FixtureCfg());
   EXPECT_TRUE(Has(pddl.facts, "(occluded_from cube_01 cam_over)"));
   EXPECT_FALSE(Has(pddl.facts, "(occluded_from cube_01 cam_front)"));
   EXPECT_FALSE(Has(pddl.facts, "(occluded_from ball_01 cam_over)"));
@@ -164,7 +173,7 @@ TEST(Pipeline, FusionLeavesRelationsForScenegraphToFill) {
 
   for (const ObjectState& o : state.objects) EXPECT_TRUE(o.relations.empty());
 
-  scenegraph::Annotate(state, scenegraph::PredicateConfig{});
+  scenegraph::Annotate(state, FixtureCfg());
   for (const ObjectState& o : state.objects) {
     // Every object is at least `clear` or `occluded_from` something, except the
     // table, which is neither clear nor occluded.
@@ -179,10 +188,10 @@ TEST(Pipeline, ObjectIdsAreStableAcrossFramesAndPddlNamesFollowThem) {
   fusion::Fusion fuser(fusion::FusionConfig{}, scene.ex);
 
   const SceneState first = fuser.Process(scene.Estimates(), 1'000'000'000ULL);
-  const scenegraph::PddlResult a = scenegraph::EmitInit(first, scenegraph::PredicateConfig{});
+  const scenegraph::PddlResult a = scenegraph::EmitInit(first, FixtureCfg());
 
   const SceneState second = fuser.Process(scene.Estimates(), 1'033'000'000ULL);
-  const scenegraph::PddlResult b = scenegraph::EmitInit(second, scenegraph::PredicateConfig{});
+  const scenegraph::PddlResult b = scenegraph::EmitInit(second, FixtureCfg());
 
   // A static scene must yield an identical fact set frame to frame; churn here
   // would make PM1 replan every frame for no reason.

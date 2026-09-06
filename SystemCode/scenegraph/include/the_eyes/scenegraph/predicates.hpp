@@ -26,6 +26,12 @@ struct PredicateConfig {
   double on_min_overlap_ratio = 0.25;
   double in_containment_margin_m = 0.005;
   double in_max_volume_ratio = 0.5;
+  // Classes that may be the CONTAINER argument of `in`. Default-deny: a class
+  // absent from this list can never be `b` in (in ?a ?b). Geometry alone cannot
+  // tell a container from a slab -- a table is a wide, thin box, and a pose
+  // estimate low by more than half the table's thickness puts the object's
+  // centroid inside it, satisfying every geometric test. See IsIn.
+  std::vector<std::string> in_container_classes = {"bowl"};
   // Index i in this vector corresponds to bit i of ObjectState::visible_views.
   std::vector<std::string> view_names = {"cam_front", "cam_over"};
 };

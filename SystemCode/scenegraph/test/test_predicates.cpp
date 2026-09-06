@@ -4,7 +4,13 @@
 #include "the_eyes/scenegraph/predicates.hpp"
 
 #include <algorithm>
+#include <cstdio>
+#include <fstream>
 #include <random>
+#include <string>
+#include <vector>
+
+#include <unistd.h>
 
 #include <gtest/gtest.h>
 
@@ -36,6 +42,15 @@ bool Has(const PredicateResult& r, const std::string& fact) {
 }
 
 PredicateConfig Cfg() { return PredicateConfig{}; }
+
+// `in` is default-deny on the container class, so a fixture that wants a
+// container has to name it. That is the point of the flag: the declaration is
+// visible at the call site rather than inferred from a box's proportions.
+PredicateConfig CfgWithContainers(std::vector<std::string> classes) {
+  PredicateConfig cfg;
+  cfg.in_container_classes = std::move(classes);
+  return cfg;
+}
 
 TEST(Predicates, CubeRestingOnTableIsOnAndClear) {
   SceneState scene;
@@ -96,7 +111,7 @@ TEST(Predicates, ObjectInContainerIsInNotOn) {
       Make("red_cube_01", "cube", {0.30, 0.20, 0.03}, {0.025, 0.025, 0.025}),
   };
 
-  const PredicateResult r = Extract(scene, Cfg());
+  const PredicateResult r = Extract(scene, CfgWithContainers({"bin"}));
   EXPECT_TRUE(Has(r, "(in red_cube_01 bin_01)"));
   EXPECT_FALSE(Has(r, "(on red_cube_01 bin_01)"));
   // Containment is not support: the bin still has nothing stacked on top.
@@ -116,7 +131,7 @@ TEST(Predicates, ContainedObjectIsOnNothingAtAll) {
       Make("ball_01", "ball", {0.30, 0.20, 0.03}, {0.02, 0.02, 0.02}),
   };
 
-  const PredicateConfig cfg = Cfg();
+  const PredicateConfig cfg = CfgWithContainers({"bin"});
   // The pairwise rule genuinely does hold for this geometry...
   EXPECT_TRUE(IsOn(scene.objects[2], scene.objects[0], cfg));
 
@@ -132,7 +147,7 @@ TEST(Predicates, ContainedObjectIsOnNothingAtAll) {
 }
 
 TEST(Predicates, ContainerTooSmallToHoldIsNotIn) {
-  const PredicateConfig cfg = Cfg();
+  const PredicateConfig cfg = CfgWithContainers({"box"});
   // Coincident centroids, but the "container" is smaller than the object.
   const ObjectState big = Make("big_01", "box", {0.0, 0.0, 0.10}, {0.10, 0.10, 0.10});
   const ObjectState small = Make("small_01", "box", {0.0, 0.0, 0.10}, {0.02, 0.02, 0.02});
@@ -256,6 +271,9 @@ TEST(Predicates, ShippedConfigFileLoadsAndMatchesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(cfg.on_min_overlap_ratio, 0.25);
   EXPECT_DOUBLE_EQ(cfg.in_containment_margin_m, 0.005);
   EXPECT_DOUBLE_EQ(cfg.in_max_volume_ratio, 0.5);
+  // The shipped scene has exactly one container class, and `table` is not it.
+  ASSERT_EQ(cfg.in_container_classes.size(), 1u);
+  EXPECT_EQ(cfg.in_container_classes[0], "bowl");
   // View order defines the visible_views bit positions.
   ASSERT_EQ(cfg.view_names.size(), 2u);
   EXPECT_EQ(cfg.view_names[0], "cam_front");
@@ -264,6 +282,88 @@ TEST(Predicates, ShippedConfigFileLoadsAndMatchesDocumentedDefaults) {
 
 TEST(Predicates, MissingConfigFileThrowsRatherThanUsingDefaults) {
   EXPECT_THROW(LoadPredicateConfig("/nonexistent/predicates.yaml"), std::runtime_error);
+}
+
+// ---------------------------------------------------------------------------
+// The container flag. Regression from the 2026-09-06 live run, which emitted
+// `(in red_cube_01 table_01)` 26 times.
+// ---------------------------------------------------------------------------
+
+TEST(Predicates, TableIsNotAContainerEvenWhenTheCubeSinksIntoIt) {
+  // The exact failing geometry: the shipped table is a 20 mm slab centred at
+  // z = -0.010, and a pose ~35 mm low puts the cube's centroid between its
+  // faces. Every geometric test passes -- the volume ratio is tiny, the
+  // centroid is inside the inset box -- so only the class declaration can
+  // reject it.
+  const ObjectState table = Make("table_01", "table", {0.0, 0.0, -0.010}, {0.400, 0.300, 0.010});
+  const ObjectState sunk = Make("red_cube_01", "cube", {0.0, 0.0, -0.010}, {0.025, 0.025, 0.025});
+
+  const Aabb bt = AabbOf(table);
+  const Aabb bc = AabbOf(sunk);
+  ASSERT_LT(bc.volume(), 0.5 * bt.volume()) << "volume gate would not have caught it";
+  ASSERT_GE(sunk.pose_w.translation().z(), bt.min.z() + 0.005);
+  ASSERT_LE(sunk.pose_w.translation().z(), bt.max.z() - 0.005)
+      << "centroid must be inside the slab for this to be the real regression";
+
+  EXPECT_FALSE(IsIn(sunk, table, Cfg()));
+
+  // And the whole scene still behaves: no `in`, and `on` is not suppressed.
+  SceneState scene;
+  scene.objects = {table, Make("red_cube_01", "cube", {0.0, 0.0, 0.025}, {0.025, 0.025, 0.025})};
+  const PredicateResult r = Extract(scene, Cfg());
+  EXPECT_FALSE(Has(r, "(in red_cube_01 table_01)"));
+  EXPECT_TRUE(Has(r, "(on red_cube_01 table_01)"));
+}
+
+TEST(Predicates, DeclaringTheContainerIsWhatEnablesIn) {
+  // Same geometry, two configs. Nothing but the declaration differs, which
+  // pins that the flag is the deciding term and not some coincidence of shape.
+  const ObjectState bowl = Make("bowl_01", "bowl", {0.0, 0.0, 0.03}, {0.08, 0.08, 0.03});
+  const ObjectState cube = Make("red_cube_01", "cube", {0.0, 0.0, 0.03}, {0.02, 0.02, 0.02});
+
+  EXPECT_FALSE(IsIn(cube, bowl, CfgWithContainers({})));
+  EXPECT_TRUE(IsIn(cube, bowl, CfgWithContainers({"bowl"})));
+}
+
+TEST(Predicates, UnknownObjectIsNeverAContainer) {
+  // The DBSCAN path produces a centroid and an extent and no semantics at all,
+  // so it can be contained but can never contain. Falls out of default-deny
+  // rather than needing a special case, and this pins that it stays that way.
+  const ObjectState unknown =
+      Make("unknown_object_01", "unknown_object", {0.0, 0.0, 0.06}, {0.10, 0.10, 0.06});
+  const ObjectState cube = Make("red_cube_01", "cube", {0.0, 0.0, 0.06}, {0.02, 0.02, 0.02});
+
+  EXPECT_FALSE(IsIn(cube, unknown, Cfg()));
+  EXPECT_FALSE(IsIn(cube, unknown, CfgWithContainers({"bowl"})));
+}
+
+TEST(Predicates, EmptyContainerListIsValidAndEmitsNoInFacts) {
+  SceneState scene;
+  scene.objects = {
+      Table(),
+      Make("bowl_01", "bowl", {0.30, 0.20, 0.03}, {0.08, 0.08, 0.03}),
+      Make("red_cube_01", "cube", {0.30, 0.20, 0.03}, {0.02, 0.02, 0.02}),
+  };
+  const PredicateResult r = Extract(scene, CfgWithContainers({}));
+  for (const std::string& f : r.facts) {
+    EXPECT_EQ(f.rfind("(in ", 0), std::string::npos) << "unexpected containment: " << f;
+  }
+  // With containment off, the cube is simply on the table.
+  EXPECT_TRUE(Has(r, "(on red_cube_01 table_01)"));
+}
+
+TEST(Predicates, AbsentContainerClassesKeyThrowsRatherThanDefaulting) {
+  // Absent and empty are different. A default here would either invent
+  // containers or silently drop the predicate, and both still look like a
+  // working scene graph -- the failure mode this module exists to avoid.
+  char tmpl[] = "/tmp/the_eyes_predicates_XXXXXX";
+  const int fd = ::mkstemp(tmpl);
+  if (fd >= 0) ::close(fd);
+  std::ofstream(tmpl) << "on:\n  surface_tol_m: 0.015\n  min_overlap_ratio: 0.25\n"
+                      << "in:\n  containment_margin_m: 0.005\n  max_volume_ratio: 0.5\n"
+                      << "views:\n  names: [\"cam_front\", \"cam_over\"]\n";
+  EXPECT_THROW(LoadPredicateConfig(tmpl), std::runtime_error);
+  std::remove(tmpl);
 }
 
 }  // namespace

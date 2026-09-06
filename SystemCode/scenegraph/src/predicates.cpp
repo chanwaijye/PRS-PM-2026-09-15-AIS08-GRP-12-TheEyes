@@ -122,6 +122,25 @@ PredicateConfig LoadPredicateConfig(const std::string& yaml_path) {
   cfg.in_containment_margin_m = RequireDouble(in, "in", "containment_margin_m", 0.0, 1.0);
   cfg.in_max_volume_ratio = RequireDouble(in, "in", "max_volume_ratio", 0.0, 1.0);
 
+  // Required, but legitimately empty: a scene with no containers is a real
+  // configuration. Absent is a different thing from empty and is rejected --
+  // silently defaulting would either invent containers or suppress the whole
+  // predicate, and both look like a working scene graph.
+  const YAML::Node containers = in["container_classes"];
+  if (!containers || !containers.IsSequence()) {
+    throw std::runtime_error(
+        "predicates.yaml: missing 'in.container_classes' (a sequence; use [] "
+        "for a scene with no containers)");
+  }
+  cfg.in_container_classes.clear();
+  for (const YAML::Node& n : containers) {
+    const std::string cls = n.as<std::string>();
+    if (cls.empty()) {
+      throw std::runtime_error("predicates.yaml: empty class name in 'in.container_classes'");
+    }
+    cfg.in_container_classes.push_back(cls);
+  }
+
   const YAML::Node views = RequireSection(root, "views");
   const YAML::Node names = views["names"];
   if (!names || !names.IsSequence() || names.size() == 0) {
@@ -138,6 +157,27 @@ PredicateConfig LoadPredicateConfig(const std::string& yaml_path) {
 
 bool IsIn(const ObjectState& a, const ObjectState& b, const PredicateConfig& cfg) {
   if (a.id == b.id) return false;
+
+  // b must be a DECLARED container. Geometry cannot establish this and the
+  // rest of this function should not pretend otherwise: an axis-aligned box is
+  // all the shape information available here, and a table is exactly that --
+  // wide, thin, and hollow-looking to a centroid test. On the 2026-09-06 live
+  // run `(in red_cube_01 table_01)` was emitted 26 times, because a pose low by
+  // more than half the 20 mm table thickness puts the cube's centroid between
+  // the slab's top and bottom faces while the volume ratio stays tiny. Every
+  // geometric test below passed; the claim was still false.
+  //
+  // Default-deny is the deliberate direction. `in` is a strong assertion --
+  // PM1 treats a contained object as one it cannot pick directly, and Extract
+  // below makes containment suppress every `on` fact for that object -- so a
+  // false positive silently removes actions from the planner's reach, whereas
+  // a false negative only forgoes a fact. This also settles `unknown_object`
+  // with no special case: no CAD model, no class semantics, never a container.
+  if (std::find(cfg.in_container_classes.begin(), cfg.in_container_classes.end(),
+                b.cls) == cfg.in_container_classes.end()) {
+    return false;
+  }
+
   const Aabb ba = AabbOf(a);
   const Aabb bb = AabbOf(b);
 
