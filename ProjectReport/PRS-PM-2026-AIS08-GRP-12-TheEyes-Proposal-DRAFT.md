@@ -6,7 +6,7 @@
 
 | Field | Detail |
 |---|---|
-| Date of Proposal | [VERIFY — set on submission; due 15 September 2026] |
+| Date of Proposal | 15 September 2026 |
 | Project Title | The Eyes — Multi-View Perception and Scene Understanding for Robot Manipulation |
 | Group ID | Group 12 |
 | Cohort | AIS08 |
