@@ -130,7 +130,7 @@ The module requires the project to develop, integrate and demonstrate at least t
 
 ### 5.1 Architecture Overview
 
-```mermaid {width=60%}
+```mermaid
 flowchart TD
     C1["Camera 1 — Front<BR>RGB-D stream"] --> D1["YOLOv8 Detector<BR>per-view ROIs"]
     C2["Camera 2 — Overhead<BR>RGB-D stream"] --> D2["YOLOv8 Detector<BR>per-view ROIs"]
