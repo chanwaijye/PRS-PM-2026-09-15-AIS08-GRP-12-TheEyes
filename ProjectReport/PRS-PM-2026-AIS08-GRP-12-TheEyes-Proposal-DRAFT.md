@@ -84,11 +84,9 @@ The scene-graph output schema defined in this project is the state representatio
 
 The YOLO family performs single-stage detection with a CNN backbone, predicting boxes and classes in one forward pass. YOLOv8 (Ultralytics, 2023) adds an anchor-free decoupled head and improved feature aggregation.
 
-This project extends the standard RGB detector to a **multimodal RGB-D network** via early fusion: the input stem is widened from 3 to 4 channels (R, G, B, aligned metric depth), with the COCO-pretrained stem weights inflated to initialise the depth channel. Depth is a strong complementary cue for the target domain — textureless objects against a same-coloured tabletop are poorly separated by appearance alone but trivially separated by geometry, and it is precisely this failure mode that motivated the choice of active-depth sensing over passive stereo (§2.3).
+This project extends the standard RGB detector to a **multimodal RGB-D network** via early fusion: the input stem is widened from 3 to 4 channels (R, G, B, aligned metric depth), with the COCO-pretrained stem weights inflated to initialise the depth channel. The hypothesis is that depth is a strong complementary cue here — textureless objects against a same-coloured tabletop are poorly separated by appearance but trivially separated by geometry, the same failure mode that motivated active-depth sensing over passive stereo (§2.3). Early fusion is chosen over late fusion (separate branches merged at the neck) for pretrained-weight reuse: the entire COCO backbone stays usable, whereas a second branch would train from scratch on synthetic data alone.
 
-Early fusion is chosen over late fusion (separate RGB and depth branches merged at the neck) on the grounds of parameter efficiency and pretrained-weight reuse: the entire COCO backbone remains usable, whereas a second branch would need training from scratch on synthetic data alone. The RGB-only versus RGB-D comparison is retained as an ablation (§7) rather than assumed.
-
-Implementation notes: depth is normalised in metric metres clipped to the working range; invalid-depth pixels (RealSense returns 0 for stereo holes) are encoded explicitly rather than left as zeros, which the network would otherwise interpret as extremely close geometry.
+The hypothesis is tested rather than assumed, and on synthetic data it **does not hold** — the modality ablation is a negative result (§7A). Depth is normalised in metric metres clipped to the working range, and invalid-depth pixels (RealSense returns 0 for stereo holes) carry an explicit sentinel rather than zeros, which the network would read as extremely close geometry.
 
 ### 3.2 6-DoF Pose Estimation — FoundationPose
 
@@ -96,7 +94,7 @@ FoundationPose (Wen et al., NVIDIA 2024) unifies model-based pose estimation and
 
 ### 3.3 Multi-View / Multi-Sensor Fusion
 
-Fusing estimates from multiple sensors is classical estimation theory: independent measurements of the same latent state combined by uncertainty weighting (Kalman-filter formulation for Gaussian errors). For 6-DoF poses, rotation averaging requires care (quaternion averaging via the eigendecomposition method of Markley et al., 2007). Multi-view object-level fusion — as opposed to pixel-level stereo — resolves occlusion because at least one viewpoint typically retains line of sight. This project fuses per-camera FoundationPose outputs at the object level with confidence-weighted averaging and temporal filtering.
+Fusing estimates from multiple sensors is classical estimation theory: independent measurements of one latent state combined by uncertainty weighting (Kalman formulation for Gaussian errors). For 6-DoF poses rotation averaging requires care — quaternion averaging via the eigendecomposition of Markley et al. (2007). Object-level multi-view fusion, as opposed to pixel-level stereo, resolves occlusion because at least one viewpoint typically retains line of sight. What the literature does not settle is the *association* step that must precede any averaging: deciding which detection in view A is the same physical object as which in view B, under per-view pose error large enough that naive nearest-neighbour matching fails. §5.2 specifies the approach taken.
 
 ### 3.4 Scene Graphs for Robotics
 
@@ -209,57 +207,103 @@ Omniverse Replicator scenes with domain randomisation over lighting, textures, c
 
 ### 6.2 Object Models
 
-**Acquired 2026-09-04.** The three MVP classes are `mustard_bottle` (YCB 006, obtained via the FoundationPose demo data — its exact diameter of 0.196463 m agrees with the 0.19646 FoundationPose itself reports, confirming it is the mesh the estimator was validated against), `bowl` (YCB 024, `google_16k`), and `red_cube` (authored 50 mm cube: exact by construction, so the 3D-printed part is what must match the mesh rather than the reverse). All are watertight, as FoundationPose requires.
+**Acquired 2026-09-04.** Three MVP classes: `mustard_bottle` (YCB 006, from the
+FoundationPose demo data — its 0.196463 m diameter matches the 0.19646
+FoundationPose itself reports, confirming it is the mesh the estimator was
+validated against), `bowl` (YCB 024, `google_16k`), and `red_cube` (an authored
+50 mm cube, exact by construction). All are watertight, as FoundationPose
+requires.
 
-**Object-frame convention.** A scanned mesh's origin is wherever the scanner left it, and FoundationPose reports the pose of that origin — so `ObjectState::pose_w.translation()` inherits it. Two downstream assumptions require it to be the object's *centre* instead: the scene-graph bounding box is built as `translation() ± extent`, and the `symmetric` flag asserts that rotations about the symmetry axis are equivalent. The raw YCB bowl fails both — its origin lies 43.7 mm off centre, 27% of its own diameter, and off the symmetry axis (rim radius sd 30.5 mm about the mesh-origin axis versus 2.5 mm about the AABB-centre axis). The project therefore defines **the object frame's origin as the mesh AABB centre** and re-centres on ingest, which is a rigid re-parameterisation leaving diameters, extents, ADD/ADD-S and pose accuracy unchanged. `training/prepare_meshes.py` enforces this and two automated tests re-derive it from the mesh files, so `config/meshes.yaml` cannot drift from the geometry it describes.
+**Object-frame convention — the origin is the mesh AABB centre.** A scanned
+mesh's origin is wherever the scanner left it, and FoundationPose reports the
+pose of *that* origin, so `ObjectState::pose_w.translation()` inherits it. Two
+downstream assumptions need the centre instead: the scene-graph bounding box is
+built as `translation() ± extent`, and the `symmetric` flag asserts that
+rotations about the symmetry axis are equivalent. The raw YCB bowl fails both —
+its origin lies 43.7 mm off centre (27% of its own diameter) and off the
+symmetry axis (rim radius sd 30.5 mm about the mesh-origin axis versus 2.5 mm
+about the AABB-centre axis). Re-centring on ingest is a rigid re-parameterisation
+that leaves diameters, extents, ADD/ADD-S and pose accuracy unchanged.
+`training/prepare_meshes.py` enforces it and two automated tests re-derive it
+from the mesh files, so `config/meshes.yaml` cannot drift from the geometry it
+describes.
 
-**Physical instantiation: printed where geometry matters, bought where appearance does.** A mesh is only useful if the physical object it describes is the one in front of the cameras — FoundationPose registers the mesh against observed depth, and ADD/ADD-S is computed over mesh vertices, so any shape mismatch between object and mesh is added to the pose error and cannot afterwards be separated from it. The three classes resolve differently:
+**All three classes are 3D printed.** A mesh is only useful if the physical
+object it describes is the one in front of the cameras: FoundationPose registers
+the mesh against observed depth and ADD/ADD-S is computed over mesh vertices, so
+any object/mesh shape mismatch is added to the pose error and cannot afterwards
+be separated from it. Printing makes the match exact by construction. The cube
+is authored, so it matches trivially; the YCB bowl mesh is watertight and fully
+manifold (0 boundary, 0 non-manifold edges) and slices without repair, and
+printing additionally avoids the original's glossy enamelware, which returns
+little usable IR to an active-stereo sensor. Purchase was preferred for
+`mustard_bottle`, whose printed label is the visual signature the RGB half of
+the detector learns — but the YCB original is French's Classic Yellow **20 oz**
+(identified from the texture atlas, whose front label reads "40% MORE THAN OUR
+14 OZ", and corroborated by the YCB paper's 603 g), and that product is not
+retail-available in Singapore. Substituting the common 14 oz would reintroduce
+exactly the mismatch printing exists to prevent, and would do so invisibly: the
+detector would still fire, FoundationPose would still return a pose, and only
+ADD-S would silently carry the difference.
 
-| class | sourcing | reasoning |
-|---|---|---|
-| `red_cube` | 3D printed | Authored mesh; the printed part matches by construction |
-| `bowl` | 3D printed | The YCB mesh is watertight and fully manifold (0 boundary edges, 0 non-manifold edges) and slices without repair, so printing reproduces the mesh geometry exactly. A visually similar purchased bowl would not, and the difference would surface as irreducible ADD-S error. Printing additionally avoids the original's material: the YCB bowl is glossy enamelware, and specular surfaces return little usable IR to an active-stereo sensor |
-| `mustard_bottle` | 3D printed — see below | Purchase was preferred, because the printed label is the visual signature the RGB half of the detector learns. The YCB original is French's Classic Yellow **20 oz**, which is not retail-available in Singapore, so the class joins the printed group |
+**The synthetic renders therefore use filament, not the scanned textures.** A
+scanned texture describes an object that will never be photographed, and the
+bowl's has the scan's own specular highlights baked in, which a renderer would
+light a second time. `replicator_dataset.py` renders all three in their print
+colours with `FILAMENT_SPREAD = 0.12` of linear randomisation, so the print
+colours are fixed by the shipped `synth50k_v2` set rather than chosen at print
+time; the per-class sRGB targets and acceptable bands are in that script. Matte
+is a requirement in both directions — gloss defeats the IR projector on the real
+object (§7A) and the renderer draws these classes at roughness 0.55–0.90, so a
+glossy print would depict something the training set does not contain.
 
-**Consequence for the synthetic dataset.** Replicator renders training data from each mesh's texture, and for a printed object that texture — a scan of the original YCB item — does not describe the object that will actually be captured. For the bowl the mismatch is twofold: the YCB original is glossy speckled enamelware, and its scanned texture has the scan's own specular highlights baked into it, which a renderer would then light a second time. Rather than finishing prints to match a scan, the synthetic renders for printed classes use **the material the object is printed in**, with domain randomisation covering the residual. Both sides of the sim-to-real comparison are under the project's control for these classes, so they are made to agree at the source. This now applies to **all three** classes without exception: an earlier revision kept the mustard bottle on its scanned texture on the grounds that the scan recorded a real purchased object, but §6.2 resolves that class to the printed group, so its scanned label likewise describes an object that will never be photographed. `replicator_dataset.py` renders all three in filament accordingly — yellow for the bottle, as the real product is — and the generated dataset reflects that.
+**Print constraints that affect measurement.** Slice at 100% with no bed-fitting
+rescale, and verify dimensional accuracy with callipers before relying on any
+object: a printer 1% out of true reintroduces the mismatch printing avoids. The
+bowl's scanned wall is 0.99 mm — thinner than two perimeters at a 0.4 mm nozzle
+— and must **not** be thickened for durability, since any deviation from the mesh
+enters ADD-S and cannot be separated from estimator error. Material per object
+set, computed from the meshes: 227 g.
 
-**Identifying the correct product is not incidental.** The YCB object is commonly assumed to be the 14 oz bottle; it is not. Reading the texture atlas, the front label carries "40% MORE THAN OUR 14 OZ", which identifies the **20 oz** bottle, and the YCB paper's recorded mass of 603 g agrees — 20 oz is 567 g of product plus bottle, whereas 14 oz would total roughly 430 g. The mesh's 191.4 mm height is consistent with the larger bottle. Buying the 14 oz would reintroduce precisely the object/mesh mismatch this section exists to prevent, and would do so invisibly: the detector would still fire, FoundationPose would still return a pose, and only the ADD-S figure would silently carry the difference.
-
-The label design must also be checked against the current retail product. The scanned texture shows a "Best By SEP 2016" stamp and a 2014 copyright notice, so it predates this work by roughly a decade and the packaging may since have been revised. Any divergence is an RGB-channel sim-to-real gap (R3), affecting the RGB-only ablation baseline more than the RGB-D detector, whose depth channel is label-invariant.
-
-**All three classes are consequently controlled-appearance**, which must be stated rather than glossed, because it changes what the sim-to-real figure measures. The YCB mustard bottle is French's Classic Yellow 20 oz — identified from the mesh's own texture atlas, whose front label reads "40% MORE THAN OUR 14 OZ", and corroborated by the YCB paper's recorded 603 g — and it is not retail-available in Singapore. Substituting a visually similar bottle would reintroduce exactly the object/mesh mismatch this section exists to prevent, so the class is printed like the others and rendered in filament.
-
-The consequence: the appearance gap between synthetic and real is minimised by construction for every class, so the measured sim-to-real difference isolates geometry, sensor and lighting effects rather than testing appearance-domain randomisation. That is a cleaner experiment in one sense and a weaker test of G4 in another, and §7 reports it as such rather than presenting an artificially small gap as a result. Should the object become obtainable, restoring it as a purchased real-texture class recovers the stronger test at no cost to anything else.
-
-**The print colours are determined by the dataset, not chosen at print time.** `replicator_dataset.py` renders each class in a fixed base colour with `FILAMENT_SPREAD = 0.12` of linear randomisation around it, and the shipped `synth50k_v2` set — and therefore the trained detector — has already learned those distributions. A filament that falls outside the rendered band is an appearance gap introduced *after* training, which is precisely what §6.2 exists to prevent. The band is wide enough that an exact match is unnecessary and narrow enough that it must be checked:
-
-| class | linear diffuse (as rendered) | sRGB target | acceptable band |
-|---|---|---|---|
-| `mustard_bottle` | (0.85, 0.72, 0.10) | `#EDDD59` | `#DECB00` – `#FCEC81` |
-| `red_cube` | (0.70, 0.09, 0.09) | `#DA5555` | `#C80000` – `#EA7E7E` |
-| `bowl` | (0.12, 0.32, 0.68) | `#6199D7` | `#007CC5` – `#86B1E7` |
-
-Matte is a requirement rather than a preference, and it is the same requirement in both directions: gloss defeats the IR projector on the real object (§7A sensor error budget), and the renderer draws these classes at roughness 0.55–0.90, so a glossy print would depict something the training set does not contain.
-
-**Wall thickness is dictated by the mesh, not by print strength.** The YCB bowl's scanned wall measures 0.99 mm, thinner than two perimeters at a 0.4 mm nozzle, so it prints as a solid thin wall and its infill setting has no effect. It must not be thickened for durability: ADD-S is computed over mesh vertices, so any deviation from the mesh enters the pose error and cannot afterwards be separated from estimator error. Material requirement per full object set, computed from the meshes: **227 g** (`mustard_bottle` 137 g at 1.2 mm wall and 10% infill, `red_cube` 49 g at 20% infill, `bowl` 41 g).
-
-Printed objects must be sliced at 100% with no bed-fitting rescale, and the printer's dimensional accuracy verified with callipers against a test print before any object is relied upon — a printer 1% out of true reintroduces exactly the mesh/object mismatch that printing is chosen to avoid. Matte mid-tone filament is required: gloss defeats the IR projector and dark surfaces absorb it (§7A, sensor error budget). Layer lines are beneficial rather than harmful, as they add surface texture for active stereo.
+**Limitation, stated rather than glossed: all three classes are
+controlled-appearance.** Both sides of the sim-to-real comparison are under the
+project's control, so the measured gap isolates geometry, sensor and lighting
+effects rather than testing appearance-domain randomisation. That is a cleaner
+experiment in one sense and a **weaker test of G4** in another, and §7 reports it
+as such rather than presenting an artificially small gap as a result. Should the
+bottle become obtainable, restoring it as a purchased real-texture class recovers
+the stronger test at no cost to anything else.
 
 ### 6.3 Real Evaluation Data
 
-Manually captured dual-camera RGB-D sequences of tabletop scenes, including staged occlusion cases. Ground-truth poses obtained via fiducial (ArUco) mounts; the fiducials are used only for evaluation, never at inference time.
+Manually captured dual-camera RGB-D sequences of tabletop scenes, including
+staged occlusion cases. Ground truth comes from fiducial (ArUco) markers, used
+only for evaluation and never at inference time.
 
-**Fiducial mounts are derived from the object meshes rather than attached to the objects.** A marker glued to a finished object gives a ground-truth pose only as good as the subsequent measurement of the offset between marker and object frame — an error that enters every ADD/ADD-S figure as a constant bias, and one that is invisible because it leaves all results self-consistent. The offset must therefore come from CAD, not from callipers.
+**The marker sits on a tray derived from the object mesh, not glued to the
+object.** A marker attached to a finished object gives ground truth only as good
+as the subsequent measurement of the marker-to-object offset — an error that
+enters every ADD/ADD-S figure as a constant bias, and one that is invisible
+because it leaves all results self-consistent. The offset must come from CAD, not
+callipers. Cutting a marker seat *into* the objects was rejected for a second
+reason: `synth50k_v2` was rendered from the **unmodified** meshes, so modifying a
+target object would introduce a sim-to-real gap the trained detector has never
+seen, and closing it would mean regenerating 88 GB for a change that serves
+evaluation rather than perception.
 
-An earlier revision of this section put the marker seat *inside* the printed part. Measurement on the actual meshes rules that out for two of the three classes. `mustard_bottle` has no flat region anywhere — its front face carries **7.5 mm of sagitta over a 24 mm patch**, and its only truly flat area is the cap top at **17.7 mm diameter**, below the ArUco decode floor at the 0.7 m standoff. `bowl` has a scanned wall of **0.99 mm**, so a flush recess has no surviving material behind it. Only `red_cube`, with six flat 50 mm faces, admits the original design.
-
-The decisive objection is not printability, though — it is the dataset. `synth50k_v2` was rendered from the **unmodified** meshes, so cutting a facet or adding a boss to a target object introduces a sim-to-real gap the trained detector has never seen, and closing it means regenerating 88 GB for a change that serves evaluation rather than perception.
-
-**The marker therefore moves off the object and onto a tray the object sits in.** `training/author_marker_trays.py` generates one tray per class: a plate whose socket is **boolean-subtracted from that object's own mesh**, so the fit is derived from the geometry rather than measured, plus recessed seats for 40 mm `DICT_5X5_250` markers in the same plate. The ground-truth chain is
+`training/author_marker_trays.py` therefore generates one tray per class: a plate
+whose socket is **boolean-subtracted from that object's own mesh**, so the fit is
+derived from the geometry rather than measured, plus recessed seats for 40 mm
+`DICT_5X5_250` markers in the same plate. The ground-truth chain is
 
 `T_cam_object = T_cam_marker · T_marker_tray · T_tray_object`
 
-where only `T_cam_marker` is observed; the other two are chosen in CAD and written to `config/marker_trays.yaml`. Every class keeps the exact-by-construction property the original design was chosen for, and the objects themselves are untouched — so `assets/meshes/*.obj` remain the meshes FoundationPose registers against, and `config/meshes.yaml`'s `diameter_m`, `extent` and `symmetric` flags remain true statements about the physical objects.
+where only `T_cam_marker` is observed; the other two are chosen in CAD and
+written to `config/marker_trays.yaml`. The objects themselves are untouched, so
+`assets/meshes/*.obj` remain the meshes FoundationPose registers against and
+`config/meshes.yaml`'s `diameter_m`, `extent` and `symmetric` flags remain true
+statements about the physical objects. All three classes consequently have
+ground truth that is exact by construction.
 
 The generator verifies what it produces rather than asserting it:
 
@@ -268,18 +312,28 @@ The generator verifies what it produces rather than asserting it:
 | plate (mm) | 170 × 90 × 10.5 | 216 × 100 × 14.5 | 210 × 210 × 8.5 |
 | socket depth | 8.0 mm | 12.0 mm | 6.0 mm |
 | **measured socket clearance** | 0.20 mm | 0.12–0.23 mm | 0.08–0.12 mm |
-| card-to-socket gap | 5.8 mm | 5.5 mm | 10.0 mm |
 | markers visible per camera | 1 of 2 | 1 of 2 | 3 of 4 |
 | marker ids | 100–101 | 102–103 | 104–107 |
 
-**Socket clearance is the ground-truth error budget**, and it is the reason the figure is measured rather than nominal: the object can sit anywhere within it, so the worst case — **0.23 mm** — bounds the ground-truth translation error. Against the bottle's 19.6 mm ADD-S threshold that is 1.2%, so it cannot move a verdict. Marker ids are allocated globally (the ChArUco board holds 0–31), because per-tray numbering would make id 100 ambiguous the moment two objects share a scene, which is every scene in the occlusion ablation.
+**Socket clearance is the ground-truth error budget**, which is why it is
+measured rather than nominal: the object can sit anywhere within it, so the worst
+case — **0.23 mm** — bounds the ground-truth translation error. Against the
+bottle's 19.6 mm ADD-S threshold that is 1.2%, so it cannot move a verdict.
+Marker ids are allocated globally (the ChArUco board holds 0–31), because
+per-tray numbering would make id 100 ambiguous the moment two objects share a
+scene — which is every scene in the occlusion ablation.
 
-Marker visibility is ray-cast against the seated object at the rig's actual 35° elevation and ±40° azimuth rather than argued: each camera sees at least one marker on every tray. Because the two cameras generally read *different* markers on the wing trays, agreement between their independently derived object poses is a free check on the print.
+Marker visibility is ray-cast against the seated object at the rig's actual 35°
+elevation and ±40° azimuth rather than argued: each camera sees at least one
+marker on every tray. Because the two cameras generally read *different* markers
+on the wing trays, agreement between their independently derived object poses is
+a free check on the print.
 
-Distractor objects used for clutter and false-positive testing require no meshes, as they are never detected classes. The trays are likewise not a detected class, so they are printed in one of the three **distractor neutrals** the renderer already samples (§6.2) rather than a target colour — a tray in a class colour would put a large slab of that class's colour directly beneath the object.
-
-An earlier revision of this section carved out the mustard bottle as a purchased object admitting no such mount, requiring a measured attachment, and therefore carrying higher ground-truth uncertainty reported separately from the printed classes. That carve-out no longer applies: §6.2 resolves the bottle to the printed group, because the YCB original is the 20 oz French's Classic Yellow and it is not retail-available in Singapore. It takes a marker tray like the other two, so **all three classes have ground truth that is exact by construction** and none is reported separately. The change removes a limitation rather than adding one — it was forced by sourcing, but its effect on evaluation is strictly positive.
-
+Distractor objects used for clutter and false-positive testing need no meshes, as
+they are never detected classes. The trays are likewise not a detected class, so
+they print in one of the three **distractor neutrals** the renderer already
+samples (§6.2) rather than a target colour — a tray in a class colour would put a
+large slab of that class's colour directly beneath the object.
 
 ### 6.4 Benchmark Scenes
 
@@ -360,46 +414,39 @@ disagreement gate, confidence weighting and symmetry handling, which is what
 this module is graded on — is `gated − naive` at the raw tier and
 `fused − naive+ekf` at the EKF tier. On this input both are **0.01 mm**.
 
-That zero is correct, and it is the reason the design has eight rows rather
-than four. Under symmetric Gaussian noise with no outliers the gate has nothing
-to reject and equal per-view scores make the weighted mean the plain mean, so
-the policy *cannot* win; a harness that showed it winning here would be
-measuring something else. An earlier revision of this table did exactly that.
-It had four arms, defined `naive` as "unweighted mean **and no filter**", and
-ran the single-view and fused arms with the EKF on. The reported fused-vs-naive
-gap, and the conclusion drawn from it that "a second camera is a liability until
-something arbitrates the disagreement", was the EKF's temporal averaging being
-credited to the spatial policy — a comparison across rows that differed in two
-things at once. With the filter made transparent the two arms agreed to
-0.01 mm. The temporal filter is now a switch independent of the policy in
-`FusionConfig`, and `Ablation.TheFilterAndThePolicyAreNotConfounded` asserts
-that the policy delta is zero and the filter delta is large on this input, so
-the confound cannot return unnoticed.
+**That zero is correct, and it is why the design has eight arms rather than
+four.** Under symmetric Gaussian noise with no outliers the gate has nothing to
+reject and equal per-view scores make the weighted mean the plain mean, so the
+policy *cannot* win here; a harness that showed it winning would be measuring
+something else — most likely the EKF's temporal averaging credited to the
+spatial policy. The filter is therefore an independent switch in `FusionConfig`,
+and `Ablation.TheFilterAndThePolicyAreNotConfounded` asserts that the policy
+delta is zero and the filter delta is large on this input, so that confound
+cannot appear unnoticed.
 
-Where the policy does earn its place is a **confidently wrong view**: a bias
+Where the policy does earn its place is a **confidently wrong view** — a bias
 rather than noise, which no amount of temporal averaging removes.
 `GatedFusionBeatsTheNaiveBaselineWhenOneViewIsAnOutlier` injects an 8 cm error
-into one view and asserts that the gated arm beats the naive arm at *both*
-filter tiers. Whether FoundationPose produces such views at this rig geometry,
-and how often, is precisely what the real-capture ablation will measure; if it
-rarely does, the honest result is that the second camera's value on this rig is
-recall under occlusion and the EKF's is accuracy, and the gate is insurance.
-Reproducing the table on **real** captures is the project's central claim and
-remains the outstanding work.
+into one view and asserts the gated arm beats the naive arm at *both* filter
+tiers. Whether FoundationPose produces such views at this rig geometry, and how
+often, is exactly what the real-capture ablation will measure. If it rarely
+does, the honest result is that on this rig the second camera buys recall under
+occlusion, the EKF buys accuracy, and the gate is insurance.
 
 `naive` is the baseline a reader would reach for unprompted: both views, the
-same world-frame lift and the same cross-view association, then an unweighted
-mean with no gate and no symmetry case. Quaternion averaging is deliberately
-shared between the two policies — at the angular separations two calibrated
-cameras produce on a static object, Markley averaging and naive
-coefficient-averaging agree well inside the per-view noise, so putting it in
-the baseline would manufacture a difference rather than measure one.
+same world-frame lift and cross-view association, then an unweighted mean with
+no gate and no symmetry case. Quaternion averaging is deliberately shared
+between both policies — at the angular separations two calibrated cameras
+produce on a static object, Markley averaging and naive coefficient-averaging
+agree well inside the per-view noise, so putting it in the baseline would
+manufacture a difference rather than measure one.
 
-Two honest qualifications belong with the table. The figures are *synthetic*,
-and every tool that prints them says so. And `ApplyDisagreementGate`'s
-three-or-more-view majority branch cannot execute on a two-camera rig: it is
-covered by a unit test, but the deliverable hardware never reaches it, so the
-gate's behaviour on the real rig is entirely the two-view tie-break path.
+Three qualifications belong with the table. The figures are *synthetic*, and
+every tool that prints them says so. `ApplyDisagreementGate`'s three-or-more-view
+majority branch cannot execute on a two-camera rig — it is unit-tested, but the
+deliverable hardware never reaches it, so the gate's real behaviour is entirely
+the two-view tie-break path. And **reproducing this table on real captures is
+the project's central claim and remains the outstanding work** (§7).
 
 ### Measured: rig geometry, derived rather than chosen
 
@@ -472,15 +519,12 @@ sufficient provided the capture resolution is chosen deliberately. The tool
 reports the computed reach before running detection, because a board below the
 decode threshold returns zero corners from images that look entirely correct.
 
-**Methodological note.** Depth RMS may only be compared across distances if the
-*physical* wall patch is held constant, not the pixel ROI. A fixed pixel ROI
-spans 28 × 16 cm at 0.4 m but 70 × 40 cm at 1.0 m; once it outgrows the flat
-surface, edges enter the plane fit and inflate the residual. A first pass at
-fixed pixel ROI over-reported by up to **9.7×** (41.30 mm vs. 4.27 mm for
-cam_over at 1.0 m) and appeared to show one camera three times noisier than the
-other — an artefact that disappeared entirely once the patch was matched. The
+**Methodological note.** Depth RMS is comparable across distances only if the
+*physical* wall patch is held constant, not the pixel ROI — a fixed pixel ROI
+spans 28 × 16 cm at 0.4 m but 70 × 40 cm at 1.0 m, and once it outgrows the flat
+surface, edges enter the plane fit and inflate the residual by up to 9.7×. The
 diagnostic is that the fitted plane's offset and the median point depth agree to
-within 1 mm when the ROI lies on the wall, and diverge by 20–27 mm when it does
+within 1 mm when the ROI lies on the wall and diverge by 20–27 mm when it does
 not.
 
 ### What is not yet measured
@@ -528,16 +572,11 @@ the scene description implies:
 | nearest rendered surface | 1007 mm | **470 mm** (table corner is 458 mm) |
 | invalid-depth sentinel | ~85% | **1.5%** |
 
-Two defects account for it, and both had produced output that looked correct.
-The first was the **USD default near clipping plane of 1 metre**: the camera
-stands 0.70 m from the workspace centre and the nearest table corner is 0.46 m,
-so the entire subject sat inside the near plane and was clipped, leaving bright,
-plausible, object-free frames of the floor and far wall. The second was that
-**the scene contained no room** — at this geometry the vertical field of view
-sweeps a 1427 mm band across the table plane while the desk is 440 mm deep, so
-69% of every frame hit no geometry and returned the invalid sentinel, where a
-real sensor pointed at a desk sees floor and wall and returns finite depth. The
-synthetic depth channel would have taught the detector that "sentinel" means
+Two defects account for it, and both had produced output that looked correct:
+the **USD default near clipping plane of 1 m** clipped the entire subject (the
+camera stands at 0.70 m, the nearest table corner at 0.46 m), and **the scene
+contained no room**, so 69% of every frame hit no geometry and returned the
+invalid sentinel — which would have taught the detector that "sentinel" means
 background, a property the real sensor does not have.
 
 ### Measured: first detector training, and why mAP@0.5 is the wrong number here
@@ -550,14 +589,13 @@ warning that the benchmark cannot discriminate. Inspection confirmed why: three
 classes in three unmistakable filament colours on a plain table, with 98% of
 frames showing all three targets essentially unoccluded.
 
-The scenes were rebuilt to be discriminative — distractors drawing from the
+The scenes were rebuilt to be discriminative: distractors drawing from the
 *same* colour palette as the targets, so colour ceases to be sufficient and
-shape and depth must carry the decision; eight distractors rather than three,
-sized across the target range; and a tighter workspace so objects crowd.
-Occlusion is now measured rather than assumed, from the ratio of Replicator's
-tight (visible) to loose (full) bounding boxes: mean occlusion rose from ~0% to
-31–35%, objects more than 25% occluded from ~0% to 54–56%, and frames showing
-all three targets fell from 98% to 62%.
+shape and depth must carry the decision; eight distractors rather than three;
+and a tighter workspace so objects crowd. Occlusion is measured rather than
+assumed, from the ratio of Replicator's tight (visible) to loose (full) boxes —
+mean occlusion rose from ~0% to 31–35%, objects more than 25% occluded from ~0%
+to 54–56%, and frames showing all three targets fell from 98% to 62%.
 
 Retrained on the harder data, 40 epochs, 40,012 train / 9,988 val:
 
