@@ -88,6 +88,29 @@ the runtime README):
   ratio, and a pose estimate a centimetre low lands inside a 20 mm thick
   table. `scenegraph_agent` needs a container flag (or `in` restricted to
   classes declared as containers) before predicate accuracy is scored.
+- **First real-object run of the whole chain, 2026-09-06 (printed brown cube,
+  fixed boxes standing in for the detector).** 150 live pairs with the real
+  FoundationPose server: the two views associated and fused into a single
+  `red_cube_01` with `visible_views = 0b11` on **every** pair, 0 gate
+  rejections, 0 conflicts, one track. Per-view world poses disagree by
+  **11 mm** (association radius 150 mm, gate 50 mm), the fused pose is stable
+  to 0.1 mm sd, the EKF settles at 6.6 mm sigma, and `(on red_cube_01
+  table_01)` holds for all 150 pairs at 22.3 pairs/s. There is no ground truth
+  for x and y, so the only checkable figure is height: a 50 mm cube on the
+  table has its centre at 25 mm and the fused z reads 29.7 mm, **5 mm high** —
+  consistent with 2-4 mm depth noise plus calibration, but it is one
+  observation, not a measurement. **This is the first evidence on real data
+  that the multi-view claim holds end to end**; it is not an ADD-S number and
+  must not be quoted as one.
+- **Scores differ per view on real data**: 0.656 (cam_front) vs 0.712
+  (cam_over) on the same object, constant within each view because
+  `track_one` carries the registration score. So confidence weighting is not
+  uniform after all, though it is still constant over time.
+- **A wrong fixed box fails silently.** An earlier attempt used coordinates
+  from a stale capture; the boxes held a mouse and bare table, and
+  FoundationPose returned stable, confident poses for 150 pairs. The 181 mm
+  inter-view disagreement was the only tell. Verify the box against the run's
+  own recorded frames before trusting anything from `fixed:`.
 - A nuisance seen once: cam_over renegotiated to USB 2.1 during an open
   ("failed to set power state"); a replug fixed it. `check --live` catches it
   before a demo.

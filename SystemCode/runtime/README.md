@@ -58,6 +58,15 @@ build/runtime/the_eyes_run live --show --pose foundationpose \
     --detector 'fixed:cam_front=red_cube,300,200,120,120;cam_over=red_cube,400,180,100,100'
 ```
 
+**Verify the box is actually on the object before believing any number.**
+A stale box produces confident nonsense rather than an error: on 2026-09-06 a
+first run used coordinates read from a capture taken before the cube was moved,
+so one box held a mouse and the other bare table, and FoundationPose returned
+stable poses with constant scores for 150 pairs. The tell was the two views
+disagreeing by 181 mm; the fix was reading the coordinates off the run's own
+recorded frames. Record the run, draw the box on a recorded frame, and look at
+it.
+
 `fixed:` hands the same hand-placed box per camera to the pose estimator on
 every frame, through the normal IoU tracker so FoundationPose registers once.
 It exists for an off-palette test print (the brown cube) and for isolating
@@ -148,6 +157,7 @@ response to an ordinary desk and no accuracy number is claimed from these runs.
 | `replay`, ONNX (CPU) + **FoundationPose**, 100 pairs, 1–2 objects per view | steady state 13.9 pairs/s; total p50 53.7 ms, p95 85.8 ms, max 3859 ms (first registration); pose_agent p50 24.2 ms (cam_front, 2 tracks) / 12.4 ms (cam_over, 1 track) |
 | `live --record`, ONNX (CPU) + **FoundationPose**, 120 pairs | 8.7 pairs/s over the run including a 2.1 s registration; steady state p50 51.7 ms per pair (≈19 pairs/s), p95 78.2 ms; pose_agent p50 25.3 ms (cam_front) with p95 36.2 ms; the registration stall surfaced as `frames_dropped_since_last = 56` on the next pair and as 554 ring-trimmed frames in the pairer stats — nothing silent |
 | replay determinism, mock backends, 6-pair synthetic session, two runs | 42 of 42 logged facts identical |
+| `live` on a printed 50 mm cube, fixed boxes + FoundationPose, 150 pairs | **both views fused into one object on every pair**; per-view world poses disagree by **11 mm**; fused pose sd 0.1 mm, EKF sigma 6.6 mm; `(on red_cube_01 table_01)` on all 150 pairs; 22.3 pairs/s, p50 23.6 ms per pair, pose p50 12.3 / 11.2 ms per view |
 
 Track churn is visible in the logs (`red_cube_01` … `red_cube_05` over 100
 pairs with the mock pose): the synthetic-only detector flickers on real desk
