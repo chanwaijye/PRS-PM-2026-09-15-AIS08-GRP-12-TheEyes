@@ -526,9 +526,9 @@ every outstanding metric in §7.
 ## 9. Budget & Resource Requirements
 
 All figures in **Singapore dollars**, every amount a receipted purchase price
-rather than an estimate. Two items bought in CNY are converted at the ECB
-reference rate for 2026-09-04 (1 CNY = 0.18878 SGD), with the original shown
-alongside.
+rather than an estimate. Three items bought in CNY (¥983.40 total) are converted
+at the ECB reference rate for 2026-09-04 (1 CNY = 0.18878 SGD), with the original
+shown alongside.
 
 | Item | Cost | Status |
 |---|---|---|
@@ -538,10 +538,11 @@ alongside.
 | 2 × tripods with extension rod | **S$77.00** | **Acquired** |
 | Digital angle finder / ruler / protractor | **S$18.33** | **Acquired** |
 | ChArUco board, 324 × 324 mm, 8 × 8 @ 38 mm | **S$71.81** (¥380.41) | **Acquired 2026-08-28**, decode-verified on a real capture |
-| **Subtotal, hardware acquired** | **S$1,059.42** | Complete — every rig purchase is receipted |
+| **Subtotal, rig hardware** | **S$1,059.42** | Complete — every rig purchase is receipted |
+| Matte PLA filament, 4 × 1 kg (yellow, red, blue, grey) | **S$92.39** (¥489.41) | **Ordered 2026-09-05**, ETA ~09-12. 227 g per object set plus 385 g of ArUco trays (§6.3). Two object sets budgeted, since the §6.2 calliper check may force a reprint. Colours are fixed by the rendered dataset, not chosen; tray grey is a distractor neutral |
+| **Total project spend** | **S$1,151.81** | All receipted |
 | Work surface | — | **No purchase.** Existing desk reused; 1180 × 440 mm of free surface is sufficient for the derived rig geometry (§7A) |
-| Matte PLA filament, 4 × 1 kg (yellow, red, blue, grey) | [VERIFY actual — **ordered 2026-09-05**] | 227 g per object set plus 385 g of ArUco trays (§6.3). Two object sets budgeted, since the §6.2 calliper check may force a reprint. Colours are fixed by the rendered dataset, not chosen; tray grey is a distractor neutral |
-| 3D printer | — | **Owned.** Makes the all-printed resolution in §6.2 available at negligible cost, and is what allows fiducial mounts to be exact by construction (§6.3) |
+| 3D printer | — | **Owned.** Makes the all-printed resolution (§6.2) and exact-by-construction fiducial mounts (§6.3) available for the cost of filament alone |
 | Object meshes (YCB 006, 024) | — | **Free**, public research dataset |
 | Cloud compute (detector training bursts) | ≤ US$100/month existing budget | Available |
 | Workstation (Ryzen 9700X, RTX 5070 Ti 16 GB) | — | Owned |
