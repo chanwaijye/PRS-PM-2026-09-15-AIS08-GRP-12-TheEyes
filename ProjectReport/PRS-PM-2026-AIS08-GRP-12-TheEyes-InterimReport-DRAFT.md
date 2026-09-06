@@ -406,12 +406,26 @@ disagreement**, not by any per-view confidence: the stale fixed box (§4.2) and
 a bumped tripod versus a moved table (§3.1). This is an argument for the
 multi-view design that the ablation metrics do not capture.
 
-**F6 — The `in` predicate is wrong and predicate accuracy cannot yet be
-scored.** `(in red_cube_01 table_01)` was emitted 26 times in a live run: the
-rule tests centroid containment and volume ratio, and a pose a centimetre low
-lands inside a 20 mm table slab. A slab is not a container. `scenegraph_agent`
-needs a container flag, or `in` restricted to classes declared as containers,
-before the metric means anything.
+**F6 — The `in` predicate asked a question geometry cannot answer. Fixed
+2026-09-06.** `(in red_cube_01 table_01)` was emitted 26 times in a live run.
+The rule tested centroid containment and volume ratio, and `ObjectState` carries
+a world-axis-aligned box and nothing else — which cannot distinguish a container
+from a slab. A cube pose low by more than half the 20 mm table thickness puts
+its centroid between the table's faces; the volume ratio stays tiny and every
+geometric test passes on a false claim.
+
+`in` now requires the container's class to be declared in
+`predicates.yaml: in.container_classes`, default-deny, checked before any
+geometry. The shipped list is `[bowl]`. Default-deny because the errors are not
+symmetric: containment suppresses every `on` fact for the contained object and
+PM1 reads it as not directly pickable, so a false positive removes actions from
+the planner while a false negative only forgoes a fact. `unknown_object` never
+qualifies, which follows from the default rather than a special case.
+
+The regression test asserts that the volume and centroid gates would *not* have
+rejected the failing geometry, so this cannot later be mistaken for a tolerance
+that needed widening. Predicate accuracy is no longer blocked on this; it
+remains blocked on the printed objects, like every other real-capture metric.
 
 ---
 

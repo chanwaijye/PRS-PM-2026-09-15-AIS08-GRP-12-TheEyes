@@ -457,11 +457,13 @@ that would explain it. It is recorded here in advance so the conclusion cannot b
 chosen after seeing the numbers.
 
 **Predicate accuracy** is scored against hand-labelled relations on the same 10
-scenes, reported per predicate rather than pooled, since `on` is common and `in`
-is rare and a pooled figure would hide a broken `in` rule — as one currently is:
-`(in red_cube_01 table_01)` was emitted 26 times in a live run because the rule
-tests centroid containment and volume ratio and a slab is not a container. A
-container flag is required before this metric is scored.
+scenes, **reported per predicate rather than pooled**. `on` is common and `in` is
+rare, so a pooled figure hides a broken `in` rule — as it did until 2026-09-06,
+when `(in red_cube_01 table_01)` was emitted 26 times in a live run. `in` now
+requires the container's class to be declared (`in.container_classes`,
+default-deny), because a world-axis-aligned box cannot distinguish a container
+from a table slab. Scoring `in` on the benchmark suite therefore needs at least
+one scene staging the bowl as a container, which tier T2 provides.
 
 All arms are computed by `ablation_from_log` from the SQLite metrics each run
 writes, so every number in the report regenerates from a recorded session.
