@@ -5,22 +5,43 @@
 // tool -- it runs one identical input four ways and emits comparable ADD-S,
 // which is the project's headline result.
 //
-// The four arms, and what each one is for:
+// Three things vary between arms, and the harness varies them one at a time:
 //
-//   cam_front  single view    |  what one camera alone achieves
-//   cam_over   single view    |
-//   naive      both views     |  BASELINE: association + unweighted mean, no
-//                             |  gate, no symmetry case, no temporal filter
-//   fused      both views     |  the system: weighted, gated, symmetry-aware,
-//                             |  EKF-smoothed
+//   views    one camera or both        -> what a second viewpoint buys
+//   policy   naive mean or gated fuse  -> what THIS MODULE's per-frame policy buys
+//   filter   raw or EKF-smoothed       -> what temporal averaging buys
+//
+// The eight arms, in table order:
+//
+//   cam_front       one view,   raw          |  the per-view floor
+//   cam_over        one view,   raw          |
+//   naive           both views, naive, raw   |  BASELINE: association +
+//                                            |  unweighted mean, no gate
+//   gated           both views, gated, raw   |  the policy, no filter
+//   cam_front+ekf   one view,   EKF          |
+//   cam_over+ekf    one view,   EKF          |
+//   naive+ekf       both views, naive, EKF   |  baseline with the filter
+//   fused           both views, gated, EKF   |  the deployed system
+//
+// Read it as pairs that differ in exactly one thing. `gated - naive` and
+// `fused - naive+ekf` are the policy's contribution, at each filter setting.
+// `naive - cam_front` is the second camera's. `cam_front+ekf - cam_front` and
+// `naive+ekf - naive` are the filter's.
 //
 // The naive arm is what makes the claim falsifiable. Beating a single view is
 // not evidence that this module works -- two cameras see more than one, and
 // averaging two noisy measurements reduces error however the average is
-// written. Both of those hold for code nobody would call a contribution. It is
-// the fused-minus-naive delta that is attributable to the fusion policy, so
-// that is the number the report should lead with. If it comes out at zero,
-// that is a real finding about the operating regime and is reported as one.
+// written. Both of those hold for code nobody would call a contribution.
+//
+// The filter axis exists because of a confound found in the 2026-09-05 review:
+// the naive arm was defined as "no filter" while the single-view and fused arms
+// ran the EKF, so the reported fused-minus-naive gap was entirely the EKF's
+// temporal averaging and the policy's true contribution on that input was zero
+// (naive 9.00 mm vs fused 9.01 mm with the filter made transparent). A
+// comparison across arms that differ in two things attributes the sum of both
+// to whichever one the author had in mind. If the policy delta comes out at
+// zero on real captures, that is a real finding about the operating regime and
+// is reported as one.
 #ifndef THE_EYES_FUSION_METRICS_HPP
 #define THE_EYES_FUSION_METRICS_HPP
 
@@ -74,7 +95,10 @@ struct AblationFrame {
 };
 
 struct AblationRow {
-  std::string label;                  // "cam_front" | "cam_over" | "naive" | "fused"
+  std::string label;                  // see the arm table at the top of this file
+  std::vector<std::string> views;     // which cameras' estimates this arm saw
+  FusionMode mode = FusionMode::kGated;
+  bool temporal_filter = false;
   int ground_truth_objects = 0;       // total GT instances across all frames
   int matched = 0;                    // GT instances an estimate was found for
   int missed = 0;                     // GT instances with no estimate
@@ -94,7 +118,7 @@ struct AblationResult {
 };
 
 // Runs `frames` once per configuration with a fresh Fusion instance each time,
-// so no temporal state leaks between configurations.
+// so no temporal state leaks between configurations. Eight rows: see above.
 AblationResult RunOcclusionAblation(const std::vector<AblationFrame>& frames,
                                     const ExtrinsicsSet& extrinsics, const FusionConfig& cfg,
                                     const ExtentRegistry& extents, const ModelRegistry& models,

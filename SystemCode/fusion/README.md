@@ -94,10 +94,48 @@ survives for `ekf.max_coast_s` so a briefly-occluded object keeps its id.
 
 ## Occlusion ablation
 
-`RunOcclusionAblation()` runs one identical estimate stream once per single view
-and once fused, each with a fresh `Fusion`, and reports ADD-S. `CLAUDE.md`: this
-result is never cut, so the harness is treated as a deliverable and is itself
-tested.
+`RunOcclusionAblation()` runs one identical estimate stream through **eight
+arms**, each with a fresh `Fusion`, and reports ADD-S. `CLAUDE.md`: this result
+is never cut, so the harness is treated as a deliverable and is itself tested.
+
+Three things differ between arms and the harness varies them one at a time:
+which **views** (one camera or both), which **policy** (naive unweighted mean
+or the gated, weighted, symmetry-aware fuse), and whether the **temporal
+filter** (the per-object EKF) is applied. Rows come in two tiers, raw and EKF:
+
+| arm | views | policy | filter |
+|---|---|---|---|
+| `cam_front`, `cam_over` | one | — | raw |
+| `naive` | both | naive | raw |
+| `gated` | both | gated | raw |
+| `cam_front+ekf`, `cam_over+ekf` | one | — | ekf |
+| `naive+ekf` | both | naive | ekf |
+| `fused` | both | gated | ekf |
+
+Read it as pairs that differ in exactly one thing. `gated − naive` and
+`fused − naive+ekf` are what **this module's policy** buys, at each filter
+setting; `naive − cam_*` is what a second camera buys; `*+ekf − *` is what the
+EKF buys.
+
+### The confound this design removes — [FIXED 2026-09-06]
+
+Until 2026-09-06 the harness ran four arms, and `naive` was defined as
+"unweighted mean **and** no filter" while the single-view and `fused` arms both
+ran the EKF. On a static object with independent per-frame noise the EKF is a
+running average over time, and on the demo scene it cuts error from ~9 mm to
+~6.3 mm on its own. The reported fused-minus-naive gap — and the proposal's
+"a second camera makes matters worse" reading — was therefore the filter, not
+the policy: with the filter made transparent, naive 9.00 mm vs fused 9.01 mm.
+
+`FusionConfig::temporal_filter` is now a switch independent of
+`FusionConfig::mode`, and `Ablation.TheFilterAndThePolicyAreNotConfounded`
+pins the property: under symmetric noise with no outliers the policy delta is
+zero at both filter settings and the filter delta is large at both policy
+settings. On Gaussian noise the policy **cannot** win, because the gate has
+nothing to reject and equal scores make the weighted mean the plain mean. Where
+it does win is a confidently wrong view, which
+`GatedFusionBeatsTheNaiveBaselineWhenOneViewIsAnOutlier` now asserts at both
+filter tiers — a constant bias is not noise and the EKF cannot average it away.
 
 ADD-S uses nearest-point rather than corresponding-point distance, so a pose off
 by a symmetry element is not punished — `Metrics.AddSForgivesASymmetryWhereAddDoesNot`
@@ -118,7 +156,7 @@ so in its own output.
 | Disagreement gate rejects an injected outlier | Met — three- and two-view branches |
 | Single-view objects pass through with correct `visible_views` | Met |
 | Refuses to start on extrinsics failing the quality gate | Met — throws in the constructor |
-| Occlusion ablation harness emitting comparable ADD-S | Met — harness + demo |
+| Occlusion ablation harness emitting comparable ADD-S | Met — eight-arm harness + demo; filter and policy varied independently since 2026-09-06 |
 | Unknown-object merge from the clustering path | **Not started** — `cluster_agent` is above MVP and does not exist yet |
 
 ## Known gaps

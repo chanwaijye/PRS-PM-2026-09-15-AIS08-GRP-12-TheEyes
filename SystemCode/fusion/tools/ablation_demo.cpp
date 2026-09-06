@@ -89,11 +89,17 @@ int main(int argc, char** argv) {
               << frames.size() << " frames, " << truth.size()
               << " objects, 10 mm/axis Gaussian per-view noise\n\n"
               << result.Format()
-              << "\nArms: cam_* are single views. `naive` is both views under "
-                 "association +\nunweighted mean with no gate and no filter -- the "
-                 "baseline. `fused` is the\nfull policy. The claim rests on "
-                 "fused-vs-naive, NOT on fused-vs-single-view:\ntwo cameras beat "
-                 "one whoever writes the average.\n";
+              << "\nRead as pairs that differ in ONE thing:\n"
+                 "  policy   gated - naive, fused - naive+ekf   what this module's "
+                 "per-frame policy buys\n"
+                 "  views    naive - cam_*                       what a second "
+                 "camera buys\n"
+                 "  filter   *+ekf - *                           what the EKF buys\n"
+                 "The claim rests on the POLICY rows. Comparing `fused` against the "
+                 "raw `naive`\ncredits the filter to the policy; that was the "
+                 "confound the 2026-09-05 review found.\nOn Gaussian noise with no "
+                 "outliers the policy delta is ~0 by construction, and the\nnumber "
+                 "this scene reports is the harness saying so.\n";
     return EXIT_SUCCESS;
   } catch (const std::exception& e) {
     std::cerr << "ablation_demo: " << e.what() << "\n";

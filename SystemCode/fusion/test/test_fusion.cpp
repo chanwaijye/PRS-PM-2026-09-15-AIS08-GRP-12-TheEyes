@@ -137,12 +137,14 @@ TEST(Fusion, ADefaultObjectStateReportsNoUncertainty) {
   EXPECT_LT(fresh.orientation_sigma_rad, 0.0);
 }
 
-TEST(Fusion, NaiveModeEmitsTheRawFuseAndNoUncertainty) {
-  // The ablation baseline is defined as having no temporal filter, so it must
-  // not inherit one through the back door -- neither in the pose it emits nor
-  // in the belief it claims.
+TEST(Fusion, NoTemporalFilterEmitsTheRawFuseAndNoUncertainty) {
+  // An arm defined as having no temporal filter must not inherit one through
+  // the back door -- neither in the pose it emits nor in the belief it claims.
+  // The switch is independent of the policy; the naive policy is used here
+  // because it is the arm the ablation most needs this property from.
   FusionConfig cfg = Cfg();
   cfg.mode = FusionMode::kNaive;
+  cfg.temporal_filter = false;
   Fusion naive(cfg, Rig());
 
   const Eigen::Isometry3d truth = Pose({0.10, 0.05, 0.03});
@@ -157,6 +159,39 @@ TEST(Fusion, NaiveModeEmitsTheRawFuseAndNoUncertainty) {
   // Noise-free agreeing views: the unweighted mean is exactly the truth, with
   // no filter lag between it and the measurement.
   EXPECT_LT((scene.objects[0].pose_w.translation() - truth.translation()).norm(), 1e-9);
+}
+
+TEST(Fusion, TheTemporalFilterIsIndependentOfThePolicy) {
+  // The naive policy with the filter ON emits the EKF's pose and covariance
+  // exactly as the gated policy does. If `mode` still implied the filter, the
+  // ablation's naive+ekf arm would silently be the raw naive arm again and
+  // the confound would be back.
+  const Eigen::Isometry3d truth = Pose({0.10, 0.05, 0.03});
+  const auto run = [&](FusionMode mode) {
+    FusionConfig cfg = Cfg();
+    cfg.mode = mode;
+    cfg.temporal_filter = true;
+    Fusion fusion(cfg, Rig());
+    SceneState scene;
+    for (int i = 0; i < 10; ++i) {
+      scene = fusion.Process(
+          {Observe(Rig(), "cam_front", "cube", truth), Observe(Rig(), "cam_over", "cube", truth)},
+          1'000'000'000ULL + static_cast<uint64_t>(i) * 33'000'000ULL);
+    }
+    return scene;
+  };
+  const SceneState naive = run(FusionMode::kNaive);
+  const SceneState gated = run(FusionMode::kGated);
+  ASSERT_EQ(naive.objects.size(), 1u);
+  ASSERT_EQ(gated.objects.size(), 1u);
+  EXPECT_TRUE(has_uncertainty(naive.objects[0]));
+  EXPECT_TRUE(has_uncertainty(gated.objects[0]));
+  // Same input, no outliers, equal scores: the two policies feed the filter the
+  // same measurement, so the filtered outputs agree.
+  EXPECT_NEAR(naive.objects[0].position_sigma_m, gated.objects[0].position_sigma_m, 1e-12);
+  EXPECT_LT((naive.objects[0].pose_w.translation() - gated.objects[0].pose_w.translation())
+                .norm(),
+            1e-9);
 }
 
 TEST(Fusion, NaiveModeBelievesAViewTheGateWouldReject) {

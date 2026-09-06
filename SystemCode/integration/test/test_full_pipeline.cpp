@@ -325,21 +325,32 @@ TEST(FullPipeline, FusedErrorBeatsSingleViewThroughTheRealModuleChain) {
 
   const fusion::AblationResult result =
       fusion::RunOcclusionAblation(frames, ex, fusion::FusionConfig{}, {}, models);
-  // Four arms: the two single views, the naive baseline, and the full policy.
-  ASSERT_EQ(result.rows.size(), 4u);
+  // Eight arms: {single views, naive, gated} x {raw, EKF}.
+  ASSERT_EQ(result.rows.size(), 8u);
 
   const auto row = [&](const std::string& label) {
     return *std::find_if(result.rows.begin(), result.rows.end(),
                          [&](const fusion::AblationRow& r) { return r.label == label; });
   };
-  EXPECT_LT(row("fused").mean_add_s_m, row("cam_front").mean_add_s_m);
-  EXPECT_LT(row("fused").mean_add_s_m, row("cam_over").mean_add_s_m);
+  // Two views beat one, within each filter tier.
+  EXPECT_LT(row("naive").mean_add_s_m, row("cam_front").mean_add_s_m);
+  EXPECT_LT(row("naive").mean_add_s_m, row("cam_over").mean_add_s_m);
+  EXPECT_LT(row("fused").mean_add_s_m, row("cam_front+ekf").mean_add_s_m);
+  EXPECT_LT(row("fused").mean_add_s_m, row("cam_over+ekf").mean_add_s_m);
   EXPECT_EQ(row("fused").missed, 0);
-  // The claim this project actually makes. Beating a single view only shows
-  // that two cameras beat one; beating the naive baseline is what shows the
-  // fusion POLICY is doing the work, and it must hold through the real module
-  // chain and not merely in the fusion unit tests.
-  EXPECT_LT(row("fused").mean_add_s_m, row("naive").mean_add_s_m);
+  // The EKF beats raw, within each policy.
+  EXPECT_LT(row("fused").mean_add_s_m, row("gated").mean_add_s_m);
+  EXPECT_LT(row("naive+ekf").mean_add_s_m, row("naive").mean_add_s_m);
+  // And the policy delta on Gaussian noise is ~0 at BOTH tiers. This test used
+  // to assert fused < naive and call it "the claim this project makes" -- but
+  // that pair differed in the filter as well as the policy, and the filter was
+  // the whole gap. The policy's real contribution is a confidently wrong view,
+  // which mock Gaussian noise never produces; fusion's own
+  // GatedFusionBeatsTheNaiveBaselineWhenOneViewIsAnOutlier covers that.
+  EXPECT_NEAR(row("gated").mean_add_s_m, row("naive").mean_add_s_m,
+              0.05 * row("naive").mean_add_s_m);
+  EXPECT_NEAR(row("fused").mean_add_s_m, row("naive+ekf").mean_add_s_m,
+              0.05 * row("naive+ekf").mean_add_s_m);
 
   // Uncertainty must survive the whole chain to the external contract, since
   // that is where PM1 and PM4 read it.

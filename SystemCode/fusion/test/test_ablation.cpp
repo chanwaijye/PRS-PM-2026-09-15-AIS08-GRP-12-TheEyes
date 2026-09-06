@@ -141,17 +141,70 @@ TEST(Ablation, FusedBeatsEitherSingleViewUnderSymmetricNoise) {
   }
 
   const AblationResult result = RunOcclusionAblation(frames, ex, cfg, {}, Models());
-  ASSERT_EQ(result.rows.size(), 4u);
+  ASSERT_EQ(result.rows.size(), 8u);
 
-  const AblationRow& front = Row(result, "cam_front");
-  const AblationRow& over = Row(result, "cam_over");
-  const AblationRow& fused = Row(result, "fused");
-
-  EXPECT_LT(fused.mean_add_s_m, front.mean_add_s_m);
-  EXPECT_LT(fused.mean_add_s_m, over.mean_add_s_m);
+  // Within each filter tier, two views beat one: averaging two independent
+  // noisy measurements halves the variance whoever writes the average.
+  EXPECT_LT(Row(result, "naive").mean_add_s_m, Row(result, "cam_front").mean_add_s_m);
+  EXPECT_LT(Row(result, "naive").mean_add_s_m, Row(result, "cam_over").mean_add_s_m);
+  EXPECT_LT(Row(result, "fused").mean_add_s_m, Row(result, "cam_front+ekf").mean_add_s_m);
+  EXPECT_LT(Row(result, "fused").mean_add_s_m, Row(result, "cam_over+ekf").mean_add_s_m);
   // Every configuration sees the object here; the gain is accuracy, not recall.
-  EXPECT_EQ(fused.missed, 0);
-  EXPECT_EQ(front.missed, 0);
+  for (const AblationRow& row : result.rows) EXPECT_EQ(row.missed, 0) << row.label;
+}
+
+TEST(Ablation, TheFilterAndThePolicyAreNotConfounded) {
+  // The 2026-09-05 review finding, made structural. Under symmetric Gaussian
+  // noise with no outliers the gate has nothing to reject and equal scores make
+  // the weighted mean the plain mean, so the POLICY contributes nothing -- and
+  // the harness must say so at BOTH filter settings. Meanwhile the EKF, which
+  // is a running average over frames of a static object, contributes a lot.
+  //
+  // Before the filter became its own switch, `naive` ran without the EKF and
+  // `fused` ran with it, so this exact input reported a large fused-minus-naive
+  // gap that was credited to the policy. That is what this test forbids.
+  const ExtrinsicsSet ex = Rig();
+  const FusionConfig cfg;
+  const Eigen::Isometry3d truth = Pose({0.10, 0.05, 0.03}, 15.0);
+
+  std::mt19937 rng(20260905);
+  std::normal_distribution<double> noise(0.0, 0.010);
+
+  std::vector<AblationFrame> frames;
+  for (int i = 0; i < 120; ++i) {
+    AblationFrame f;
+    f.stamp_ns = static_cast<uint64_t>(i) * 33'000'000ULL + 1'000'000'000ULL;
+    for (const std::string& cam : {"cam_front", "cam_over"}) {
+      Eigen::Isometry3d measured = truth;
+      measured.translation() += Eigen::Vector3d(noise(rng), noise(rng), noise(rng));
+      f.estimates.push_back(Observe(ex, cam, "cube", measured));
+    }
+    f.ground_truth.push_back(GroundTruthObject{"cube", truth});
+    frames.push_back(std::move(f));
+  }
+
+  const AblationResult result = RunOcclusionAblation(frames, ex, cfg, {}, Models());
+  const double naive_raw = Row(result, "naive").mean_add_s_m;
+  const double gated_raw = Row(result, "gated").mean_add_s_m;
+  const double naive_ekf = Row(result, "naive+ekf").mean_add_s_m;
+  const double fused = Row(result, "fused").mean_add_s_m;
+
+  // Policy delta is negligible at each filter setting: nothing for the policy
+  // to do. Not exactly zero -- with 10 mm/axis per view the two views' 3D
+  // disagreement occasionally exceeds the 5 cm gate on noise alone, and the
+  // two-view tie-break then keeps one view instead of the mean. That is a few % of
+  // the error here and is itself a property worth knowing about the gate.
+  EXPECT_NEAR(gated_raw, naive_raw, 0.05 * naive_raw);
+  EXPECT_NEAR(fused, naive_ekf, 0.05 * naive_ekf);
+  // Filter delta is large at each policy setting. Not the 1/sqrt(120) of a
+  // true running mean: the configured process noise gives the EKF a finite
+  // memory, and it settles near 0.6x on this input. 0.8x is the bound because
+  // the point is "clearly non-zero", not a model of the filter's steady state.
+  EXPECT_LT(naive_ekf, 0.8 * naive_raw);
+  EXPECT_LT(fused, 0.8 * gated_raw);
+  // And so the old headline gap -- fused vs the unfiltered naive -- is real but
+  // belongs to the filter column, not the policy column.
+  EXPECT_LT(fused, 0.8 * naive_raw);
 }
 
 TEST(Ablation, FusionRecoversRecallWhenOneViewIsOccluded) {
@@ -193,17 +246,26 @@ TEST(Ablation, RowsCoverEveryViewPlusFusedAndFormatCleanly) {
   f.ground_truth = {GroundTruthObject{"cube", truth}};
 
   const AblationResult result = RunOcclusionAblation({f}, ex, cfg, {}, Models());
-  ASSERT_EQ(result.rows.size(), 4u);
-  EXPECT_EQ(result.rows[0].label, "cam_front");
-  EXPECT_EQ(result.rows[1].label, "cam_over");
-  // `naive` before `fused`: the report table is read left to right and the
-  // fused-minus-naive gap is the one the claim rests on.
-  EXPECT_EQ(result.rows[2].label, "naive");
-  EXPECT_EQ(result.rows[3].label, "fused");
+  ASSERT_EQ(result.rows.size(), 8u);
+  // Raw tier, then EKF tier; within each, single views, then naive, then the
+  // policy row, so the table is read top to bottom as "what each thing buys".
+  const std::vector<std::string> expected = {"cam_front", "cam_over",         "naive",
+                                             "gated",     "cam_front+ekf",    "cam_over+ekf",
+                                             "naive+ekf", "fused"};
+  for (size_t i = 0; i < expected.size(); ++i) EXPECT_EQ(result.rows[i].label, expected[i]);
+  for (size_t i = 0; i < 4; ++i) EXPECT_FALSE(result.rows[i].temporal_filter) << i;
+  for (size_t i = 4; i < 8; ++i) EXPECT_TRUE(result.rows[i].temporal_filter) << i;
+  EXPECT_EQ(Row(result, "naive").mode, FusionMode::kNaive);
+  EXPECT_EQ(Row(result, "naive+ekf").mode, FusionMode::kNaive);
+  EXPECT_EQ(Row(result, "gated").mode, FusionMode::kGated);
+  EXPECT_EQ(Row(result, "fused").mode, FusionMode::kGated);
+  EXPECT_EQ(Row(result, "cam_front").views, std::vector<std::string>{"cam_front"});
+  EXPECT_EQ(Row(result, "fused").views.size(), 2u);
 
   const std::string table = result.Format();
   EXPECT_NE(table.find("cam_front"), std::string::npos);
   EXPECT_NE(table.find("naive"), std::string::npos);
+  EXPECT_NE(table.find("gated"), std::string::npos);
   EXPECT_NE(table.find("fused"), std::string::npos);
   EXPECT_NE(table.find("ADD-S"), std::string::npos);
 }
@@ -240,13 +302,23 @@ TEST(Ablation, GatedFusionBeatsTheNaiveBaselineWhenOneViewIsAnOutlier) {
   }
 
   const AblationResult result = RunOcclusionAblation(frames, ex, cfg, {}, Models());
-  const AblationRow& naive = Row(result, "naive");
-  const AblationRow& fused = Row(result, "fused");
 
-  EXPECT_LT(fused.mean_add_s_m, naive.mean_add_s_m)
+  // The policy's contribution, measured with the filter held fixed -- both
+  // ways. Comparing `fused` (EKF) against `naive` (raw) would fold the filter
+  // into the policy's credit; see TheFilterAndThePolicyAreNotConfounded.
+  const AblationRow& naive = Row(result, "naive");
+  const AblationRow& gated = Row(result, "gated");
+  EXPECT_LT(gated.mean_add_s_m, naive.mean_add_s_m)
       << "the disagreement gate must buy something over an unweighted mean, or "
          "the module's headline claim is just 'two cameras beat one'";
-  EXPECT_GT(fused.recall_at_0p1_diameter, naive.recall_at_0p1_diameter);
+  EXPECT_GT(gated.recall_at_0p1_diameter, naive.recall_at_0p1_diameter);
+
+  const AblationRow& naive_ekf = Row(result, "naive+ekf");
+  const AblationRow& fused = Row(result, "fused");
+  EXPECT_LT(fused.mean_add_s_m, naive_ekf.mean_add_s_m)
+      << "a constant 4 cm bias is not noise: the filter cannot average it away, "
+         "so the gate's gain must survive the EKF";
+  EXPECT_GT(fused.recall_at_0p1_diameter, naive_ekf.recall_at_0p1_diameter);
 }
 
 TEST(Ablation, NaiveBaselineStillSeesWhatBothViewsSee) {

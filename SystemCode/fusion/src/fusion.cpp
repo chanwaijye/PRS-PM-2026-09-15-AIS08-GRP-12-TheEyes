@@ -395,13 +395,14 @@ SceneState Fusion::Process(const std::vector<PoseEstimate>& estimates, uint64_t 
     o.stamp_ns = stamp_ns;
     // relations stays empty: it is the scenegraph module's field to fill.
 
-    if (cfg_.mode == FusionMode::kNaive) {
-      // The baseline keeps no history, so the raw per-frame fuse IS its answer.
-      // The uncertainty fields stay at their "not supplied" sentinel: the EKF
-      // ran (track association reads its position, and that must stay identical
-      // across arms so the ablation compares fusion policy and not association)
+    if (!cfg_.temporal_filter) {
+      // No temporal filter: the raw per-frame fuse IS the answer. The
+      // uncertainty fields stay at their "not supplied" sentinel: the EKF ran
+      // (track association reads its position, and that must stay identical
+      // across ablation arms so they compare fusion policy and not association)
       // but this arm does not use its output, so reporting its covariance would
-      // credit the baseline with a filter it is defined not to have.
+      // credit it with a filter it is defined not to have. Independent of
+      // `mode` on purpose -- see FusionConfig::temporal_filter.
       o.pose_w = obs.pose_w;
     } else {
       o.pose_w = it->ekf->pose();  // temporally smoothed, not the raw fuse

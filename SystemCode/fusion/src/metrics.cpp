@@ -76,15 +76,24 @@ double BoxDiameter(const Eigen::Vector3d& half_extents) {
 
 std::string AblationResult::Format() const {
   std::ostringstream os;
-  os << std::left << std::setw(12) << "view" << std::right << std::setw(8) << "gt"
-     << std::setw(9) << "matched" << std::setw(8) << "missed" << std::setw(14) << "ADD-S (mm)"
-     << std::setw(14) << "ADD-S (/diam)" << std::setw(14) << "recall@0.1d" << "\n";
-  os << std::string(79, '-') << "\n";
-  for (const AblationRow& r : rows) {
-    os << std::left << std::setw(12) << r.label << std::right << std::setw(8)
+  os << std::left << std::setw(15) << "arm" << std::setw(7) << "views" << std::setw(7)
+     << "policy" << std::setw(7) << "filter" << std::right << std::setw(6) << "gt"
+     << std::setw(9) << "matched" << std::setw(8) << "missed" << std::setw(12) << "ADD-S mm"
+     << std::setw(9) << "/diam" << std::setw(13) << "recall@0.1d" << "\n";
+  os << std::string(93, '-') << "\n";
+  bool previous_filter = false;
+  for (size_t i = 0; i < rows.size(); ++i) {
+    const AblationRow& r = rows[i];
+    // A blank line where the filter setting changes, so the two tiers read as
+    // the two halves of the design rather than as one ranked list.
+    if (i > 0 && r.temporal_filter != previous_filter) os << "\n";
+    previous_filter = r.temporal_filter;
+    os << std::left << std::setw(15) << r.label << std::setw(7) << r.views.size()
+       << std::setw(7) << (r.mode == FusionMode::kNaive ? "naive" : "gated") << std::setw(7)
+       << (r.temporal_filter ? "ekf" : "raw") << std::right << std::setw(6)
        << r.ground_truth_objects << std::setw(9) << r.matched << std::setw(8) << r.missed
-       << std::setw(14) << std::fixed << std::setprecision(2) << (r.mean_add_s_m * 1000.0)
-       << std::setw(14) << std::setprecision(4) << r.mean_add_s_fraction << std::setw(14)
+       << std::setw(12) << std::fixed << std::setprecision(2) << (r.mean_add_s_m * 1000.0)
+       << std::setw(9) << std::setprecision(4) << r.mean_add_s_fraction << std::setw(13)
        << std::setprecision(4) << r.recall_at_0p1_diameter << "\n";
   }
   return os.str();
@@ -94,35 +103,50 @@ AblationResult RunOcclusionAblation(const std::vector<AblationFrame>& frames,
                                     const ExtrinsicsSet& extrinsics, const FusionConfig& cfg,
                                     const ExtentRegistry& extents, const ModelRegistry& models,
                                     double match_max_distance_m) {
-  // Configurations: each single view alone, then both views under the naive
-  // baseline, then both views under the full policy. Every row is produced by
-  // filtering the SAME estimate stream through the SAME association, so a
-  // difference between rows is attributable to the arm and nothing else.
+  // Configurations: the raw tier first (each single view, naive, gated), then
+  // the same four with the EKF. Every row is produced by filtering the SAME
+  // estimate stream through the SAME association, so a difference between two
+  // rows is attributable to the one thing that differs between them.
   //
-  // Ordering is deliberate for the report table: the two single views set the
-  // floor, `naive` shows what a second camera alone buys, and `fused` sits last
-  // so the eye lands on the fused-minus-naive gap -- the only one of the three
-  // gaps that this module can take credit for.
+  // Ordering is deliberate for the report table. Within a tier the single
+  // views set the floor, `naive` shows what a second camera alone buys, and the
+  // policy row sits last so the eye lands on the policy-minus-naive gap -- the
+  // only gap this module can take credit for. The two tiers then show whether
+  // that gap survives the filter, which on a static scene does most of the
+  // error reduction on its own.
+  //
+  // A single view runs the gated policy: with one estimate per object the gate
+  // has nothing to compare and the weighting has one weight, so the two
+  // policies are identical there and the label omits it.
   struct Configuration {
     std::string label;
     std::vector<std::string> allowed_views;
     FusionMode mode;
+    bool temporal_filter;
   };
   std::vector<Configuration> configurations;
-  for (const std::string& view : cfg.view_names) {
-    configurations.push_back({view, {view}, FusionMode::kGated});
+  for (const bool filter : {false, true}) {
+    const std::string suffix = filter ? "+ekf" : "";
+    for (const std::string& view : cfg.view_names) {
+      configurations.push_back({view + suffix, {view}, FusionMode::kGated, filter});
+    }
+    configurations.push_back({"naive" + suffix, cfg.view_names, FusionMode::kNaive, filter});
+    configurations.push_back(
+        {filter ? "fused" : "gated", cfg.view_names, FusionMode::kGated, filter});
   }
-  configurations.push_back({"naive", cfg.view_names, FusionMode::kNaive});
-  configurations.push_back({"fused", cfg.view_names, FusionMode::kGated});
 
   AblationResult result;
-  for (const auto& [label, allowed_views, mode] : configurations) {
+  for (const auto& [label, allowed_views, mode, temporal_filter] : configurations) {
     FusionConfig arm_cfg = cfg;
     arm_cfg.mode = mode;
+    arm_cfg.temporal_filter = temporal_filter;
     Fusion fusion(arm_cfg, extrinsics, extents);
 
     AblationRow row;
     row.label = label;
+    row.views = allowed_views;
+    row.mode = mode;
+    row.temporal_filter = temporal_filter;
     double add_s_sum = 0.0;
     double fraction_sum = 0.0;
     int below_threshold = 0;

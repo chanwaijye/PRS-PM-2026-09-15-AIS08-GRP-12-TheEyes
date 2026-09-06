@@ -322,47 +322,65 @@ in a mock mode with no hardware, and the project is under version control with
 its full history.
 
 Headline ablation, through the real module chain on *synthetic* input
-(150 frames, 4 objects, 10 mm/3° per-view noise, one object occluded from
-`cam_over` on 3 of 4 frames):
+(200 frames, 3 objects, 10 mm/axis Gaussian per-view noise, two objects
+occluded from `cam_over` on 3 of 4 frames). Eight arms: which **views** (one
+camera or both), which **policy** (naive unweighted mean, or the gated,
+confidence-weighted, symmetry-aware fuse) and whether the per-object **EKF** is
+applied, each varied on its own:
 
-| view | ADD-S (mm) | ADD-S (/diam) | recall @0.1d | missed |
-|---|---|---|---|---|
-| cam_front | 9.12 | 0.0449 | 0.8650 | 0 |
-| cam_over | 10.12 | 0.0458 | 0.6917 | 112 |
-| naive (baseline) | 15.43 | 0.0651 | 0.7600 | 0 |
-| **fused** | **7.59** | **0.0376** | **0.9150** | **0** |
+| arm | views | policy | filter | ADD-S (mm) | ADD-S (/diam) | recall @0.1d | missed |
+|---|---|---|---|---|---|---|---|
+| cam_front | 1 | — | raw | 9.97 | 0.1151 | 0.3517 | 0 |
+| cam_over | 1 | — | raw | 10.37 | 0.1197 | 0.1517 | 300 |
+| naive (baseline) | 2 | naive | raw | 9.00 | 0.1039 | 0.4850 | 0 |
+| gated | 2 | gated | raw | 9.01 | 0.1040 | 0.4833 | 0 |
+| cam_front+ekf | 1 | — | ekf | 6.62 | 0.0765 | 0.8550 | 0 |
+| cam_over+ekf | 1 | — | ekf | 7.85 | 0.0906 | 0.3183 | 300 |
+| naive+ekf | 2 | naive | ekf | 6.28 | 0.0725 | 0.9017 | 0 |
+| **fused** (the system) | 2 | gated | ekf | **6.29** | **0.0726** | **0.9017** | **0** |
 
-**The comparison that carries the claim is fused against `naive`, not fused
-against a single view.** An earlier revision of this table reported only the two
-single views and `fused`, and concluded that fusion gained on both axes. That
-conclusion was safe but empty: both gains are guaranteed before a line of fusion
-code is written. The recall gain is the set union of what two viewpoints can
-see, and the accuracy gain is what averaging two noisy measurements does for
-anybody. Neither depends on the disagreement gate, the confidence weighting, the
-symmetry handling or the per-object EKF — which is the entire contribution the
-module is graded on. Inverse-variance weighting of the two single-view figures
-predicts ≈6.8 mm against the reported fused 7.59 mm, so the published result in
-fact sat on the *wrong* side of what a two-line mean gives, and nothing in that
-three-row table could reveal it.
+**The table is read as pairs of rows that differ in exactly one thing.** The
+second camera's contribution is `naive − cam_front` (9.00 vs 9.97 mm, and recall
+0.485 vs 0.352). The EKF's contribution is any `+ekf` row against its raw twin
+(about 2.7 mm and 0.4 of recall). The fusion **policy's** contribution — the
+disagreement gate, confidence weighting and symmetry handling, which is what
+this module is graded on — is `gated − naive` at the raw tier and
+`fused − naive+ekf` at the EKF tier. On this input both are **0.01 mm**.
 
-`naive` is that missing baseline: both views, the same world-frame lift and the
-same cross-view association, then an unweighted mean with no gate, no symmetry
-case and no temporal filter. Quaternion averaging is deliberately shared between
-the two arms — at the angular separations two calibrated cameras produce on a
-static object, Markley averaging and naive coefficient-averaging agree well
-inside the per-view noise, so putting it in the baseline would manufacture a
-difference rather than measure one.
+That zero is correct, and it is the reason the design has eight rows rather
+than four. Under symmetric Gaussian noise with no outliers the gate has nothing
+to reject and equal per-view scores make the weighted mean the plain mean, so
+the policy *cannot* win; a harness that showed it winning here would be
+measuring something else. An earlier revision of this table did exactly that.
+It had four arms, defined `naive` as "unweighted mean **and no filter**", and
+ran the single-view and fused arms with the EKF on. The reported fused-vs-naive
+gap, and the conclusion drawn from it that "a second camera is a liability until
+something arbitrates the disagreement", was the EKF's temporal averaging being
+credited to the spatial policy — a comparison across rows that differed in two
+things at once. With the filter made transparent the two arms agreed to
+0.01 mm. The temporal filter is now a switch independent of the policy in
+`FusionConfig`, and `Ablation.TheFilterAndThePolicyAreNotConfounded` asserts
+that the policy delta is zero and the filter delta is large on this input, so
+the confound cannot return unnoticed.
 
-With the baseline in place the result reads differently, and more strongly.
-**Adding a second camera and averaging makes matters worse**: `naive` is 15.43 mm
-against `cam_front`'s 9.12 mm alone, a 69% *increase* in pose error, and its
-recall (0.760) falls below the better single view (0.865). The fusion policy
-turns that same input into 7.59 mm and 0.915, the best figures in the table on
-both axes. The claim is therefore not "two cameras beat one", which needs no
-code, but that **a second viewpoint is a liability until something arbitrates the
-disagreement between the views**, and that the arbitration is what this module
-supplies. Reproducing this shape on **real** captures is the project's central
-claim and remains the outstanding work.
+Where the policy does earn its place is a **confidently wrong view**: a bias
+rather than noise, which no amount of temporal averaging removes.
+`GatedFusionBeatsTheNaiveBaselineWhenOneViewIsAnOutlier` injects an 8 cm error
+into one view and asserts that the gated arm beats the naive arm at *both*
+filter tiers. Whether FoundationPose produces such views at this rig geometry,
+and how often, is precisely what the real-capture ablation will measure; if it
+rarely does, the honest result is that the second camera's value on this rig is
+recall under occlusion and the EKF's is accuracy, and the gate is insurance.
+Reproducing the table on **real** captures is the project's central claim and
+remains the outstanding work.
+
+`naive` is the baseline a reader would reach for unprompted: both views, the
+same world-frame lift and the same cross-view association, then an unweighted
+mean with no gate and no symmetry case. Quaternion averaging is deliberately
+shared between the two policies — at the angular separations two calibrated
+cameras produce on a static object, Markley averaging and naive
+coefficient-averaging agree well inside the per-view noise, so putting it in
+the baseline would manufacture a difference rather than measure one.
 
 Two honest qualifications belong with the table. The figures are *synthetic*,
 and every tool that prints them says so. And `ApplyDisagreementGate`'s

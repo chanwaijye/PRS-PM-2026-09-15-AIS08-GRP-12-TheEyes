@@ -43,23 +43,26 @@ struct TrackingConfig {
   double track_match_max_distance_m = 0.10;
 };
 
-// Which fusion policy to run.
+// Which SPATIAL fusion policy to run -- how one frame's per-view estimates of
+// the same object are combined. This is one of two independent switches; the
+// temporal filter is the other (FusionConfig::temporal_filter), and the two
+// must stay separate for the ablation to mean anything. See below.
 //
 // kNaive exists for one reason: the occlusion ablation's headline claim is
 // about THIS module, and comparing "fused" only against single views cannot
 // support that claim. Two cameras beat one camera by construction -- more
 // viewpoints see more objects, and averaging two noisy measurements of the
 // same quantity reduces error whoever writes the average. Neither result
-// depends on the disagreement gate, the confidence weighting, the symmetry
-// handling or the EKF, which is what the module actually contributes.
+// depends on the disagreement gate, the confidence weighting or the symmetry
+// handling, which is what the policy actually contributes.
 //
 // kNaive is therefore the baseline a reader would reach for unprompted:
-// associate across views, take the unweighted mean, believe every view, keep
-// no history. The gated-minus-naive delta is the part attributable to the
-// module rather than to owning a second camera.
+// associate across views, take the unweighted mean, believe every view. The
+// gated-minus-naive delta, AT THE SAME temporal_filter SETTING, is the part
+// attributable to the policy rather than to owning a second camera.
 enum class FusionMode {
-  kGated,  // the system: weighted, gated, symmetry-aware, EKF-smoothed
-  kNaive,  // ablation baseline: unweighted mean, no gate, no filter
+  kGated,  // the system: confidence-weighted, disagreement-gated, symmetry-aware
+  kNaive,  // ablation baseline: unweighted mean, no gate, no symmetry case
 };
 
 struct FusionConfig {
@@ -67,6 +70,22 @@ struct FusionConfig {
   // kGated; kNaive is an evaluation harness setting, and a YAML key for it
   // would be a way to ship the baseline to the robot by accident.
   FusionMode mode = FusionMode::kGated;
+
+  // Whether the per-object EKF's output is what gets emitted (true, the
+  // deployed system) or the raw per-frame fuse is (false). Also not read from
+  // fusion.yaml, for the same reason as `mode`.
+  //
+  // This is a separate switch from `mode` because of a confound found in the
+  // 2026-09-05 review. The naive arm used to be defined as "unweighted mean AND
+  // no filter", while the single-view and fused arms both ran the EKF. On a
+  // static object with independent per-frame noise the EKF is a running
+  // average over time, and it cuts error by far more than any one-frame policy
+  // can -- so the whole fused-minus-naive gap, and the "a second camera makes
+  // matters worse" reading, was the filter, not the policy. Making the filter
+  // transparent gave naive 9.00 mm vs fused 9.01 mm. With the two switches
+  // independent the harness can hold the filter fixed and vary the policy,
+  // which is the only comparison that isolates the policy.
+  bool temporal_filter = true;
 
   CalibrationGateConfig calibration;
   AssociationConfig association;

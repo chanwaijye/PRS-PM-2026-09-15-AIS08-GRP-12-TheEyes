@@ -16,7 +16,7 @@ clean build under `-Wall -Wextra -Wpedantic`.
 | 2 | `calib_agent` | Built. Mock mode recovers known intrinsics/extrinsics. Hardware run pending. |
 | 3 | `detector_agent` | **Complete end to end.** RGB-D C++ input path (sentinel encoding), 4-channel training pipeline, trained on the 50k v2 set, exported to ONNX, C++/Python parity re-verified against the trained network. |
 | 4 | `pose_agent` | Built. Verified end-to-end against the real FoundationPose server. |
-| 5 | `fusion_agent` ★ | Built. Ablation harness runs **four** arms — two single views, a naive baseline, and the full policy. The claim is fused-vs-naive; see proposal §7A. |
+| 5 | `fusion_agent` ★ | Built. Ablation harness runs **eight** arms — {single views, naive, gated} × {raw, EKF}. The claim is the policy delta at a fixed filter setting (`gated−naive`, `fused−naive+ekf`); the earlier four-arm fused-vs-naive gap was the EKF, fixed 2026-09-06. See proposal §7A. |
 | 6 | `scenegraph_agent` ★ | Built. PDDL emission, contract-tested against fusion. |
 | 7 | `cluster_agent` | Not built — above MVP, cut order #2. |
 | 8 | `twin_agent` | Not built — stretch, cut order #4. |
