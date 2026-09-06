@@ -110,7 +110,9 @@ the runtime README):
   from a stale capture; the boxes held a mouse and bare table, and
   FoundationPose returned stable, confident poses for 150 pairs. The 181 mm
   inter-view disagreement was the only tell. Verify the box against the run's
-  own recorded frames before trusting anything from `fixed:`.
+  own recorded frames before trusting anything from `fixed:`. The two boxes
+  are shown in `docs/results/fixed_box_stale_failure.png`; that image is all
+  that was kept of the run.
 - A nuisance seen once: cam_over renegotiated to USB 2.1 during an open
   ("failed to set power state"); a replug fixed it. `check --live` catches it
   before a demo.

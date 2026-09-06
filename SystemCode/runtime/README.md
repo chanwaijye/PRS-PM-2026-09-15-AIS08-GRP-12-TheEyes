@@ -65,7 +65,7 @@ so one box held a mouse and the other bare table, and FoundationPose returned
 stable poses with constant scores for 150 pairs. The tell was the two views
 disagreeing by 181 mm; the fix was reading the coordinates off the run's own
 recorded frames. Record the run, draw the box on a recorded frame, and look at
-it.
+it. The two bad boxes are in `docs/results/fixed_box_stale_failure.png`.
 
 `fixed:` hands the same hand-placed box per camera to the pose estimator on
 every frame, through the normal IoU tracker so FoundationPose registers once.
