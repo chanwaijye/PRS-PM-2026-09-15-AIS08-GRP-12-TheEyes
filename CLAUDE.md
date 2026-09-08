@@ -49,7 +49,7 @@ will operate on. **Interface stability is a first-class requirement.**
 |---|---|---|
 | OS | Ubuntu 24.04 LTS (noble) | dual-boot, desktop |
 | GPU | RTX 5070 Ti 16 GB (Blackwell, sm_120) | see R1 below |
-| ROS2 | Jazzy | PM1 is on Humble — integrate by contract, not shared workspace |
+| ROS2 | Jazzy | Installed, unused. Neither this project nor PM1 ships any ROS2 code (verified 2026-09-08); the earlier "PM1 is on Humble" conflict does not exist. `INTERFACES.md` §1/§6 keep the topics as the documented contract only. |
 | Compiler | GCC 12, C++17 | |
 | Cameras | 2 × Intel RealSense D435i | active IR stereo |
 | Edge target | Jetson Orin Nano Super | stretch goal only |
@@ -115,7 +115,9 @@ Must ship:
 Cut order under schedule pressure:
 1. Jetson deployment test
 2. Unknown-object DBSCAN path
-3. Live PM1 integration demo (logged output suffices)
+3. Live PM1 integration demo — **CUT 2026-09-08.** Studied, then dropped;
+   `docs/PM1_INTEGRATION.md` holds the decision and the logged output that
+   discharges it. Do not re-plan this.
 4. Digital-twin reconstruction viewport
 
 **The fusion occlusion ablation is never cut.** It is the entire technical claim.

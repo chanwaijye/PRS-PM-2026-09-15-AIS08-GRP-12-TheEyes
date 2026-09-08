@@ -177,7 +177,13 @@ computed these every frame and discarded them; these fields carry them.
 /scene_pddl         std_msgs/String              PDDL (:init ...) block
 ```
 
-Predicate vocabulary (must match PM1's domain exactly):
+Predicate vocabulary. This is **our** vocabulary, defined here and consumed by
+PM4; it is *not* PM1's. An earlier revision of this line claimed it "must match
+PM1's domain exactly" — checked against `SystemCode/planner/domain/tabletop.pddl`
+on 2026-09-08, one predicate of eleven matches (`clear`), `(on ?a ?b)` differs in
+the type of `?b`, and `in` / `occluded_from` have no counterpart there. Matching is
+not required: the live PM1 integration is cut (`docs/PM1_INTEGRATION.md`), and a
+consumer-specific encoding belongs in a bridge rather than in this contract.
 
 | Predicate | Meaning | Geometric rule |
 |---|---|---|
