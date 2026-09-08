@@ -108,9 +108,11 @@ Capture day is wasted if any of these is untrue.
    (`docs/RIG_BOM.md` — a ~30 s check versus a 20 min recalibration). The marked
    spot is the **workspace centre**, taped; a table corner cannot serve, because
    no corner is in both frames (§4.2c).
-6. **Workspace re-taped to the shared field of view** — 400 × 400 mm, not the
-   600 × 360 in `RIG_BOM.md` (§4.2d). Objects outside it are single-view because
-   they are out of frame, which is not the effect being measured.
+6. **Workspace re-taped to the shared field of view** — **480 × 340 mm** on the
+   2026-09-09 extrinsics, not the 600 × 360 in `RIG_BOM.md` (§4.2d). Objects
+   outside it are single-view because they are out of frame, which is not the
+   effect being measured. **Recompute after every recalibration**; it changed
+   shape when the rig moved.
 
 ---
 
@@ -318,29 +320,64 @@ Falling out of the same projection, and this one matters for every scene you lay
 out. Sampling the tabletop plane at 5 mm and asking which points land inside
 **both** 848 × 480 frames:
 
-- largest origin-centred rectangle fully shared: **400 × 400 mm**
+- largest origin-centred rectangle fully shared: **480 × 340 mm**
+  (2026-09-09 extrinsics; it was 400 × 400 on the 2026-09-06 set, and the
+  difference is the rig having moved — see §4.2e)
 - the taped workspace is **600 × 360 mm**
 - the workspace's front-left corner (−0.300, −0.180) projects to y = 546 in
   cam_front, below a 480-row frame — it is **outside cam_front entirely**
 
 `RIG_BOM.md`'s "horizontal coverage 981 mm (need 600)" is one camera's extent.
 The quantity that governs a two-view experiment is the *intersection* of two
-views 80° apart, and that is 400 mm, not 981.
+views ~80° apart, and that is 480 mm wide by 340 mm deep, not 981.
 
 **Consequence for the ablation, and it is not small.** An object in the outer
 band of the taped rectangle is single-view *by construction* — not occluded,
 just out of frame. Scoring that as occlusion would manufacture exactly the result
 the experiment is supposed to test. So:
 
-- **Re-tape the workspace to the measured shared region** (400 × 400 mm centred
-  on the origin, or whatever a re-run of this projection gives after any tripod
-  change), and keep every object inside it in every scene.
+- **Re-tape the workspace to the measured shared region** (480 × 340 mm centred
+  on the origin on the current extrinsics, or whatever a re-run of this
+  projection gives after any tripod change), and keep every object inside it in
+  every scene.
 - Re-run the projection after *any* mechanical change. It is arithmetic over
   `extrinsics.yaml` plus the intrinsics already logged in every
   `metrics.sqlite`; it needs no rig and no capture.
 - Caveat: computed at z = 0 for the current tripod placement. Objects have
   height, so an object's top is not guaranteed shared just because its base is.
-  Treat 400 × 400 as an upper bound and leave margin.
+  Treat the figure as an upper bound and leave margin.
+
+### 4.2e The rig moved between 09-06 and 09-09, and the gauge-invariant check caught it
+
+The 2026-09-09 recalibration passes — round trip mean 0.12 / p95 0.32 / max
+0.86 mm against a 5 mm gate, 49 shared corners — but it is **not** a small
+correction to the previous one:
+
+| | 2026-09-06 | 2026-09-09 | design |
+|---|---|---|---|
+| camera-to-camera baseline | 749.9 mm | **706.7 mm** | 737 |
+| relative rotation | 81.96° | **76.77°** | 80 |
+| cam_front reprojection RMSE | 0.393 px | **0.467 px** | gate 0.50 |
+| cam_over reprojection RMSE | 0.326 px | **0.406 px** | gate 0.50 |
+
+Baseline and relative rotation are **gauge-invariant** — they cannot change with
+where the board was placed (`docs/WORLD_FRAME.md` §4a). With a 0.12 mm round
+trip the relative pose is pinned to well under a millimetre, so a 43 mm baseline
+shift is not solve noise: **the cameras physically moved.** That is the failure
+`RIG_BOM.md` says nothing downstream detects, and the gauge-invariant check
+found it in seconds, from the committed file, with no rig.
+
+Two consequences carried into this document: the shared field of view changed
+shape (§4.2d), and the cameras are now *less* separated than designed — 76.8°
+against 80°, baseline 30 mm under — which slightly weakens the viewpoint
+diversity the whole multi-view claim rests on. If the tripods are touched again,
+move them apart.
+
+One caution: cam_front now sits **0.033 px** below the 0.50 px gate that fusion
+refuses to start above, and both cameras regressed. The round trip says the
+geometry is trustworthy, so this is not blocking — but a cleaner register shot
+(braced board, checked focus) would buy back headroom before the next
+recalibration fails outright.
 
 ### 4.3 Recognise it — cross-check the plane from depth
 
@@ -478,9 +515,9 @@ not required for the claim.
   invalidates them and **nothing downstream detects it**.
 - Occluding both views *before* ground truth is frozen.
 - Moving the occluder during a take — the tier is then neither T3 nor T4.
-- Placing an object outside the 400 × 400 mm shared region (§4.2d). It is then
-  single-view because it is out of frame, and the ablation scores an occlusion
-  that never happened.
+- Placing an object outside the shared region (§4.2d — 480 × 340 mm on the
+  current extrinsics). It is then single-view because it is out of frame, and
+  the ablation scores an occlusion that never happened.
 - Letting the TV change what it displays mid-take, or bumping it. It is the
   scene's whole backdrop and it is mass on the desk the extrinsics are tied to.
 - Recording T3/T4 before T1 for that object. T1 is the single-view accuracy floor
@@ -531,11 +568,12 @@ Binary, per `AGENTS.md` rule 3.
   it either way (§4.2b).
 - **[VERIFY]** plane-fit agreement tolerance for the §4.3 gate — set it from the
   first real fit, not from a guess.
-- The 400 × 400 mm shared region (§4.2d) is computed at z = 0 from the 2026-09-06
-  extrinsics and the factory intrinsics. **Re-run it after any tripod or mount
-  change**, and treat it as an upper bound — an object's top is not shared just
-  because its base is. Worth folding into the §4.3 platform tool so one command
-  reports both the plane fit and the shared footprint.
+- The shared region (§4.2d) is computed at z = 0 from the current extrinsics and
+  the factory intrinsics. **Re-run it after any tripod or mount change** — it
+  went from 400 × 400 to 480 × 340 mm when the rig moved between 09-06 and
+  09-09 — and treat it as an upper bound, since an object's top is not shared
+  just because its base is. Worth folding into the §4.3 platform tool so one
+  command reports the plane fit and the shared footprint together.
 - The visible-fraction figure for T3's "25–75%" band is unresolved (§8). Either
   compute it properly or state the tier qualitatively and let the `frame_views`
   counters carry the severity. Do not report a number nothing computed.
