@@ -1,0 +1,39 @@
+{
+  "panel_mm": 324.0,
+  "board_thickness_mm": 7.1,
+  "wall_height_mm": 5.0,
+  "wall_thickness_mm": 3.0,
+  "base_thickness_mm": 2.5,
+  "fence_pad_mm": 20.0,
+  "stop_pad_mm": 15.0,
+  "pad_spacing_mm": 260.0,
+  "contacts": {
+    "plus_y_fence": 2,
+    "minus_x_stop": 1
+  },
+  "seating_gesture": "lower the board flat, push it toward +y until both fence pads touch, then toward -x until the stop touches",
+  "parts": {
+    "board_jig_corner": {
+      "file": "assets/jig/board_jig_corner.stl",
+      "watertight": true,
+      "bbox_mm": [
+        55.0,
+        50.0,
+        7.5
+      ],
+      "volume_cm3": 4.98,
+      "intrusion_into_board_mm3": 0.0
+    },
+    "board_jig_fence_stop": {
+      "file": "assets/jig/board_jig_fence_stop.stl",
+      "watertight": true,
+      "bbox_mm": [
+        26.0,
+        22.0,
+        7.5
+      ],
+      "volume_cm3": 1.65,
+      "intrusion_into_board_mm3": 0.0
+    }
+  }
+}
