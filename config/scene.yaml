@@ -17,11 +17,30 @@ world_frame: table_origin
 objects:
   - id: table_01
     cls: table
-    # [VERIFY] Measure the table with a tape and the world-origin position on
-    # it before quoting any predicate result. These are placeholders sized so
-    # the calibration board (324 x 324 mm) and the three objects fit.
+    # MEASURED 2026-09-08: the desk is 1180 x 750 x 23 mm. It is the real desk,
+    # not the taped workspace -- objects can legitimately sit anywhere on it, and
+    # since the top face is at z = 0 across the whole slab the depth choice only
+    # affects XY overlap, which the real footprint gets right for free.
+    #
+    # The back ~310 mm of the 750 is occupied by a 43-inch TV (952 x 535 mm
+    # panel) and its stand, which is why docs/RIG_BOM.md quotes 1180 x 440 mm
+    # FREE on a 750 mm deep desk. No object is ever placed in that strip; the
+    # slab is still modelled full-depth because that is what is physically there.
+    #
+    # World origin is the WORKSPACE CENTRE on the tabletop, +y toward the back
+    # edge (config/calibration.yaml `world:`). The workspace is not centred on
+    # the desk in y, so the slab's centre is offset in +y.
+    #
+    # [VERIFY] The y offset below is DERIVED, not measured: it assumes the
+    # 440 mm free strip is the front of the desk and the workspace is centred
+    # in it, giving 220 mm from origin to the front edge and 530 mm to the back,
+    # so the slab centre sits at y = (530 - 220) / 2 = +0.155. One tape
+    # measurement settles it -- origin (board pattern centre) to the desk's
+    # FRONT edge, call it f, then t.y = 0.750/2 - f. x and z are not in doubt:
+    # the workspace is centred in the 1180 width, and z = -t/2 puts the top
+    # face on world z = 0.
     pose_w:
-      t: [0.0, 0.0, -0.010]      # centre, metres, world frame
+      t: [0.0, 0.155, -0.0115]   # centre, metres, world frame
       rpy_deg: [0.0, 0.0, 0.0]
     # Half-extents, metres, world-axis-aligned (ObjectState::extent).
-    extent: [0.400, 0.300, 0.010]
+    extent: [0.590, 0.375, 0.0115]
