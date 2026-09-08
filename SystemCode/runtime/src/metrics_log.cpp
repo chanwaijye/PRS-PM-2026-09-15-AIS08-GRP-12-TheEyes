@@ -352,6 +352,35 @@ void MetricsLog::WriteFrame(int64_t run_id, const PipelineResult& r) {
   }
 }
 
+void MetricsLog::WriteGroundTruth(int64_t run_id, const std::vector<GroundTruthRow>& rows) {
+  Impl& s = *impl_;
+  Exec(s.db, "BEGIN");
+  try {
+    {
+      Stmt del(s.db, "DELETE FROM ground_truth WHERE run_id=?");
+      del.Reset().Bind(run_id).Run();
+    }
+    Stmt ins(s.db,
+             "INSERT INTO ground_truth(run_id,pair_index,cls,instance,"
+             "tx,ty,tz,qw,qx,qy,qz,source) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)");
+    for (const GroundTruthRow& g : rows) {
+      if (g.source.empty()) {
+        throw std::runtime_error("metrics log: ground truth for '" + g.cls +
+                                 "' has no source; measured truth must be distinguishable "
+                                 "from anything else that fills this table");
+      }
+      ins.Reset()
+          .Bind(run_id).Bind(g.pair_index).Bind(g.cls).Bind(g.instance)
+          .Bind(g.pose_w).Bind(g.source)
+          .Run();
+    }
+    Exec(s.db, "COMMIT");
+  } catch (...) {
+    Exec(s.db, "ROLLBACK");
+    throw;
+  }
+}
+
 std::vector<fusion::AblationFrame> LoadAblationFrames(const std::string& db_path, int64_t run_id) {
   sqlite3* db = Open(db_path, false);
   std::vector<fusion::AblationFrame> frames;

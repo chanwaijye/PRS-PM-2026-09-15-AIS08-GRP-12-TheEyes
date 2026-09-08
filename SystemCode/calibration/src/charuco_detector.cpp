@@ -1,5 +1,7 @@
 #include "the_eyes/calibration/charuco_detector.hpp"
 
+#include "aruco_dictionary.hpp"
+
 #include <map>
 #include <stdexcept>
 
@@ -10,25 +12,7 @@
 namespace the_eyes::calibration {
 namespace {
 
-// NOTE: this is the OpenCV 4.6 aruco API (cv::aruco::CharucoBoard::create,
-// interpolateCornersCharuco). OpenCV 4.7 moved ChArUco into objdetect with a
-// different interface, so code copied from current tutorials will not compile
-// here. See SystemCode/calibration/README.md.
-int DictionaryId(const std::string& name) {
-  static const std::map<std::string, int> kDictionaries = {
-      {"DICT_4X4_50", cv::aruco::DICT_4X4_50},     {"DICT_4X4_100", cv::aruco::DICT_4X4_100},
-      {"DICT_4X4_250", cv::aruco::DICT_4X4_250},   {"DICT_5X5_50", cv::aruco::DICT_5X5_50},
-      {"DICT_5X5_100", cv::aruco::DICT_5X5_100},   {"DICT_5X5_250", cv::aruco::DICT_5X5_250},
-      {"DICT_6X6_50", cv::aruco::DICT_6X6_50},     {"DICT_6X6_250", cv::aruco::DICT_6X6_250},
-      {"DICT_7X7_250", cv::aruco::DICT_7X7_250},
-      {"DICT_APRILTAG_36h11", cv::aruco::DICT_APRILTAG_36h11},
-  };
-  const auto it = kDictionaries.find(name);
-  if (it == kDictionaries.end()) {
-    throw std::runtime_error("calibration: unknown aruco dictionary '" + name + "'");
-  }
-  return it->second;
-}
+// DictionaryId now lives in aruco_dictionary.hpp so the tray detector shares it.
 
 }  // namespace
 

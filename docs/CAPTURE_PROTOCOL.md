@@ -70,13 +70,35 @@ Capture day is wasted if any of these is untrue.
    overhead view first — geometry, lighting, and the real-clutter detector scores
    of 0.39–0.54 (`docs/STATUS.md`). **This is the top prerequisite and it is
    independent of filament.**
-2. **The ArUco ground-truth tool must exist.** Nothing in `SystemCode/` reads
-   `config/marker_trays.yaml` at evaluation time; the `ground_truth` table stays
-   empty and `ablation_from_log` has nothing to score against
-   (`metrics_log.hpp:6` says so). The plumbing is there —
-   `SystemCode/calibration/src/charuco_detector.cpp` already maps
-   `DICT_5X5_250`, the dictionary the trays use — so this is small, but it is
-   unbuilt and on the critical path.
+2. ~~The ArUco ground-truth tool must exist.~~ **BUILT 2026-09-09** —
+   `build/runtime/gt_from_trays`, with `MarkerDetector` in the calibration
+   module and the tray geometry in `runtime/marker_trays.hpp`. Validated against
+   a synthetic session with a known object pose; see §3.1b, which is a capture
+   requirement that came out of building it.
+
+3.1b. **Ground truth must be captured at 1920×1080, not at the pipeline's
+   848×480.** Measured, on synthetic renders of the real rig geometry with a
+   known object pose:
+
+   | Capture resolution | Marker size | Cameras contributing | Recovered pose error |
+   |---|---|---|---|
+   | 848 × 480 (pipeline) | 23–37 px | **cam_front only** | **18.4 mm** |
+   | 1920 × 1080 (calibration) | 51–84 px | both | **2.1 mm** |
+
+   An 18 mm ground-truth bias against an ADD-S threshold of ~8.6 mm for the cube
+   would not have produced a wrong-looking result — it would have produced a
+   confident wrong one. Worse, at 848 × 480 the tool's own pooled **scatter read
+   2.1 mm while the pose was 18 mm wrong**: a systematic bias does not appear as
+   spread, so the scatter alone cannot be trusted as an accuracy claim. The
+   **cross-camera disagreement** is the figure that did not lie (3.0 mm at
+   1080p), which is the second reason two cameras are worth having.
+
+   `gt_from_trays` therefore defaults `--min-size` to 40 px and refuses the
+   small-marker regime rather than quietly emitting confident nonsense.
+   Practically: shoot the ground-truth window as 1920 × 1080 stills the way
+   `calibrate capture --factory` already does, not from a recorded pipeline
+   session. **Wiring a stills input into `gt_from_trays` is the one piece of it
+   still to build.**
 3. **The platform must be registered** — §4. Currently fiction.
 4. **Trays printed and calliper-verified.** Filament ETA ~2026-09-12
    (`docs/STATUS.md`); worst-case socket clearance target 0.23 mm.

@@ -15,6 +15,7 @@ set(RUNTIME_SOURCES
   src/replay_frame_source.cpp
   src/static_scene.cpp
   src/metrics_log.cpp
+  src/marker_trays.cpp
   src/runtime_config.cpp
   src/backends.cpp
   src/fixed_box_detector.cpp
@@ -51,6 +52,14 @@ add_executable(ablation_from_log tools/ablation_from_log.cpp)
 target_link_libraries(ablation_from_log PRIVATE the_eyes_runtime)
 target_compile_options(ablation_from_log PRIVATE -Wall -Wextra -Wpedantic)
 
+# Fills a run's ground_truth table from the ArUco trays, so ablation_from_log
+# has a yardstick. Links calibration for the marker detector -- tool level only,
+# exactly as calibration's own `calibrate` links fusion, so the libraries keep
+# their one-way layering.
+add_executable(gt_from_trays tools/gt_from_trays.cpp)
+target_link_libraries(gt_from_trays PRIVATE the_eyes_runtime the_eyes_calibration)
+target_compile_options(gt_from_trays PRIVATE -Wall -Wextra -Wpedantic)
+
 if(THE_EYES_BUILD_TESTS)
   add_executable(test_runtime
     test/test_frame_pairer.cpp
@@ -60,9 +69,15 @@ if(THE_EYES_BUILD_TESTS)
     test/test_runtime_config.cpp
     test/test_backends.cpp
     test/test_fixed_box_detector.cpp
-    test/test_replay_pipeline.cpp)
+    test/test_replay_pipeline.cpp
+    test/test_marker_trays.cpp
+    test/test_gt_chain.cpp)
+  # Links calibration so the ground-truth chain can be tested end to end
+  # against a rendered marker. Test-only: the runtime LIBRARY does not depend
+  # on calibration, only gt_from_trays does.
   target_link_libraries(test_runtime
-    PRIVATE the_eyes_runtime GTest::gtest GTest::gtest_main yaml-cpp SQLite::SQLite3)
+    PRIVATE the_eyes_runtime the_eyes_calibration GTest::gtest GTest::gtest_main
+            yaml-cpp SQLite::SQLite3)
   target_compile_options(test_runtime PRIVATE -Wall -Wextra -Wpedantic)
   target_compile_definitions(test_runtime PRIVATE
     THE_EYES_CONFIG_DIR="${CMAKE_SOURCE_DIR}/../config"

@@ -16,7 +16,7 @@ find_library(ARUCO_LIBRARY NAMES opencv_aruco HINTS ${OpenCV_LIB_DIR} /usr/lib/x
 
 if(ARUCO_INCLUDE_DIR AND ARUCO_LIBRARY)
   message(STATUS "calibration: opencv_aruco found at ${ARUCO_LIBRARY}")
-  list(APPEND CALIB_SOURCES src/charuco_detector.cpp)
+  list(APPEND CALIB_SOURCES src/charuco_detector.cpp src/marker_detector.cpp)
   set(THE_EYES_HAVE_ARUCO TRUE)
 else()
   message(WARNING "calibration: opencv_aruco not found -- building without ChArUco "

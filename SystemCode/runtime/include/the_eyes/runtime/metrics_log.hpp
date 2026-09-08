@@ -36,6 +36,17 @@ struct RunInfo {
   std::string notes;              // startup report text
 };
 
+// One ground-truth pose in the WORLD frame. Filled by the ArUco-tray tool, and
+// read back by LoadAblationFrames as fusion::GroundTruthObject.
+struct GroundTruthRow {
+  uint64_t pair_index = 0;
+  std::string cls;
+  int instance = 0;   // which instance of `cls`, when a scene holds more than one
+  Eigen::Isometry3d pose_w = Eigen::Isometry3d::Identity();
+  std::string source; // how it was obtained, e.g. "aruco_tray" -- never blank,
+                      // so a reader can tell measured truth from anything else
+};
+
 class MetricsLog {
  public:
   // Opens or creates the database, applies the schema, prepares statements.
@@ -50,6 +61,12 @@ class MetricsLog {
   // whether a dead log should stop the run.
   void WriteFrame(int64_t run_id, const PipelineResult& result);
   void EndRun(int64_t run_id, const std::string& exit_status, uint64_t pairs_processed);
+
+  // REPLACES this run's ground truth: every existing row for run_id is deleted
+  // first, in the same transaction. Appending would be the wrong default --
+  // LoadAblationFrames reads every row for a run, so re-running the tray tool
+  // after a fix would silently double the ground truth rather than correct it.
+  void WriteGroundTruth(int64_t run_id, const std::vector<GroundTruthRow>& rows);
 
   const std::string& path() const { return path_; }
 
