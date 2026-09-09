@@ -63,9 +63,14 @@ honest, and it should not be smoothed away.
 
 Capture day is wasted if any of these is untrue.
 
-1. **Clear the desk.** ~~cam_over must actually see things.~~ **Corrected
-   2026-09-09** — the earlier reading of this prerequisite was wrong in its
-   diagnosis and backwards in its conclusion. See §3.1a.
+1. **Light the scene, then clear the desk.** ~~cam_over must actually see
+   things.~~ **Corrected 2026-09-09** — the earlier reading of this prerequisite
+   was wrong in its diagnosis and backwards in its conclusion (§3.1a), and the
+   larger effect is not clutter at all but exposure: 82–93% of every real frame
+   falls below the training set's 1st percentile (`docs/STATUS.md`
+   "Sim-to-real"). Light it, re-run `training/exposure_report.py` until the
+   session is no longer flagged out of distribution, and only then judge the
+   detector.
 ### 3.1a What the cam_over asymmetry actually is
 
 The 232-vs-3 estimate split looked like a broken overhead camera and was written

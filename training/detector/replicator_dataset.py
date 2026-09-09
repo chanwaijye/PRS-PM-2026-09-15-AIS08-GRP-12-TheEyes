@@ -273,10 +273,16 @@ def load_extents(log):
 def configure_renderer(log):
     """Report the renderer's exposure state. Deliberately does not change it.
 
-    [VERIFY] Scene brightness sits high: RGB mean ~200/255 with p1 = 132 and 14%
-    of pixels saturated, i.e. nothing below mid-grey. A room-lit capture would
-    not look like this, so it is a sim-to-real appearance gap and it belongs in
-    the record even though it is not yet fixed.
+    Scene brightness sits high: RGB mean ~200/255 with p1 = 132 and 14% of
+    pixels saturated, i.e. nothing below mid-grey. A room-lit capture would not
+    look like this, so it is a sim-to-real appearance gap.
+
+    MEASURED 2026-09-09, closing the [VERIFY] this note used to carry. The real
+    rig captures at RGB mean 73.1 (cam_front) and 46.7 (cam_over), with 82% and
+    93% of pixels BELOW this dataset's 1st percentile. The gap is real and it is
+    about 3x. See docs/STATUS.md "Sim-to-real"; regenerate with
+    training/exposure_report.py. The cheap direction is to light the real scene
+    rather than re-render 88 GB.
 
     What it is NOT: auto-exposure. `/rtx/post/histogram/enabled` is already
     False, checked below, so the first explanation -- that auto-exposure was

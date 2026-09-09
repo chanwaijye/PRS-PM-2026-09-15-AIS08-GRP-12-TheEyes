@@ -231,6 +231,60 @@ accordingly rather than left standing.
 Raw metrics: `docs/results/dataset_size_ablation_rgbd_50k_v2.json`.
 Plot: `docs/results/dataset_size_ablation_rgbd_50k_v2.png`.
 
+## Sim-to-real: the real captures are out of the training distribution — 2026-09-09
+
+The first hard number for R3, and it reframes every detector result taken on the
+rig so far. `training/exposure_report.py` regenerates it from any session.
+
+|  | mean | p1 | p50 | %sat | **% below 132** |
+|---|---|---|---|---|---|
+| `synth50k_v2` (trained on) | ~200 | **132** | — | 14.0 | ~1 |
+| cam_front (real) | 73.1 | 0 | 65 | 0.0 | **82.2** |
+| cam_over (real) | 46.7 | 0 | 32 | 0.0 | **93.0** |
+
+The training set's **darkest one per cent is 132**. The real captures are 82–93%
+*below* that. This is not a tuning difference; the rig is producing images from a
+region of input space the network was shown almost nothing of.
+
+`replicator_dataset.py` predicted exactly this in a `[VERIFY]` note — "a room-lit
+capture would not look like this… the right fix is to match the exposure against
+a real capture once the rig is built" — and also recorded what does **not** fix
+it from the sim side: cutting light intensity 3–4× moved the mean 202 → 199,
+randomising room albedo moved it the wrong way to 210, and the tonemapper ignored
+camera exposure parameters across a ~300× range. The cause was a white room
+reflecting everything. That note can now be closed with the other half of the
+comparison, and the cheap direction is clear: **brighten the real scene**, not
+re-render 88 GB.
+
+### What it explains
+
+The detector's false positives concentrate on whatever in the room is bright
+enough to resemble training data — the white fan, the pillow, the pale mousepad.
+And cam_front (mean 73) fires 4.9× more often than cam_over (mean 47): the
+brighter camera crosses threshold more. Both follow from the table above rather
+than from anything wrong with a camera, which is the same conclusion
+`docs/CAPTURE_PROTOCOL.md` §3.1a reached from the masking experiments.
+
+Two separate things are therefore confounded in every detector number measured on
+the rig to date: exposure, and the fact that the physical cube is an off-palette
+brown test print. **Neither the false-positive rate nor recall should be quoted
+as a sim-to-real result until the scene is lit and the correct-palette objects
+exist** (filament ~09-12).
+
+### Also measured, and secondary
+
+Sampling 114 *identical* world points on the bare table through both cameras'
+extrinsics: cam_front R/G **1.694**, cam_over R/G **2.156** — a 27% white-balance
+disagreement between the two units on the same surfaces under the same light,
+with per-channel ratios (B 1.67, G 1.45, R 1.14) that a single gain cannot
+explain. Real, and relevant because the classes are colour-coded, but an order of
+magnitude less important than the exposure gap. The measurement is also
+confounded by specular glare on varnished wood (per-point ratio sd 2.43), so a
+matte reference chart would be needed to quote it properly. **[VERIFY]** — not
+worth buying one until the scene is lit and the gap is re-measured.
+
+---
+
 ## Hardware on order
 
 | item | ETA | unblocks |
