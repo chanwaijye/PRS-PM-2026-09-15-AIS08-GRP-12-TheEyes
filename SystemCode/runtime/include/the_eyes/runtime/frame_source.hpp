@@ -25,6 +25,14 @@ struct CameraMeta {
   int sync_mode_requested = 0;
   int sync_mode_actual = 0;
   std::string timestamp_domain;
+  // Colour controls as the device reported them. Recorded so a session can say
+  // what it was shot at -- two captures at different exposures are not
+  // comparable, and until 2026-09-09 nothing recorded which was which.
+  bool auto_exposure = true;
+  int exposure = 0;   // device units, see camera/config.hpp
+  int gain = 0;
+  bool auto_white_balance = true;
+  int white_balance_k = 0;
 };
 
 class FrameSource {

@@ -14,6 +14,35 @@ struct CameraEntry {
   int inter_cam_sync_mode = 0;  // 0 default, 1 master, 2 slave
 };
 
+// Colour-sensor controls.
+//
+// The D435i colour stream runs auto-exposure and auto-white-balance by default,
+// and until 2026-09-09 nothing here touched either. That is not a neutral
+// default, it is an active control loop: turning the room light on moved the
+// table surface by 2.7 grey levels because the camera stopped down to cancel it
+// (docs/STATUS.md "Sim-to-real"). Auto also lets the two units pick different
+// exposures for the same scene, which makes the views incomparable, and makes a
+// recorded session unreproducible frame to frame.
+//
+// So the settings are stated rather than inherited. `auto_*` true keeps the old
+// behaviour; setting it false requires the corresponding value, because a
+// manual mode with no value is the one combination that silently does nothing.
+struct ColorControl {
+  bool auto_exposure = true;
+  // DEVICE UNITS, not microseconds. Measured on this rig's D435i colour sensor:
+  // range [1, 10000], step 1, default 166. The depth sensor's exposure option
+  // IS in microseconds; the colour sensor's is not, and the two are easy to
+  // confuse. Naming it `_us` would be a precision this project cannot verify,
+  // so it is named for what it is and the measured range is written down.
+  int exposure = 0;           // required when auto_exposure is false
+  int gain = 0;               // required when auto_exposure is false; range [0, 128]
+  bool auto_white_balance = true;
+  int white_balance_k = 0;    // kelvin, range [2800, 6500] step 10
+
+  bool manual_exposure() const { return !auto_exposure; }
+  bool manual_white_balance() const { return !auto_white_balance; }
+};
+
 struct StreamConfig {
   int depth_width = 848;
   int depth_height = 480;
@@ -33,6 +62,8 @@ struct StreamConfig {
   // Frames produced in this mode carry an EMPTY depth Mat and therefore do not
   // satisfy CameraFrame::valid(), which asserts the RGB-D contract.
   bool color_only = false;
+
+  ColorControl color;
 };
 
 struct SyncConfig {

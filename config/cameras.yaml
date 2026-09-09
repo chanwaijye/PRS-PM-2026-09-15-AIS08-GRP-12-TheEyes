@@ -41,6 +41,53 @@ streams:
   # registered RGB-D on one pixel grid.
   align_depth_to_color: true
 
+  # Colour-sensor controls.
+  #
+  # Left on auto until 2026-09-09, which was not a neutral default but an active
+  # control loop working against us: turning the room light on moved the table
+  # surface by 2.7 grey levels, because the camera stopped down to cancel it.
+  # Auto also lets the two units choose different exposures for the same scene
+  # -- part of the measured 27% cross-camera R/G disagreement -- and makes a
+  # session unreproducible. Both cameras take the SAME values deliberately:
+  # different exposures make the two views incomparable, which is fatal to an
+  # occlusion ablation.
+  #
+  # MEASURED on this rig, 2026-09-09, cam_front colour-only at 848x480:
+  #
+  #     exposure  gain   frame mean   fps
+  #          166    64         10.7  30.0
+  #          300    64         18.6  30.0   <- committed
+  #          300   128         33.4  30.0
+  #          600   128         54.9  16.6   below the sync requirement
+  #         1000   128         75.8  10.0
+  #         2500   128        124.1   4.0
+  #         5000   128        163.1   0.5
+  #
+  # THE CEILING IS THE FRAME RATE, NOT THE SENSOR. 30 fps caps exposure at ~300
+  # device units; past that the sensor drops frames and the hardware-synced
+  # pairing this rig depends on falls apart. Even at 0.5 fps and maximum gain
+  # the frame mean reaches only 163 against synth50k_v2's ~200.
+  #
+  # So the rig CANNOT be exposed into the training distribution. The remaining
+  # camera-side headroom is gain 64 -> 128, worth about 2x and paid for in
+  # sensor noise; everything else has to come from putting more light on the
+  # scene. See docs/STATUS.md "Sim-to-real".
+  #
+  # `exposure` is in DEVICE UNITS, not microseconds -- range [1, 10000] on this
+  # unit's colour sensor, default 166. The DEPTH sensor's exposure option is in
+  # microseconds and the two are easy to confuse; writing microseconds here was
+  # tried, went out of range, and was refused by the read-back check.
+  color:
+    auto_exposure: false
+    exposure: 300
+    gain: 64
+    # Pinned rather than left to drift with whatever is lighting the room that
+    # evening. 4600 K is the device default; the room's warm bulb pushed R/G
+    # away from the synthetic set, so this is deliberately not "whatever the
+    # room is".
+    auto_white_balance: false
+    white_balance_k: 4600
+
 sync:
   # Frame timestamps across the two cameras must agree within one frame period
   # (INTERFACES.md §1), asserted at startup and logged.

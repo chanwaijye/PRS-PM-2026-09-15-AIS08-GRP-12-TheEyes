@@ -88,6 +88,33 @@ CameraAgentConfig LoadCameraAgentConfig(const std::string& yaml_path) {
     if (config.streams.fps <= 0 || config.streams.depth_width <= 0) {
       throw std::runtime_error("cameras.yaml: stream dimensions and fps must be positive");
     }
+
+    if (const YAML::Node color = streams["color"]) {
+      ColorControl& c = config.streams.color;
+      if (color["auto_exposure"]) c.auto_exposure = color["auto_exposure"].as<bool>();
+      if (color["exposure"]) c.exposure = color["exposure"].as<int>();
+      if (color["gain"]) c.gain = color["gain"].as<int>();
+      if (color["auto_white_balance"]) {
+        c.auto_white_balance = color["auto_white_balance"].as<bool>();
+      }
+      if (color["white_balance_k"]) c.white_balance_k = color["white_balance_k"].as<int>();
+
+      // Manual mode with no value is the one combination that silently does
+      // nothing: librealsense accepts the auto-off and then keeps whatever the
+      // control loop last chose, so the capture looks configured and is not.
+      if (c.manual_exposure() && (c.exposure <= 0 || c.gain < 0)) {
+        throw std::runtime_error(
+            "cameras.yaml: streams.color.auto_exposure is false, so exposure (> 0, device "
+            "units) and "
+            "gain (>= 0) are both required -- otherwise the device silently keeps whatever "
+            "auto-exposure last settled on and the capture is not reproducible");
+      }
+      if (c.manual_white_balance() && c.white_balance_k <= 0) {
+        throw std::runtime_error(
+            "cameras.yaml: streams.color.auto_white_balance is false, so white_balance_k "
+            "(> 0, kelvin) is required");
+      }
+    }
   }
 
   if (const YAML::Node sync = root["sync"]) {

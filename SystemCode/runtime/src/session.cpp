@@ -48,6 +48,11 @@ void WriteSessionMeta(const SessionMeta& meta, const std::filesystem::path& yaml
     out << YAML::Key << "K" << YAML::Value << YAML::Flow << k;
     out << YAML::Key << "inter_cam_sync_mode_requested" << YAML::Value << cam.sync_mode_requested;
     out << YAML::Key << "inter_cam_sync_mode_actual" << YAML::Value << cam.sync_mode_actual;
+    out << YAML::Key << "auto_exposure" << YAML::Value << cam.auto_exposure;
+    out << YAML::Key << "exposure" << YAML::Value << cam.exposure;
+    out << YAML::Key << "gain" << YAML::Value << cam.gain;
+    out << YAML::Key << "auto_white_balance" << YAML::Value << cam.auto_white_balance;
+    out << YAML::Key << "white_balance_k" << YAML::Value << cam.white_balance_k;
     out << YAML::Key << "timestamp_domain" << YAML::Value << cam.timestamp_domain;
     out << YAML::EndMap;
   }
@@ -129,6 +134,12 @@ SessionMeta ReadSessionMeta(const std::filesystem::path& yaml_path) {
       for (int col = 0; col < 3; ++col) cam.K(r, col) = k[static_cast<size_t>(r * 3 + col)];
     cam.sync_mode_requested = c["inter_cam_sync_mode_requested"].as<int>(0);
     cam.sync_mode_actual = c["inter_cam_sync_mode_actual"].as<int>(0);
+    // Defaulted, so sessions recorded before these were written still load.
+    cam.auto_exposure = c["auto_exposure"].as<bool>(true);
+    cam.exposure = c["exposure"].as<int>(0);
+    cam.gain = c["gain"].as<int>(0);
+    cam.auto_white_balance = c["auto_white_balance"].as<bool>(true);
+    cam.white_balance_k = c["white_balance_k"].as<int>(0);
     cam.timestamp_domain = c["timestamp_domain"].as<std::string>("");
     meta.cameras.emplace(id, cam);
   }

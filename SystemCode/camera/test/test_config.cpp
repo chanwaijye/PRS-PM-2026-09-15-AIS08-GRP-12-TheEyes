@@ -132,4 +132,45 @@ TEST(CameraConfig, SerialsMatchThoseRecordedInExtrinsics) {
 }
 
 }  // namespace
+// Colour controls (added 2026-09-09). The failure these guard against is a
+// capture that looks configured and silently runs on auto.
+TEST(CameraConfig, ColorControlsDefaultToAutoSoOldConfigsStillLoad) {
+  const CameraAgentConfig c = LoadCameraAgentConfig(ConfigPath());
+  // The shipped config now pins them; what matters is that the struct's own
+  // defaults are auto, so a cameras.yaml with no `color:` block is unchanged.
+  const ColorControl fresh;
+  EXPECT_TRUE(fresh.auto_exposure);
+  EXPECT_TRUE(fresh.auto_white_balance);
+  EXPECT_FALSE(fresh.manual_exposure());
+  // And the shipped file is explicit rather than inherited.
+  EXPECT_TRUE(c.streams.color.exposure > 0);
+  EXPECT_GT(c.streams.color.exposure, 0);
+}
+
+TEST(CameraConfig, ManualExposureWithoutAValueIsRefused) {
+  const TempYaml y(R"(
+cameras:
+  cam_front: {serial: "1", inter_cam_sync_mode: 1}
+  cam_over:  {serial: "2", inter_cam_sync_mode: 2}
+streams:
+  align_depth_to_color: true
+  color:
+    auto_exposure: false
+)");
+  EXPECT_THROW(LoadCameraAgentConfig(y.path()), std::runtime_error);
+}
+
+TEST(CameraConfig, ManualWhiteBalanceWithoutAValueIsRefused) {
+  const TempYaml y(R"(
+cameras:
+  cam_front: {serial: "1", inter_cam_sync_mode: 1}
+  cam_over:  {serial: "2", inter_cam_sync_mode: 2}
+streams:
+  align_depth_to_color: true
+  color:
+    auto_white_balance: false
+)");
+  EXPECT_THROW(LoadCameraAgentConfig(y.path()), std::runtime_error);
+}
+
 }  // namespace the_eyes::camera

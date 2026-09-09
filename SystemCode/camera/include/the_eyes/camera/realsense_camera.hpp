@@ -35,6 +35,14 @@ class RealSenseCamera {
   // sync cable can accept the option and do nothing, so the value is read back
   // rather than assumed -- risk R4b depends on this actually taking effect.
   int actual_sync_mode() const;
+  // Colour controls as the device reports them after the requested values were
+  // applied. Recorded with every session: a capture whose exposure is unknown
+  // cannot be compared with another one.
+  bool actual_auto_exposure() const;
+  int actual_exposure() const;
+  int actual_gain() const;
+  bool actual_auto_white_balance() const;
+  int actual_white_balance_k() const;
   double depth_scale_m() const;
   // librealsense timestamp domain, e.g. "Global Time" or "System Time". Skew
   // between two cameras is only meaningful if both report the same domain.

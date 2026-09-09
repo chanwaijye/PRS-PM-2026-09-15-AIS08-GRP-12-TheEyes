@@ -271,6 +271,49 @@ brown test print. **Neither the false-positive rate nor recall should be quoted
 as a sim-to-real result until the scene is lit and the correct-palette objects
 exist** (filament ~09-12).
 
+### The rig cannot be exposed into that distribution — 2026-09-09
+
+Turning the room light on moved the table surface by **2.7 grey levels**
+(71.1 → 73.8 on cam_front, sampled at identical world points). The reason was
+that nothing in the project set exposure: the D435i colour stream ran
+auto-exposure, so the camera stopped down to cancel the extra light. Colour
+controls are now explicit in `config/cameras.yaml` and recorded in every
+`session.yaml`, so a capture states what it was shot at.
+
+Sweeping them with the pipeline running, cam_front colour-only at 848×480:
+
+| exposure | gain | frame mean | fps |
+|---|---|---|---|
+| 166 | 64 | 10.7 | 30.0 |
+| **300** | **64** | **18.6** | **30.0** ← committed |
+| 300 | 128 | 33.4 | 30.0 |
+| 600 | 128 | 54.9 | 16.6 |
+| 1000 | 128 | 75.8 | 10.0 |
+| 2500 | 128 | 124.1 | 4.0 |
+| 5000 | 128 | 163.1 | 0.5 |
+
+**The ceiling is the frame rate, not the sensor.** 30 fps caps exposure at ~300
+device units; past that the sensor drops frames and the hardware-synced pairing
+the whole rig depends on stops working. And even at 0.5 fps with maximum gain
+the mean reaches 163 against synth50k_v2's ~200.
+
+So this gap **cannot be closed from the camera**. The remaining camera-side
+headroom is gain 64 → 128, worth about 2× and paid for in sensor noise that the
+RGB-D detector sees directly. Everything else has to come from putting more
+light on the scene, and the shortfall is roughly 3× on a recorded session
+(mean 47–73 against 200).
+
+Two notes for whoever does the lighting. Prefer a neutral or daylight source:
+the warm room bulb raised R by 11–20 while B *fell*, moving colour balance away
+from the synthetic set rather than toward it. And re-check pair skew afterwards
+— it went from 1.6 ms on auto to 15.2 ms with exposure pinned, still inside the
+33 ms gate with zero drops, but worth watching rather than assuming.
+
+`exposure` is in **device units**, range [1, 10000], default 166 — not the
+microseconds the *depth* sensor's option uses. Writing microseconds was tried,
+went out of range, and was refused by the read-back rather than silently
+applied. That read-back is why the trap surfaced in seconds.
+
 ### Also measured, and secondary
 
 Sampling 114 *identical* world points on the bare table through both cameras'

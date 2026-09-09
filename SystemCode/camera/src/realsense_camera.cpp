@@ -1,5 +1,6 @@
 #include "the_eyes/camera/realsense_camera.hpp"
 
+#include <cmath>
 #include <sstream>
 #include <stdexcept>
 
@@ -28,6 +29,13 @@ struct RealSenseCamera::Impl {
   double depth_scale = 0.001;
   int actual_sync_mode = 0;
   std::string timestamp_domain = "unknown";
+  // What the colour sensor actually reports after the requested controls were
+  // applied, so a recorded session says what it was shot at.
+  bool actual_auto_exposure = true;
+  int actual_exposure = 0;
+  int actual_gain = 0;
+  bool actual_auto_white_balance = true;
+  int actual_white_balance_k = 0;
   Eigen::Matrix3d K = Eigen::Matrix3d::Identity();
   std::vector<std::string> warnings;
 };
@@ -151,6 +159,76 @@ RealSenseCamera::RealSenseCamera(const CameraEntry& entry, const StreamConfig& s
     }
   }
 
+  // Colour controls. Unlike inter_cam_sync_mode these are settable while
+  // streaming, so they go after start() where the colour sensor is reachable
+  // from the profile.
+  //
+  // ORDER MATTERS: auto must be switched off BEFORE the manual value is
+  // written, or the control loop overwrites it on the next frame and the
+  // capture silently runs on auto anyway.
+  try {
+    rs2::sensor colour = profile.get_device().first<rs2::color_sensor>();
+    const ColorControl& c = streams.color;
+
+    auto set_checked = [&](rs2_option opt, double value, const char* name) {
+      if (!colour.supports(opt)) {
+        impl_->warnings.push_back(std::string("colour sensor does not support ") + name);
+        return;
+      }
+      const rs2::option_range r = colour.get_option_range(opt);
+      if (value < r.min || value > r.max) {
+        std::ostringstream os;
+        os << name << " " << value << " is outside the device range [" << r.min << ", " << r.max
+           << "] (device units)";
+        impl_->warnings.push_back(os.str());
+        return;
+      }
+      colour.set_option(opt, static_cast<float>(value));
+    };
+
+    // The colour sensor's exposure option is in DEVICE UNITS, range [1, 10000]
+    // on this rig, NOT the microseconds the depth sensor uses. Writing
+    // microseconds through asked for 20000, which was out of range and was
+    // refused with a warning rather than silently applied -- which is why the
+    // read-back exists.
+    set_checked(RS2_OPTION_ENABLE_AUTO_EXPOSURE, c.auto_exposure ? 1.0 : 0.0,
+                "enable_auto_exposure");
+    if (c.manual_exposure()) {
+      set_checked(RS2_OPTION_EXPOSURE, c.exposure, "exposure");
+      set_checked(RS2_OPTION_GAIN, c.gain, "gain");
+    }
+    set_checked(RS2_OPTION_ENABLE_AUTO_WHITE_BALANCE, c.auto_white_balance ? 1.0 : 0.0,
+                "enable_auto_white_balance");
+    if (c.manual_white_balance()) {
+      set_checked(RS2_OPTION_WHITE_BALANCE, c.white_balance_k, "white_balance");
+    }
+
+    // Read back rather than assume, for the same reason the sync mode is read
+    // back: a device can accept an option and not apply it.
+    auto get_opt = [&](rs2_option opt) -> double {
+      return colour.supports(opt) ? colour.get_option(opt) : 0.0;
+    };
+    impl_->actual_auto_exposure = get_opt(RS2_OPTION_ENABLE_AUTO_EXPOSURE) != 0.0;
+    impl_->actual_exposure = static_cast<int>(get_opt(RS2_OPTION_EXPOSURE));
+    impl_->actual_gain = static_cast<int>(get_opt(RS2_OPTION_GAIN));
+    impl_->actual_auto_white_balance = get_opt(RS2_OPTION_ENABLE_AUTO_WHITE_BALANCE) != 0.0;
+    impl_->actual_white_balance_k = static_cast<int>(get_opt(RS2_OPTION_WHITE_BALANCE));
+
+    if (impl_->actual_auto_exposure != c.auto_exposure) {
+      impl_->warnings.push_back("requested auto_exposure " +
+                                std::string(c.auto_exposure ? "on" : "off") +
+                                " but the device reports the opposite");
+    }
+    if (c.manual_exposure() && impl_->actual_exposure != c.exposure) {
+      std::ostringstream os;
+      os << "requested exposure " << c.exposure << " but device reports "
+         << impl_->actual_exposure;
+      impl_->warnings.push_back(os.str());
+    }
+  } catch (const rs2::error& e) {
+    impl_->warnings.push_back(std::string("could not apply colour controls: ") + e.what());
+  }
+
   const auto colour_profile =
       profile.get_stream(RS2_STREAM_COLOR).as<rs2::video_stream_profile>();
   const rs2_intrinsics intrinsics = colour_profile.get_intrinsics();
@@ -169,6 +247,14 @@ RealSenseCamera::~RealSenseCamera() {
 const std::string& RealSenseCamera::camera_id() const { return impl_->entry.camera_id; }
 const std::string& RealSenseCamera::serial() const { return impl_->entry.serial; }
 int RealSenseCamera::actual_sync_mode() const { return impl_->actual_sync_mode; }
+
+bool RealSenseCamera::actual_auto_exposure() const { return impl_->actual_auto_exposure; }
+int RealSenseCamera::actual_exposure() const { return impl_->actual_exposure; }
+int RealSenseCamera::actual_gain() const { return impl_->actual_gain; }
+bool RealSenseCamera::actual_auto_white_balance() const {
+  return impl_->actual_auto_white_balance;
+}
+int RealSenseCamera::actual_white_balance_k() const { return impl_->actual_white_balance_k; }
 double RealSenseCamera::depth_scale_m() const { return impl_->depth_scale; }
 std::string RealSenseCamera::timestamp_domain() const { return impl_->timestamp_domain; }
 const std::vector<std::string>& RealSenseCamera::warnings() const { return impl_->warnings; }

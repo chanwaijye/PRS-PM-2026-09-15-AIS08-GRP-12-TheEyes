@@ -171,7 +171,11 @@ std::string CamerasJson(const std::vector<std::string>& ids,
     for (int r = 0; r < 3; ++r)
       for (int c = 0; c < 3; ++c) os << (r + c ? ", " : "") << m.K(r, c);
     os << "], \"sync_mode_requested\": " << m.sync_mode_requested
-       << ", \"sync_mode_actual\": " << m.sync_mode_actual << ", \"timestamp_domain\": \""
+       << ", \"sync_mode_actual\": " << m.sync_mode_actual
+       << ", \"auto_exposure\": " << (m.auto_exposure ? "true" : "false")
+       << ", \"exposure\": " << m.exposure << ", \"gain\": " << m.gain
+       << ", \"auto_white_balance\": " << (m.auto_white_balance ? "true" : "false")
+       << ", \"white_balance_k\": " << m.white_balance_k << ", \"timestamp_domain\": \""
        << m.timestamp_domain << "\"}";
     first = false;
   }

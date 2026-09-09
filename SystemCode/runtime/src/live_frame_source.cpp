@@ -34,6 +34,11 @@ LiveFrameSource::LiveFrameSource(const camera::CameraAgentConfig& cameras, Paire
     m.depth_scale_m = cam.depth_scale_m();
     m.sync_mode_requested = entry.inter_cam_sync_mode;
     m.sync_mode_actual = cam.actual_sync_mode();
+    m.auto_exposure = cam.actual_auto_exposure();
+    m.exposure = cam.actual_exposure();
+    m.gain = cam.actual_gain();
+    m.auto_white_balance = cam.actual_auto_white_balance();
+    m.white_balance_k = cam.actual_white_balance_k();
     meta_[id] = m;
   }
 
