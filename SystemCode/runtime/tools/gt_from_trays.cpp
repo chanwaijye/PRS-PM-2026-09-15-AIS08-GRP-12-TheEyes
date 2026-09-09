@@ -25,13 +25,29 @@
 // matches ground truth to frames by pair_index and a pair without it cannot be
 // scored.
 //
-//   gt_from_trays <session_dir> <metrics.sqlite> [options]
+//   gt_from_trays <input> <metrics.sqlite> [options]
+//
+// `input` is a recorded session by default, or a STILLS directory with --stills.
+//
+//     --stills         read <input>/<camera_id>/*.png as independent stills
+//                      instead of replaying a session. This is the mode that
+//                      matters: see RESOLUTION below. The layout is the one
+//                      `calibrate capture` already writes.
+//     --intrinsics F   per-camera K for the stills, at the stills' own
+//                      resolution. Defaults to <input>/intrinsics.yaml if that
+//                      exists, so a --factory run is reproducible afterwards
+//                      with no camera attached.
+//     --factory        read intrinsics from the attached devices (serials from
+//                      cameras.yaml) at the stills' resolution, and WRITE them
+//                      to <input>/intrinsics.yaml. Needs the rig; use it once,
+//                      on capture day.
 //     --config DIR     config directory (default: ./config)
 //     --pairs A:B      solve window, inclusive-exclusive, by pair_index
 //                      (default: the first 30 pairs the session YIELDS, which
 //                      is not pair_index [0,30) -- a session's indices start
 //                      after the discarded warm-up frames, so a fixed range
-//                      would silently scan nothing)
+//                      would silently scan nothing). Ignored with --stills,
+//                      where every still is used.
 //     --run N          run_id to write (default: the newest in the database)
 //     --min-obs N      refuse a class with fewer than N accepted observations (default 8)
 //     --max-reproj PX  reject a marker whose corners reproject worse (default 1.5)
@@ -52,7 +68,15 @@
 // So ground truth is captured at 1920x1080, exactly as calibration already is
 // (`calibrate capture --factory` exists for this reason), and the default
 // --min-size refuses the small-marker regime rather than quietly producing
-// confident nonsense.
+// confident nonsense. --stills is how those high-resolution frames get in:
+// they cannot come from a recorded session, which streams 848x480.
+//
+// Registering from high-resolution stills and then streaming at 848x480 is
+// sound because the camera POSE does not depend on sampling -- the projection
+// centre is physically fixed, measured half-FOV 34.93 deg at 848x480 against
+// 35.10 deg at 1920x1080 (device_registry.hpp). The INTRINSICS do depend on it,
+// which is why the stills carry their own K and why a mismatch between the
+// declared resolution and the image is refused rather than scaled.
 //     --min-ambiguity R  reject a marker whose two planar poses fit almost
 //                      equally well (default 2.0; see MarkerObservation::ambiguity)
 //     --dry-run        report only, write nothing
@@ -65,7 +89,14 @@
 #include <string>
 #include <vector>
 
+#include <fstream>
+
+#include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
+#include <yaml-cpp/yaml.h>
+
+#include "the_eyes/camera/config.hpp"
+#include "the_eyes/camera/device_registry.hpp"
 
 #include "the_eyes/calibration/marker_detector.hpp"
 #include "the_eyes/fusion/extrinsics.hpp"
@@ -90,12 +121,18 @@ struct Options {
   double min_size_px = 40.0;
   double min_ambiguity = 2.0;
   bool dry_run = false;
+  bool stills = false;
+  bool factory = false;
+  std::string intrinsics;
 };
 
 int Usage() {
-  std::cerr << "usage: gt_from_trays <session_dir> <metrics.sqlite> [--config DIR]\n"
-               "         [--pairs A:B] [--run N] [--min-obs N] [--max-reproj PX]\n"
-               "         [--min-size PX] [--dry-run]\n";
+  std::cerr << "usage: gt_from_trays <input> <metrics.sqlite> [--stills] [--factory]\n"
+               "         [--intrinsics FILE] [--config DIR] [--pairs A:B] [--run N]\n"
+               "         [--min-obs N] [--max-reproj PX] [--min-size PX]\n"
+               "         [--min-ambiguity R] [--dry-run]\n\n"
+               "  <input> is a recorded session, or a stills directory with --stills.\n"
+               "  Ground truth wants 1920x1080 stills, not the pipeline's 848x480.\n";
   return 2;
 }
 
@@ -107,6 +144,91 @@ struct Sample {
   double size_px = 0.0;
   Eigen::Isometry3d pose_w;
 };
+
+// Per-camera intrinsics for a set of stills, AT THE STILLS' OWN RESOLUTION.
+// The size is carried with K and checked against every image: intrinsics are
+// per-resolution, and silently using the pipeline's 848x480 K on a 1920x1080
+// still would bias every pose while looking entirely healthy.
+struct StillsIntrinsics {
+  Eigen::Matrix3d K = Eigen::Matrix3d::Identity();
+  int width = 0;
+  int height = 0;
+};
+
+std::map<std::string, StillsIntrinsics> LoadIntrinsics(const std::string& path) {
+  std::map<std::string, StillsIntrinsics> out;
+  const YAML::Node root = YAML::LoadFile(path);
+  const YAML::Node cams = root["cameras"];
+  if (!cams || !cams.IsMap() || cams.size() == 0) {
+    throw std::runtime_error(path + ": 'cameras' must be a non-empty map");
+  }
+  for (const auto& kv : cams) {
+    StillsIntrinsics si;
+    const YAML::Node& n = kv.second;
+    if (!n["K"] || n["K"].size() != 9) {
+      throw std::runtime_error(path + ": camera '" + kv.first.as<std::string>() +
+                               "' needs a 9-element row-major K");
+    }
+    for (int i = 0; i < 9; ++i) si.K(i / 3, i % 3) = n["K"][i].as<double>();
+    if (!n["width"] || !n["height"]) {
+      throw std::runtime_error(path + ": camera '" + kv.first.as<std::string>() +
+                               "' needs width and height -- K without the resolution it was "
+                               "measured at cannot be checked against an image");
+    }
+    si.width = n["width"].as<int>();
+    si.height = n["height"].as<int>();
+    out[kv.first.as<std::string>()] = si;
+  }
+  return out;
+}
+
+void SaveIntrinsics(const std::string& path,
+                    const std::map<std::string, StillsIntrinsics>& in) {
+  std::ofstream f(path);
+  if (!f) throw std::runtime_error("cannot write " + path);
+  f << "# Written by gt_from_trays --factory. These are the device's own colour\n"
+       "# intrinsics at the resolution of the stills beside this file, captured so\n"
+       "# the ground-truth solve can be repeated later with no camera attached.\n"
+       "cameras:\n";
+  f << std::setprecision(17);
+  for (const auto& [id, si] : in) {
+    f << "  " << id << ":\n    width: " << si.width << "\n    height: " << si.height
+      << "\n    K: [";
+    for (int i = 0; i < 9; ++i) f << (i ? ", " : "") << si.K(i / 3, i % 3);
+    f << "]\n";
+  }
+}
+
+// <dir>/<camera_id>/*.png|jpg, the layout `calibrate capture` already writes.
+std::map<std::string, std::vector<std::filesystem::path>> FindStills(
+    const std::filesystem::path& dir) {
+  std::map<std::string, std::vector<std::filesystem::path>> out;
+  if (!std::filesystem::is_directory(dir)) {
+    throw std::runtime_error("stills: '" + dir.string() + "' is not a directory");
+  }
+  for (const auto& cam_entry : std::filesystem::directory_iterator(dir)) {
+    if (!cam_entry.is_directory()) continue;
+    std::vector<std::filesystem::path> imgs;
+    for (const auto& f : std::filesystem::directory_iterator(cam_entry.path())) {
+      const std::string ext = f.path().extension().string();
+      if (ext != ".png" && ext != ".jpg" && ext != ".jpeg") continue;
+      // A recorded session's directory has the same shape as a stills
+      // directory, and its depth maps would be scanned as if they were colour
+      // frames -- finding nothing, but inflating the frame count and hiding
+      // that the wrong directory was passed.
+      if (f.path().stem().string().size() >= 6 &&
+          f.path().stem().string().rfind(".depth") ==
+              f.path().stem().string().size() - 6) {
+        continue;
+      }
+      imgs.push_back(f.path());
+    }
+    // Deterministic order: the same stills must give the same answer twice.
+    std::sort(imgs.begin(), imgs.end());
+    if (!imgs.empty()) out[cam_entry.path().filename().string()] = std::move(imgs);
+  }
+  return out;
+}
 
 void PrintSpread(const std::string& label, const PoseAverage& a) {
   std::cout << "    " << std::left << std::setw(22) << label << std::right << " n=" << std::setw(4)
@@ -134,6 +256,9 @@ int main(int argc, char** argv) {
       else if (a == "--min-size") o.min_size_px = std::stod(next());
       else if (a == "--min-ambiguity") o.min_ambiguity = std::stod(next());
       else if (a == "--dry-run") o.dry_run = true;
+      else if (a == "--stills") o.stills = true;
+      else if (a == "--factory") o.factory = true;
+      else if (a == "--intrinsics") o.intrinsics = next();
       else if (a == "--pairs") {
         const std::string v = next();
         const auto colon = v.find(':');
@@ -157,21 +282,15 @@ int main(int argc, char** argv) {
     const fusion::ExtrinsicsSet ex = fusion::LoadExtrinsics(o.config + "/extrinsics.yaml");
 
     constexpr uint64_t kDefaultWindow = 30;
-    ReplayFrameSource src(o.session);
-    const size_t total = src.total_pairs();
 
     std::cout << "gt_from_trays\n"
-              << "  session   : " << o.session << "  (" << total << " pairs)\n"
+              << "  input     : " << o.session << (o.stills ? "  (stills)" : "  (session)")
+              << "\n"
               << "  dictionary: " << trays.dictionary << "  marker "
               << trays.marker_length_m * 1000.0 << " mm\n"
-              << "  window    : "
-              << (o.window_given ? "pair_index [" + std::to_string(o.pair_lo) + ", " +
-                                       std::to_string(o.pair_hi) + ")"
-                                 : "first " + std::to_string(kDefaultWindow) + " pairs")
-              << "\n"
               << "  gates     : reproj <= " << o.max_reproj_px << " px, side >= " << o.min_size_px
               << " px, ambiguity >= " << o.min_ambiguity << ", >= " << o.min_obs
-              << " observations per class\n\n";
+              << " observations per class\n";
 
     calibration::MarkerDetector det(trays.dictionary, trays.marker_length_m);
 
@@ -183,45 +302,143 @@ int main(int argc, char** argv) {
     std::vector<uint64_t> all_pairs;
     size_t frames_scanned = 0;
 
-    while (true) {
-      auto pair = src.NextPair(0);
-      if (!pair) break;
-      all_pairs.push_back(pair->pair_index);
-      const bool in_window = o.window_given
-                                 ? (pair->pair_index >= o.pair_lo && pair->pair_index < o.pair_hi)
-                                 : (all_pairs.size() <= kDefaultWindow);
-      if (!in_window) continue;
-
-      for (const auto& [camera_id, frame] : pair->frames) {
-        if (frame.rgb.empty()) continue;
-        auto cam = ex.cameras.find(camera_id);
-        if (cam == ex.cameras.end()) {
-          throw std::runtime_error("camera '" + camera_id +
-                                   "' is in the session but not in extrinsics.yaml");
+    // One scan path, whichever source the frames came from.
+    auto scan = [&](const std::string& camera_id, const cv::Mat& bgr, const Eigen::Matrix3d& K) {
+      auto cam = ex.cameras.find(camera_id);
+      if (cam == ex.cameras.end()) {
+        throw std::runtime_error("camera '" + camera_id +
+                                 "' is in the input but not in extrinsics.yaml");
+      }
+      ++frames_scanned;
+      for (const calibration::MarkerObservation& m : det.Detect(bgr, K)) {
+        const auto known = trays.cls_of_marker.find(m.id);
+        if (known == trays.cls_of_marker.end()) {
+          ++unknown_id[std::to_string(m.id)];
+          continue;
         }
-        cv::Mat bgr;
-        cv::cvtColor(frame.rgb, bgr, cv::COLOR_RGB2BGR);
-        ++frames_scanned;
+        auto& sm = smallest_seen[camera_id];
+        sm = (sm == 0.0) ? m.apparent_size_px : std::min(sm, m.apparent_size_px);
+        if (m.apparent_size_px < o.min_size_px) { ++rejected_size[known->second]; continue; }
+        if (m.reprojection_px > o.max_reproj_px) { ++rejected_reproj[known->second]; continue; }
+        // A marker whose two planar solutions fit equally well was a coin flip,
+        // and the loser is wrong by several degrees while reprojecting
+        // perfectly. Reprojection cannot catch this; only the ratio can.
+        if (m.ambiguity < o.min_ambiguity) { ++rejected_ambig[known->second]; continue; }
 
-        for (const calibration::MarkerObservation& m : det.Detect(bgr, frame.K)) {
-          const auto known = trays.cls_of_marker.find(m.id);
-          if (known == trays.cls_of_marker.end()) {
-            ++unknown_id[std::to_string(m.id)];
-            continue;
+        const Tray& tray = trays.trays.at(known->second);
+        const Eigen::Isometry3d T_cam_object = m.T_cam_marker * MarkerToObject(tray, m.id);
+        samples.push_back({known->second, camera_id, m.id, m.apparent_size_px,
+                           cam->second.T_world_cam * T_cam_object});
+      }
+    };
+
+    if (o.stills) {
+      const auto by_cam = FindStills(o.session);
+      if (by_cam.empty()) {
+        throw std::runtime_error("stills: no <camera_id>/ subdirectory with images under '" +
+                                 o.session + "'");
+      }
+      // Resolution of the stills, needed before intrinsics can be checked or read.
+      std::map<std::string, cv::Size> sizes;
+      for (const auto& [cam, files] : by_cam) {
+        const cv::Mat probe = cv::imread(files.front().string(), cv::IMREAD_COLOR);
+        if (probe.empty()) throw std::runtime_error("cannot read " + files.front().string());
+        sizes[cam] = probe.size();
+      }
+
+      std::map<std::string, StillsIntrinsics> K;
+      const std::string sidecar = (std::filesystem::path(o.session) / "intrinsics.yaml").string();
+      std::string k_source;
+      if (!o.intrinsics.empty()) {
+        K = LoadIntrinsics(o.intrinsics);
+        k_source = o.intrinsics;
+      } else if (std::filesystem::exists(sidecar)) {
+        K = LoadIntrinsics(sidecar);
+        k_source = sidecar;
+      } else if (o.factory) {
+        const camera::CameraAgentConfig cams =
+            camera::LoadCameraAgentConfig(o.config + "/cameras.yaml");
+        for (const auto& [cam, sz] : sizes) {
+          std::vector<double> distortion;
+          StillsIntrinsics si;
+          si.width = sz.width;
+          si.height = sz.height;
+          si.K = camera::FactoryColorIntrinsics(cams.at(cam).serial, sz.width, sz.height,
+                                                &distortion);
+          K[cam] = si;
+        }
+        SaveIntrinsics(sidecar, K);
+        k_source = "attached devices (written to " + sidecar + ")";
+      } else {
+        throw std::runtime_error(
+            "stills need intrinsics at their own resolution. Pass --factory to read them "
+            "from the attached devices (they will be saved beside the stills), or "
+            "--intrinsics FILE. They are NOT taken from the session or scaled from another "
+            "resolution, because a wrong K biases every pose while everything still looks "
+            "healthy.");
+      }
+
+      std::cout << "  intrinsics: " << k_source << "\n";
+      for (const auto& [cam, files] : by_cam) {
+        const auto it = K.find(cam);
+        if (it == K.end()) {
+          throw std::runtime_error("no intrinsics for camera '" + cam + "'");
+        }
+        if (it->second.width != sizes[cam].width || it->second.height != sizes[cam].height) {
+          throw std::runtime_error(
+              "camera '" + cam + "': stills are " + std::to_string(sizes[cam].width) + "x" +
+              std::to_string(sizes[cam].height) + " but the intrinsics are for " +
+              std::to_string(it->second.width) + "x" + std::to_string(it->second.height) +
+              ". Intrinsics are per-resolution; this is refused rather than rescaled.");
+        }
+        std::cout << "  " << cam << ": " << files.size() << " stills at " << sizes[cam].width
+                  << "x" << sizes[cam].height << "\n";
+      }
+      std::cout << "\n";
+
+      for (const auto& [cam, files] : by_cam) {
+        for (const auto& f : files) {
+          const cv::Mat img = cv::imread(f.string(), cv::IMREAD_COLOR);
+          if (img.empty()) throw std::runtime_error("cannot read " + f.string());
+          if (img.size() != sizes[cam]) {
+            throw std::runtime_error(f.string() + " is a different size from the other stills");
           }
-          auto& sm = smallest_seen[camera_id];
-          sm = (sm == 0.0) ? m.apparent_size_px : std::min(sm, m.apparent_size_px);
-          if (m.apparent_size_px < o.min_size_px) { ++rejected_size[known->second]; continue; }
-          if (m.reprojection_px > o.max_reproj_px) { ++rejected_reproj[known->second]; continue; }
-          // A marker whose two planar solutions fit equally well was a coin
-          // flip, and the loser is wrong by several degrees while reprojecting
-          // perfectly. Reprojection cannot catch this; only the ratio can.
-          if (m.ambiguity < o.min_ambiguity) { ++rejected_ambig[known->second]; continue; }
+          scan(cam, img, K.at(cam).K);
+        }
+      }
 
-          const Tray& tray = trays.trays.at(known->second);
-          const Eigen::Isometry3d T_cam_object = m.T_cam_marker * MarkerToObject(tray, m.id);
-          samples.push_back({known->second, camera_id, m.id, m.apparent_size_px,
-                             cam->second.T_world_cam * T_cam_object});
+      // No session to enumerate: the pairs to write come from the run itself.
+      int64_t run = o.run_id;
+      if (run < 0) run = LatestRunId(o.db);
+      if (run < 0) throw std::runtime_error("no runs in " + o.db);
+      all_pairs = PairIndices(o.db, run);
+      if (all_pairs.empty()) {
+        throw std::runtime_error("run " + std::to_string(run) + " in " + o.db +
+                                 " logged no frames, so there is nothing to attach ground "
+                                 "truth to");
+      }
+      o.run_id = run;
+    } else {
+      ReplayFrameSource src(o.session);
+      std::cout << "  pairs     : " << src.total_pairs() << "\n"
+                << "  window    : "
+                << (o.window_given ? "pair_index [" + std::to_string(o.pair_lo) + ", " +
+                                         std::to_string(o.pair_hi) + ")"
+                                   : "first " + std::to_string(kDefaultWindow) + " pairs")
+                << "\n\n";
+      while (true) {
+        auto pair = src.NextPair(0);
+        if (!pair) break;
+        all_pairs.push_back(pair->pair_index);
+        const bool in_window =
+            o.window_given ? (pair->pair_index >= o.pair_lo && pair->pair_index < o.pair_hi)
+                           : (all_pairs.size() <= kDefaultWindow);
+        if (!in_window) continue;
+        for (const auto& [camera_id, frame] : pair->frames) {
+          if (frame.rgb.empty()) continue;
+          cv::Mat bgr;
+          cv::cvtColor(frame.rgb, bgr, cv::COLOR_RGB2BGR);
+          scan(camera_id, bgr, frame.K);
         }
       }
     }

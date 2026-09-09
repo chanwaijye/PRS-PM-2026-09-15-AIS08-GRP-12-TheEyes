@@ -85,6 +85,14 @@ std::vector<fusion::AblationFrame> LoadAblationFrames(const std::string& db_path
 // Newest run_id in the database, or -1 if it holds none.
 int64_t LatestRunId(const std::string& db_path);
 
+// Every pair_index the run actually logged, ascending.
+//
+// Ground truth for a static scene is frozen once and written to every pair, so
+// the writer needs the run's pair list. When ground truth is solved from
+// separate high-resolution stills rather than from the run's own frames there
+// is no session to enumerate, and this is the only place the answer exists.
+std::vector<uint64_t> PairIndices(const std::string& db_path, int64_t run_id);
+
 }  // namespace the_eyes::runtime
 
 #endif  // THE_EYES_RUNTIME_METRICS_LOG_HPP

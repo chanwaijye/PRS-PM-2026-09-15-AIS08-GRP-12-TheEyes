@@ -439,6 +439,21 @@ std::vector<fusion::AblationFrame> LoadAblationFrames(const std::string& db_path
   return frames;
 }
 
+std::vector<uint64_t> PairIndices(const std::string& db_path, int64_t run_id) {
+  sqlite3* db = Open(db_path, false);
+  std::vector<uint64_t> out;
+  try {
+    Stmt q(db, "SELECT pair_index FROM frames WHERE run_id=? ORDER BY pair_index");
+    q.Reset().Bind(run_id);
+    while (q.Row()) out.push_back(static_cast<uint64_t>(q.Int(0)));
+  } catch (...) {
+    sqlite3_close(db);
+    throw;
+  }
+  sqlite3_close(db);
+  return out;
+}
+
 int64_t LatestRunId(const std::string& db_path) {
   sqlite3* db = Open(db_path, false);
   int64_t id = -1;

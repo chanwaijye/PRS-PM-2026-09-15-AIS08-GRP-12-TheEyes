@@ -57,7 +57,7 @@ target_compile_options(ablation_from_log PRIVATE -Wall -Wextra -Wpedantic)
 # exactly as calibration's own `calibrate` links fusion, so the libraries keep
 # their one-way layering.
 add_executable(gt_from_trays tools/gt_from_trays.cpp)
-target_link_libraries(gt_from_trays PRIVATE the_eyes_runtime the_eyes_calibration)
+target_link_libraries(gt_from_trays PRIVATE the_eyes_runtime the_eyes_calibration yaml-cpp)
 target_compile_options(gt_from_trays PRIVATE -Wall -Wextra -Wpedantic)
 
 if(THE_EYES_BUILD_TESTS)

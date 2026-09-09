@@ -199,6 +199,37 @@ TEST(MarkerTrays, GroundTruthRoundTripsThroughTheLogAndReplacesOnRewrite) {
   EXPECT_NEAR(frames[0].ground_truth[0].pose_w.translation().x(), 0.1, 1e-9);
 }
 
+TEST(MarkerTrays, PairIndicesReturnsWhatTheRunActuallyLogged) {
+  // Ground truth solved from separate stills has no session to enumerate, so
+  // the run's own pair list is the only source of the indices to write to. It
+  // must be the LOGGED indices, not 0..n: a run's indices start after the
+  // discarded warm-up frames.
+  const std::string db = TempDir() + "/pairs.sqlite";
+  int64_t run = -1;
+  {
+    MetricsLog log(db);
+    RunInfo info;
+    info.source = "live";
+    info.detector_backend = "mock:none";
+    info.pose_backend = "mock:identity";
+    info.config_dir = "cfg";
+    run = log.BeginRun(info);
+    for (uint64_t p : {30u, 31u, 33u}) {  // 32 dropped, as a real run would
+      PipelineResult r;
+      r.pair_index = p;
+      r.stamp_ns = p;
+      log.WriteFrame(run, r);
+    }
+    log.EndRun(run, "ok", 3);
+  }
+  const std::vector<uint64_t> pairs = PairIndices(db, run);
+  ASSERT_EQ(pairs.size(), 3u);
+  EXPECT_EQ(pairs[0], 30u);
+  EXPECT_EQ(pairs[1], 31u);
+  EXPECT_EQ(pairs[2], 33u);
+  EXPECT_TRUE(PairIndices(db, run + 99).empty());
+}
+
 TEST(MarkerTrays, GroundTruthWithoutASourceIsRefused) {
   const std::string db = TempDir() + "/gt2.sqlite";
   MetricsLog log(db);

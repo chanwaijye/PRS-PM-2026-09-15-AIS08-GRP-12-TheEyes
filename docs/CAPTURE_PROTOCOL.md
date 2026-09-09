@@ -95,10 +95,33 @@ Capture day is wasted if any of these is untrue.
 
    `gt_from_trays` therefore defaults `--min-size` to 40 px and refuses the
    small-marker regime rather than quietly emitting confident nonsense.
-   Practically: shoot the ground-truth window as 1920 × 1080 stills the way
-   `calibrate capture --factory` already does, not from a recorded pipeline
-   session. **Wiring a stills input into `gt_from_trays` is the one piece of it
-   still to build.**
+
+   **On the day** (`--stills` shipped 2026-09-09): shoot the ground-truth window
+   as 1920 × 1080 stills into `<dir>/<camera_id>/`, the layout
+   `calibrate capture` already writes, then
+
+   ```bash
+   build/runtime/gt_from_trays <stills_dir> runs/runtime/<session>/metrics.sqlite \
+       --stills --factory
+   ```
+
+   `--factory` reads each device's own colour intrinsics at the stills'
+   resolution and **writes them to `<stills_dir>/intrinsics.yaml`**, so the solve
+   can be repeated later with no camera attached; a sidecar already present is
+   picked up automatically. Intrinsics are per-resolution and the tool **refuses
+   a mismatch rather than rescaling** — passing the pipeline's 848 × 480 K
+   against 1080p stills is exactly the 18 mm trap above, and it now fails loudly.
+
+   Registering ground truth from high-resolution stills while the pipeline
+   streams 848 × 480 is sound because the camera *pose* does not depend on
+   sampling — the projection centre is physically fixed (measured half-FOV
+   34.93° at 848 × 480 against 35.10° at 1920 × 1080, `device_registry.hpp`).
+   Only the intrinsics are resolution-dependent, which is why the stills carry
+   their own.
+
+   Validated on a synthetic 1080p stills set with a chosen object pose:
+   recovered to **2.1 mm**, depth maps beside the colour frames ignored rather
+   than scanned as if they were images.
 3. **The platform must be registered** — §4. Currently fiction.
 4. **Trays printed and calliper-verified.** Filament ETA ~2026-09-12
    (`docs/STATUS.md`); worst-case socket clearance target 0.23 mm.
