@@ -3,6 +3,7 @@
 #include "the_eyes/runtime/console_panels.hpp"
 
 #include "the_eyes/runtime/console.hpp"
+#include "the_eyes/runtime/console_recorder.hpp"
 
 #include <algorithm>
 #include <string>
@@ -11,7 +12,9 @@
 #include <gtest/gtest.h>
 #include <opencv2/imgproc.hpp>
 
+#include <filesystem>
 #include <tuple>
+#include <unistd.h>
 
 using namespace the_eyes;
 using namespace the_eyes::runtime;
@@ -31,6 +34,13 @@ ObjectState Obj(const std::string& id, const std::string& cls, double x, double 
   o.position_sigma_m = sigma;
   o.orientation_sigma_rad = sigma;
   return o;
+}
+
+std::string TempDir() {
+  char tmpl[] = "/tmp/the_eyes_console_XXXXXX";
+  const char* d = mkdtemp(tmpl);
+  if (d == nullptr) throw std::runtime_error("mkdtemp failed");
+  return std::string(d);
 }
 
 cv::Mat Panel(int w = 424, int h = 520) { return cv::Mat(h, w, CV_8UC3, cv::Scalar(0, 0, 0)); }
@@ -309,4 +319,41 @@ TEST(ConsolePanels, GhostsAreNeverDrawnWithoutTheUnfilteredLabel) {
   DrawArmOverlay(without, {ArmResult{"cam_front", {}}, b}, 0, v);
   EXPECT_GT(NonBackground(with_ghosts), NonBackground(without))
       << "a frame with ghosts must carry more ink -- the ghosts and their label";
+}
+
+TEST(ConsoleRecorderTest, LosslessModeWritesEveryFrameOffered) {
+  const std::string path = TempDir() + "/lossless.avi";
+  const cv::Size size(320, 240);
+  {
+    ConsoleRecorder rec(path, size, 30.0, /*drop_when_full=*/false, /*queue_capacity=*/2);
+    for (int i = 0; i < 25; ++i) {
+      cv::Mat f(size, CV_8UC3, cv::Scalar(i * 7 % 256, 40, 90));
+      EXPECT_TRUE(rec.Offer(f)) << "lossless mode must block, never drop";
+    }
+    rec.Finish();
+    EXPECT_EQ(rec.written(), 25u);
+    EXPECT_EQ(rec.dropped(), 0u) << "a replay re-shoot cannot afford to lose frames";
+  }
+  EXPECT_TRUE(std::filesystem::exists(path));
+  EXPECT_GT(std::filesystem::file_size(path), 0u);
+}
+
+TEST(ConsoleRecorderTest, NothingOfferedIsLost) {
+  // Drop mode may drop, but every frame must be accounted for: a video with
+  // silent gaps would be read as a slow system rather than a busy encoder.
+  const std::string path = TempDir() + "/drop.avi";
+  const cv::Size size(160, 120);
+  ConsoleRecorder rec(path, size, 30.0, /*drop_when_full=*/true, /*queue_capacity=*/1);
+  const int offered = 40;
+  for (int i = 0; i < offered; ++i) {
+    cv::Mat f(size, CV_8UC3, cv::Scalar(i % 256, 10, 10));
+    rec.Offer(f);
+  }
+  rec.Finish();
+  EXPECT_EQ(rec.written() + rec.dropped(), static_cast<uint64_t>(offered));
+}
+
+TEST(ConsoleRecorderTest, RefusesAPathItCannotOpen) {
+  EXPECT_THROW(ConsoleRecorder("/nonexistent-dir-xyz/out.avi", cv::Size(64, 64), 30.0, false),
+               std::runtime_error);
 }

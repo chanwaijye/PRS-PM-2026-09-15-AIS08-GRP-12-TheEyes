@@ -22,11 +22,13 @@ constexpr int kGraphW = 424;
 }  // namespace
 
 Console::Console(std::vector<std::string> view_names, fusion::ExtrinsicsSet extrinsics,
-                 ArmConfig arms, std::string window_name)
+                 ArmConfig arms, std::string window_name, bool window)
     : view_names_(std::move(view_names)),
       extrinsics_(std::move(extrinsics)),
       arms_(std::move(arms)),
-      window_(std::move(window_name)) {
+      window_(std::move(window_name)),
+      window_open_(window) {
+  if (!window_open_) return;
   if (std::getenv("DISPLAY") == nullptr && std::getenv("WAYLAND_DISPLAY") == nullptr) {
     throw std::runtime_error("--show=console: no DISPLAY and no WAYLAND_DISPLAY, so no window "
                              "can open");
@@ -40,10 +42,18 @@ Console::Console(std::vector<std::string> view_names, fusion::ExtrinsicsSet extr
 }
 
 Console::~Console() {
+  // Flush the video before the window goes, so a truncated file cannot be the
+  // last thing a run leaves behind.
+  recorder_.reset();
   try {
-    cv::destroyWindow(window_);
+    if (window_open_) cv::destroyWindow(window_);
   } catch (...) {
   }
+}
+
+void Console::StartRecording(const std::string& path, cv::Size frame_size, double fps,
+                             bool lossless) {
+  recorder_ = std::make_unique<ConsoleRecorder>(path, frame_size, fps, !lossless);
 }
 
 cv::Mat Console::Compose(const std::vector<std::string>& view_names,
@@ -114,6 +124,8 @@ cv::Mat Console::Compose(const std::vector<std::string>& view_names,
 
 bool Console::Show(const FramePair& pair, const PipelineResult& result, double fps) {
   const cv::Mat canvas = Compose(view_names_, extrinsics_, pair, result, fps, arms_);
+  if (recorder_) recorder_->Offer(canvas);
+  if (!window_open_) return true;
   cv::imshow(window_, canvas);
   const int key = cv::waitKey(1) & 0xff;
   return !(key == 'q' || key == 27);

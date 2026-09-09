@@ -1,8 +1,8 @@
 // The Eyes -- live end-to-end runner.
 //
 //   the_eyes_run check  [--live]                      startup checks only
-//   the_eyes_run live   [--record [NAME] | --record-only [NAME]] [--frames N] [--show|--show=console]
-//   the_eyes_run replay <session_dir> [--realtime] [--start N] [--max-pairs N] [--show|--show=console]
+//   the_eyes_run live   [--record [NAME] | --record-only [NAME]] [--frames N] [--show|--show=console] [--show-record F]
+//   the_eyes_run replay <session_dir> [--realtime] [--start N] [--max-pairs N] [--show|--show=console] [--show-record F]
 //
 // Common: --config-dir DIR (default: config)  --repo-root DIR (default: parent
 // of config dir)  --detector onnx|mock:<fixture>|fixed:<cam>=<cls>,<x>,<y>,<w>,<h>[;...]
@@ -64,6 +64,7 @@ struct Options {
   uint64_t frames = 0;           // live: stop after N processed pairs; 0 = until Ctrl-C
   bool show = false;
   bool console = false;
+  std::string record_video;
   bool realtime = false;
   uint64_t start_pair = 0;
   uint64_t max_pairs = 0;
@@ -77,8 +78,8 @@ struct Options {
 void Usage(std::ostream& os) {
   os << "usage:\n"
         "  the_eyes_run check  [--live]\n"
-        "  the_eyes_run live   [--record [NAME] | --record-only [NAME]] [--frames N] [--show|--show=console]\n"
-        "  the_eyes_run replay <session_dir> [--realtime] [--start N] [--max-pairs N] [--show|--show=console]\n"
+        "  the_eyes_run live   [--record [NAME] | --record-only [NAME]] [--frames N] [--show|--show=console] [--show-record F]\n"
+        "  the_eyes_run replay <session_dir> [--realtime] [--start N] [--max-pairs N] [--show|--show=console] [--show-record F]\n"
         "                      [--record [NAME]]\n"
         "common: --config-dir DIR  --repo-root DIR\n"
         "        --detector onnx | mock:<fixture> | fixed:<cam>=<cls>,<x>,<y>,<w>,<h>[;<cam>=...]\n"
@@ -111,6 +112,14 @@ Options Parse(int argc, char** argv) {
     // is the richer window (docs/VIZ_PLAN.md); it is a separate value rather
     // than a replacement so an existing command line renders what it always did.
     else if (a == "--show=console") { o.show = true; o.console = true; }
+    // Writes the composed canvas to a video. Implies the console, and does not
+    // require a display: a replay can re-shoot the demo segment headlessly.
+    else if (a.rfind("--show-record", 0) == 0) {
+      o.console = true;
+      o.show = true;
+      const auto eq = a.find('=');
+      o.record_video = (eq == std::string::npos) ? value(i, a) : a.substr(eq + 1);
+    }
     else if (a == "--realtime") o.realtime = true;
     else if (a == "--start") o.start_pair = std::stoull(value(i, a));
     else if (a == "--max-pairs") o.max_pairs = std::stoull(value(i, a));
@@ -383,7 +392,12 @@ int Run(const Options& o) {
       arms.enabled = true;
       arms.fusion = c.fusion;
       arms.extents = ExtentsFrom(c.meshes);
-      console = std::make_unique<Console>(c.fusion.view_names, c.extrinsics, std::move(arms));
+      // A recording run needs no window, so the demo segment can be re-shot
+      // from a replay over ssh; with a display present the window still opens.
+      const bool want_window =
+          std::getenv("DISPLAY") != nullptr || std::getenv("WAYLAND_DISPLAY") != nullptr;
+      console = std::make_unique<Console>(c.fusion.view_names, c.extrinsics, std::move(arms),
+                                          "The Eyes - console", want_window);
     } else {
       viewer = std::make_unique<Viewer>(c.fusion.view_names, c.extrinsics);
     }
@@ -478,6 +492,18 @@ int Run(const Options& o) {
       if (viewer && !viewer->Show(*pair, result, fps)) {
         exit_status = "quit";
         break;
+      }
+      if (console && !o.record_video.empty() && console->recorder() == nullptr) {
+        // Started on the first pair, when the canvas size is finally known --
+        // it follows the number of views and their frame size.
+        const cv::Mat probe =
+            Console::Compose(c.fusion.view_names, c.extrinsics, *pair, result, fps);
+        // Lossless on replay so the same session re-shoots identically
+        // (docs/VIZ_PLAN.md acceptance criterion 5); dropping on live so the
+        // encoder can never back-pressure into the capture loop.
+        console->StartRecording(o.record_video, probe.size(), 30.0, o.command == "replay");
+        std::cout << "recording console to " << o.record_video << " ("
+                  << (o.command == "replay" ? "lossless" : "drop-when-full") << ")\n";
       }
       if (console && !console->Show(*pair, result, fps)) {
         exit_status = "quit";

@@ -3,7 +3,7 @@
 # Links every other module. Everything except the librealsense capture path
 # builds and tests with no hardware, no GPU and no ONNX Runtime, so the replay
 # and mock paths are always available (AGENTS.md orchestration rule 4).
-find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui videoio)
 find_package(SQLite3 REQUIRED)
 find_package(Threads REQUIRED)
 
@@ -23,7 +23,8 @@ set(RUNTIME_SOURCES
   src/pipeline.cpp
   src/viewer.cpp
   src/console_panels.cpp
-  src/console.cpp)
+  src/console.cpp
+  src/console_recorder.cpp)
 
 if(THE_EYES_HAVE_REALSENSE)
   list(APPEND RUNTIME_SOURCES src/live_frame_source.cpp)

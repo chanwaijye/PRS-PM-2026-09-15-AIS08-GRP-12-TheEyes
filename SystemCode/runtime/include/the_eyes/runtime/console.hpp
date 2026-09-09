@@ -21,6 +21,7 @@
 #ifndef THE_EYES_RUNTIME_CONSOLE_HPP
 #define THE_EYES_RUNTIME_CONSOLE_HPP
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,7 @@
 
 #include "the_eyes/fusion/extrinsics.hpp"
 #include "the_eyes/fusion/fusion.hpp"
+#include "the_eyes/runtime/console_recorder.hpp"
 #include "the_eyes/runtime/frame_pair.hpp"
 #include "the_eyes/runtime/pipeline_result.hpp"
 
@@ -44,8 +46,11 @@ struct ArmConfig {
 class Console {
  public:
   // Throws std::runtime_error if no display is available.
+  // `window` false composes and records with no display at all, which is what
+  // lets a video be re-shot from a replay over ssh.
   Console(std::vector<std::string> view_names, fusion::ExtrinsicsSet extrinsics,
-          ArmConfig arms = {}, std::string window_name = "The Eyes - console");
+          ArmConfig arms = {}, std::string window_name = "The Eyes - console",
+          bool window = true);
   ~Console();
 
   Console(const Console&) = delete;
@@ -53,6 +58,12 @@ class Console {
 
   // Returns false when the user asked to quit (q or ESC).
   bool Show(const FramePair& pair, const PipelineResult& result, double fps);
+
+  // Also write every composed canvas to `path`. `lossless` blocks rather than
+  // dropping when the encoder falls behind -- correct for a replay, wrong for
+  // a live run (see console_recorder.hpp). Throws if the file cannot be opened.
+  void StartRecording(const std::string& path, cv::Size frame_size, double fps, bool lossless);
+  const ConsoleRecorder* recorder() const { return recorder_.get(); }
 
   // The canvas, with no window anywhere in the call. Public because it is what
   // makes the layout testable headlessly, and because `--show-record` writes
@@ -66,6 +77,8 @@ class Console {
   fusion::ExtrinsicsSet extrinsics_;
   ArmConfig arms_;
   std::string window_;
+  bool window_open_ = false;
+  std::unique_ptr<ConsoleRecorder> recorder_;
 };
 
 }  // namespace the_eyes::runtime

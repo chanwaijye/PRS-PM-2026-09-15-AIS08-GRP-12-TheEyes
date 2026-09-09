@@ -285,8 +285,23 @@ Binary, per `AGENTS.md` rule 3.
    matches `result.pddl.init_block` exactly, asserted in the test.
 4. **The A/B panel labels its arms**, and the label naming the ghosts unfiltered
    is present in every frame in which a ghost is drawn.
-5. **`--show-record` over a recorded session produces the same video twice**,
-   frame count and per-frame checksum equal.
+5. **`--show-record` over a recorded session produces the same video twice** —
+   frame count equal, and every frame identical **above the status strip**.
+
+   *Corrected 2026-09-09, after building it.* The original wording asked for
+   whole-frame checksum equality, which this canvas can never satisfy: the
+   status strip shows measured per-stage timings and fps, and those legitimately
+   differ between two runs of the same session. Measured on a 20-pair replay,
+   rows 0–991 are identical 20/20 while rows 992–1023 differ — the strip itself
+   plus the JPEG macroblock row above it, since MJPG's block grid does not align
+   with the strip boundary. The criterion is what it should have said: the
+   imagery, geometry, graph and facts are reproducible; the timings are not, and
+   pretending otherwise would have meant weakening the test quietly instead of
+   fixing the claim.
+
+   Frames are MJPG in an AVI container for this reason too — every frame encodes
+   independently, so the output is a deterministic function of the input. An
+   inter-frame codec would make the property untestable.
 6. `--show` alone renders exactly what it renders today.
 
 ---
