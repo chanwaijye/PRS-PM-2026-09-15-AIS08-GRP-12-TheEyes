@@ -249,3 +249,64 @@ TEST(ConsolePanels, ComposeSurvivesAMissingView) {
   EXPECT_EQ(c.cols, 2 * 848);
   EXPECT_GT(NonBackground(c), 0);
 }
+
+namespace {
+PoseEstimate Est(const std::string& cam, const std::string& cls, double x, double y, double z) {
+  PoseEstimate e;
+  e.camera_id = cam;
+  e.cls = cls;
+  e.score = 0.8;
+  e.pose_cam = Eigen::Isometry3d::Identity();
+  e.pose_cam.translation() = Eigen::Vector3d(x, y, z);
+  e.extent = Eigen::Vector3d(0.025, 0.025, 0.025);
+  return e;
+}
+}  // namespace
+
+TEST(ConsolePanels, ArmsAreComputedPerViewAndAnEmptyViewStillCounts) {
+  PipelineResult r;
+  r.estimates["cam_front"] = {Est("cam_front", "red_cube", 0.0, 0.0, 0.7)};
+  r.estimates["cam_over"] = {};   // occluded
+
+  fusion::ExtrinsicsSet ex;
+  for (const std::string& id : {"cam_front", "cam_over"}) {
+    CameraExtrinsics c;
+    c.camera_id = id;
+    c.T_world_cam = Eigen::Isometry3d::Identity();
+    ex.cameras[id] = c;
+  }
+  fusion::FusionConfig cfg;
+  const fusion::ExtentRegistry extents{{"red_cube", Eigen::Vector3d(0.025, 0.025, 0.025)}};
+
+  const auto arms = SingleViewArms(r, ex, cfg, extents, {"cam_front", "cam_over"});
+  ASSERT_EQ(arms.size(), 2u) << "a view with no estimates must still appear, as 0";
+  EXPECT_EQ(arms[0].view, "cam_front");
+  EXPECT_EQ(arms[0].objects.size(), 1u);
+  EXPECT_EQ(arms[1].view, "cam_over");
+  EXPECT_EQ(arms[1].objects.size(), 0u) << "the occluded view is the point of the counter";
+}
+
+TEST(ConsolePanels, GhostsAreNeverDrawnWithoutTheUnfilteredLabel) {
+  // Acceptance criterion 4. The label lives in the same call as the ghosts so
+  // it cannot be omitted; this pins that the overlay is visibly different when
+  // an arm has content, i.e. that something was actually annotated.
+  cv::Mat with_ghosts = Panel(848, 520), without = Panel(848, 520);
+  WorldView v;
+  v.px_per_m = 500.0;
+  v.plan_height_px = 360;
+
+  ArmResult a;
+  a.view = "cam_front";
+  fusion::FusedObservation o;
+  o.cls = "red_cube";
+  o.pose_w = Eigen::Isometry3d::Identity();
+  o.extent = Eigen::Vector3d(0.025, 0.025, 0.025);
+  a.objects = {o};
+  ArmResult b;
+  b.view = "cam_over";
+
+  DrawArmOverlay(with_ghosts, {a, b}, 1, v);
+  DrawArmOverlay(without, {ArmResult{"cam_front", {}}, b}, 0, v);
+  EXPECT_GT(NonBackground(with_ghosts), NonBackground(without))
+      << "a frame with ghosts must carry more ink -- the ghosts and their label";
+}

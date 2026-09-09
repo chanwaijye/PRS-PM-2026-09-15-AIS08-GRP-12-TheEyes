@@ -23,6 +23,7 @@ const cv::Scalar kSigma(60, 160, 220);
 const cv::Scalar kCamera(255, 200, 90);
 const cv::Scalar kAmber(60, 190, 255);
 const cv::Scalar kBg(28, 28, 28);
+const cv::Scalar kGhost(90, 110, 130);
 
 void Label(cv::Mat& m, const std::string& s, cv::Point at, const cv::Scalar& c,
            double scale = 0.4) {
@@ -250,6 +251,66 @@ void DrawWorldPanel(cv::Mat& panel, const SceneState& scene,
 
     const cv::Rect er(elev(t.x() - e.x(), t.z() + e.z()), elev(t.x() + e.x(), t.z() - e.z()));
     cv::rectangle(elev_roi, er, is_static ? kTable : colour, 1, cv::LINE_AA);
+  }
+}
+
+std::vector<ArmResult> SingleViewArms(const PipelineResult& result,
+                                      const fusion::ExtrinsicsSet& extrinsics,
+                                      const fusion::FusionConfig& cfg,
+                                      const fusion::ExtentRegistry& extents,
+                                      const std::vector<std::string>& view_names) {
+  std::vector<ArmResult> arms;
+  for (const std::string& view : view_names) {
+    ArmResult a;
+    a.view = view;
+    auto it = result.estimates.find(view);
+    if (it != result.estimates.end() && !it->second.empty()) {
+      fusion::FusionDiagnostics diag;
+      a.objects = fusion::FuseFrame(it->second, extrinsics, cfg, extents, &diag);
+    }
+    arms.push_back(std::move(a));
+  }
+  return arms;
+}
+
+void DrawArmOverlay(cv::Mat& world_panel, const std::vector<ArmResult>& arms,
+                    size_t fused_object_count, const WorldView& view) {
+  const int W = world_panel.cols;
+  const int plan_h = std::min(view.plan_height_px, world_panel.rows - 40);
+  cv::Mat plan_roi = world_panel(cv::Rect(0, 0, W, plan_h));
+  auto plan = [&](double x, double y) {
+    return cv::Point(static_cast<int>(W / 2.0 + (x - view.centre_x_m) * view.px_per_m),
+                     static_cast<int>(plan_h / 2.0 - (y - view.centre_y_m) * view.px_per_m));
+  };
+
+  bool drew_ghost = false;
+  for (const ArmResult& a : arms) {
+    for (const fusion::FusedObservation& o : a.objects) {
+      const Eigen::Vector3d t = o.pose_w.translation();
+      const Eigen::Vector3d e = o.extent;
+      DashedRect(plan_roi,
+                 cv::Rect(plan(t.x() - e.x(), t.y() + e.y()), plan(t.x() + e.x(), t.y() - e.y())),
+                 kGhost);
+      drew_ghost = true;
+    }
+  }
+
+  // The counter, and the sentence that keeps it a demonstration. On a filled
+  // band: it sits over the elevation strip, and unreadable text on a
+  // demonstration is the same as no text.
+  const int band_h = 38;
+  cv::Mat band = world_panel(cv::Rect(0, world_panel.rows - band_h, W, band_h));
+  band.setTo(cv::Scalar(16, 16, 16));
+  int y = world_panel.rows - band_h + 16;
+  std::ostringstream os;
+  for (const ArmResult& a : arms) os << a.view << " " << a.objects.size() << "   |   ";
+  os << "fused " << fused_object_count;
+  Label(world_panel, os.str(), {8, y}, kAmber, 0.44);
+  if (drew_ghost) {
+    Label(world_panel,
+          "dashed = single view, UNFILTERED (FuseFrame)   solid = fused + EKF   "
+          "-- demonstration, not the ablation",
+          {8, y + 16}, kGhost, 0.36);
   }
 }
 

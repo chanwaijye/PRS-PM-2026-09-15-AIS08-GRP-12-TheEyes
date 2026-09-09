@@ -27,16 +27,25 @@
 #include <opencv2/core.hpp>
 
 #include "the_eyes/fusion/extrinsics.hpp"
+#include "the_eyes/fusion/fusion.hpp"
 #include "the_eyes/runtime/frame_pair.hpp"
 #include "the_eyes/runtime/pipeline_result.hpp"
 
 namespace the_eyes::runtime {
 
+// What the A/B arms need. Optional: without it the console draws everything
+// else and simply shows no ghosts, which is what the headless tests use.
+struct ArmConfig {
+  bool enabled = false;
+  fusion::FusionConfig fusion;
+  fusion::ExtentRegistry extents;
+};
+
 class Console {
  public:
   // Throws std::runtime_error if no display is available.
   Console(std::vector<std::string> view_names, fusion::ExtrinsicsSet extrinsics,
-          std::string window_name = "The Eyes - console");
+          ArmConfig arms = {}, std::string window_name = "The Eyes - console");
   ~Console();
 
   Console(const Console&) = delete;
@@ -50,11 +59,12 @@ class Console {
   // exactly this.
   static cv::Mat Compose(const std::vector<std::string>& view_names,
                          const fusion::ExtrinsicsSet& extrinsics, const FramePair& pair,
-                         const PipelineResult& result, double fps);
+                         const PipelineResult& result, double fps, const ArmConfig& arms = {});
 
  private:
   std::vector<std::string> view_names_;
   fusion::ExtrinsicsSet extrinsics_;
+  ArmConfig arms_;
   std::string window_;
 };
 

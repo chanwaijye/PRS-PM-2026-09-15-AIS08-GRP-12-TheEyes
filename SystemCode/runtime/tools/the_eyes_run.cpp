@@ -375,7 +375,15 @@ int Run(const Options& o) {
   std::unique_ptr<Console> console;
   if (o.show && !o.record_only) {
     if (o.console) {
-      console = std::make_unique<Console>(c.fusion.view_names, c.extrinsics);
+      // The A/B arms re-fuse each view alone from estimates the pipeline has
+      // already produced -- see console_panels.hpp. Same config and extents the
+      // real fusion uses, so the only difference between an arm and the shipped
+      // scene is the view set and the filter.
+      ArmConfig arms;
+      arms.enabled = true;
+      arms.fusion = c.fusion;
+      arms.extents = ExtentsFrom(c.meshes);
+      console = std::make_unique<Console>(c.fusion.view_names, c.extrinsics, std::move(arms));
     } else {
       viewer = std::make_unique<Viewer>(c.fusion.view_names, c.extrinsics);
     }

@@ -19,6 +19,7 @@
 #include <opencv2/core.hpp>
 
 #include "the_eyes/fusion/extrinsics.hpp"
+#include "the_eyes/fusion/fusion.hpp"
 #include "the_eyes/runtime/frame_pair.hpp"
 #include "the_eyes/runtime/pipeline_result.hpp"
 #include "the_eyes/runtime/static_scene.hpp"
@@ -82,6 +83,44 @@ void DrawCameraPanel(cv::Mat& panel, const std::string& view, const camera::Came
 void DrawWorldPanel(cv::Mat& panel, const SceneState& scene,
                     const std::vector<std::string>& static_ids,
                     const fusion::ExtrinsicsSet& extrinsics, const WorldView& view);
+
+// ---------------------------------------------------------------------------
+// The A/B arms: what one view alone would have produced.
+//
+// `fusion::FuseFrame` is a free function over an arbitrary subset of estimates,
+// so re-fusing a single view costs one geometric fuse on estimates the pipeline
+// has ALREADY computed -- no detector call, no FoundationPose call, nothing on
+// the GPU. Occlude a camera by hand and the counter moves; that gesture is the
+// whole multi-view claim, live.
+//
+// WHAT THIS IS NOT. FuseFrame is stateless; the shipped scene comes from
+// Fusion::Process, which runs the EKF. The arms therefore differ by FILTER as
+// well as by view set, which is exactly the confound found on 2026-09-05 and
+// fixed on 09-06. So this is a demonstration, never a measurement, and
+// DrawArmOverlay says so on screen. The report's numbers come from
+// ablation_from_log at a fixed filter setting.
+struct ArmResult {
+  std::string view;
+  std::vector<fusion::FusedObservation> objects;
+};
+
+// One arm per view, each fused from that view's estimates alone. Views with no
+// estimates yield an empty arm rather than being omitted, so the counter can
+// say "0" instead of silently dropping a column.
+std::vector<ArmResult> SingleViewArms(const PipelineResult& result,
+                                      const fusion::ExtrinsicsSet& extrinsics,
+                                      const fusion::FusionConfig& cfg,
+                                      const fusion::ExtentRegistry& extents,
+                                      const std::vector<std::string>& view_names);
+
+// Ghost footprints for each arm, under the solid fused poses, PLUS the counter
+// and the labels.
+//
+// The labels are drawn here, in the same call as the ghosts, deliberately: the
+// acceptance criterion is that no frame shows a ghost without saying it is
+// unfiltered, and a separate label function could be forgotten.
+void DrawArmOverlay(cv::Mat& world_panel, const std::vector<ArmResult>& arms,
+                    size_t fused_object_count, const WorldView& view);
 
 // PANEL C -- the scene graph as nodes and edges.
 //

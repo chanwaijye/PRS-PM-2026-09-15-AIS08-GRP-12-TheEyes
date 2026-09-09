@@ -22,9 +22,10 @@ constexpr int kGraphW = 424;
 }  // namespace
 
 Console::Console(std::vector<std::string> view_names, fusion::ExtrinsicsSet extrinsics,
-                 std::string window_name)
+                 ArmConfig arms, std::string window_name)
     : view_names_(std::move(view_names)),
       extrinsics_(std::move(extrinsics)),
+      arms_(std::move(arms)),
       window_(std::move(window_name)) {
   if (std::getenv("DISPLAY") == nullptr && std::getenv("WAYLAND_DISPLAY") == nullptr) {
     throw std::runtime_error("--show=console: no DISPLAY and no WAYLAND_DISPLAY, so no window "
@@ -47,7 +48,7 @@ Console::~Console() {
 
 cv::Mat Console::Compose(const std::vector<std::string>& view_names,
                          const fusion::ExtrinsicsSet& extrinsics, const FramePair& pair,
-                         const PipelineResult& result, double fps) {
+                         const PipelineResult& result, double fps, const ArmConfig& arms) {
   const int n = static_cast<int>(view_names.size());
   const int width = std::max(1, n) * kCamW;
   cv::Mat canvas(kCamH + kLowerH + kStatusH, width, CV_8UC3, cv::Scalar(20, 20, 20));
@@ -85,6 +86,13 @@ cv::Mat Console::Compose(const std::vector<std::string>& view_names,
 
   const WorldView view = FitWorldView(result.scene, extrinsics, world_w, kLowerH - 150);
   DrawWorldPanel(world, result.scene, result.static_ids, extrinsics, view);
+  if (arms.enabled) {
+    // Two extra geometric fuses on estimates the pipeline already produced.
+    // Drawn AFTER the fused poses so the solid answer sits on top of the ghosts.
+    DrawArmOverlay(world,
+                   SingleViewArms(result, extrinsics, arms.fusion, arms.extents, view_names),
+                   result.scene.objects.size() - result.static_ids.size(), view);
+  }
   DrawGraphPanel(graph, result.scene, result.static_ids, result.pddl.facts);
   DrawPddlPanel(pddl, result.pddl.init_block, result.pddl.warnings);
 
@@ -105,7 +113,7 @@ cv::Mat Console::Compose(const std::vector<std::string>& view_names,
 }
 
 bool Console::Show(const FramePair& pair, const PipelineResult& result, double fps) {
-  const cv::Mat canvas = Compose(view_names_, extrinsics_, pair, result, fps);
+  const cv::Mat canvas = Compose(view_names_, extrinsics_, pair, result, fps, arms_);
   cv::imshow(window_, canvas);
   const int key = cv::waitKey(1) & 0xff;
   return !(key == 'q' || key == 27);
