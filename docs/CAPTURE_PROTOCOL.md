@@ -63,13 +63,55 @@ honest, and it should not be smoothed away.
 
 Capture day is wasted if any of these is untrue.
 
-1. **cam_over must actually see things.** In the last real run
-   (`runs/runtime/20260906_183408_rig_fp`, 120 pairs) the per-camera estimate
-   counts were **cam_front 232, cam_over 3**. An occlusion ablation over a view
-   that contributes ~1% of estimates unoccluded is not an ablation. Fix the
-   overhead view first — geometry, lighting, and the real-clutter detector scores
-   of 0.39–0.54 (`docs/STATUS.md`). **This is the top prerequisite and it is
-   independent of filament.**
+1. **Clear the desk.** ~~cam_over must actually see things.~~ **Corrected
+   2026-09-09** — the earlier reading of this prerequisite was wrong in its
+   diagnosis and backwards in its conclusion. See §3.1a.
+### 3.1a What the cam_over asymmetry actually is
+
+The 232-vs-3 estimate split looked like a broken overhead camera and was written
+up as the top blocker. Replaying the recorded session through the real detector
+under three masking conditions says otherwise. All counts are over 150 pairs,
+and every detection in every condition is a false positive except where noted.
+
+| Condition | cam_front | cam_over | total | front/over |
+|---|---|---|---|---|
+| unmasked | 395 | 81 | 476 | 4.9× |
+| everything outside the table blanked (backdrop proxy) | 330 | 36 | 366 | 9.2× |
+| only the 480 × 340 shared workspace visible | **214** | **9** | 223 | 23.8× |
+
+Three things follow, and two of them reverse the earlier conclusion.
+
+**A backdrop is worth much less than expected.** Blanking everything off the
+table removes only 23% of the false positives (476 → 366). The bed, the pillow
+and the wall were not the main driver.
+
+**cam_over is the camera that works; cam_front is the one that does not.** With
+a clean view, **7 of cam_over's 9 detections are on the cube** (IoU 0.28–0.38,
+scores 0.28–0.54). **cam_front's best IoU across all 214 of its detections is
+0.000** — it never produces a box on the object at all. The earlier "zero on the
+cube in both cameras" came from the unmasked run, where an IoU ≥ 0.3 gate
+rejected cam_over's loose boxes; three of them clear it once the clutter is gone.
+
+**The asymmetry is furniture, not optics.** Of cam_front's 214 survivors, 53 sit
+on the fan in the top-left and 154 on the mousepad and hand at the bottom —
+**97% on two removable objects**, and *none* in the centre cell where the cube
+is. It is not a detection cap crowding the true positive out either:
+`max_detections` is 64 and the observed maximum is 5 per frame.
+
+**So: clear the desk.** Take the fan, the mousepad, the keyboard and the mug out
+of the workspace before capture. It is free, it is worth more than a backdrop,
+and nothing about cam_over needs fixing. Do the backdrop as well — 23% is still
+23% — but not first.
+
+Two caveats that bound this. Recall is still dreadful even for cam_over: it
+detects the cube in 9 of 150 frames. And the object in this recording is the
+**off-palette dark-brown test print**, brown-on-brown against the table, which is
+why `--detector fixed` existed. Whether cam_front's total blindness survives a
+correct-palette cube is untested and gated on filament (~09-12) — **re-run this
+same three-condition comparison once the printed objects exist**, since it needs
+no rig and no capture.
+
+
 2. ~~The ArUco ground-truth tool must exist.~~ **BUILT 2026-09-09** —
    `build/runtime/gt_from_trays`, with `MarkerDetector` in the calibration
    module and the tray geometry in `runtime/marker_trays.hpp`. Validated against
