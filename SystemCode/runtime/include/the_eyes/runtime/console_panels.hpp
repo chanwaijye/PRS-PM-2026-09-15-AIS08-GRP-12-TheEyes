@@ -19,6 +19,8 @@
 #include <opencv2/core.hpp>
 
 #include "the_eyes/fusion/extrinsics.hpp"
+#include "the_eyes/runtime/frame_pair.hpp"
+#include "the_eyes/runtime/pipeline_result.hpp"
 #include "the_eyes/runtime/static_scene.hpp"
 #include "the_eyes/scenegraph/pddl.hpp"
 #include "the_eyes/types.hpp"
@@ -44,6 +46,24 @@ struct WorldView {
 // panel drew the cameras on top of the elevation strip because of exactly that.
 WorldView FitWorldView(const SceneState& scene, const fusion::ExtrinsicsSet& extrinsics,
                        int panel_w, int plan_h);
+
+// Text with a black outline, legible over an arbitrary camera frame. Shared so
+// the viewer's status strip and the console's overlays match.
+void DrawOutlinedText(cv::Mat& img, const std::string& text, cv::Point at,
+                      const cv::Scalar& colour);
+
+// PANEL A -- one camera's colour frame with detections, reprojected fused poses
+// and per-view timings.
+//
+// Extracted from Viewer so the console and `--show` draw the same picture from
+// the same code. Two copies of this would drift, and the difference would show
+// up as "the console disagrees with the viewer" long before anyone suspected
+// duplicated drawing.
+//
+// `panel` must be the frame's own size; the caller owns the layout.
+void DrawCameraPanel(cv::Mat& panel, const std::string& view, const camera::CameraFrame& frame,
+                     const PipelineResult& result, const fusion::ExtrinsicsSet& extrinsics,
+                     const std::vector<std::string>& static_ids);
 
 // PANEL B -- world view: plan (XY) above, elevation (XZ) below.
 //

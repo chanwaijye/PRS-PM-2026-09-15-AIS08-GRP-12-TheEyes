@@ -1,8 +1,8 @@
 // The Eyes -- live end-to-end runner.
 //
 //   the_eyes_run check  [--live]                      startup checks only
-//   the_eyes_run live   [--record [NAME] | --record-only [NAME]] [--frames N] [--show]
-//   the_eyes_run replay <session_dir> [--realtime] [--start N] [--max-pairs N] [--show]
+//   the_eyes_run live   [--record [NAME] | --record-only [NAME]] [--frames N] [--show|--show=console]
+//   the_eyes_run replay <session_dir> [--realtime] [--start N] [--max-pairs N] [--show|--show=console]
 //
 // Common: --config-dir DIR (default: config)  --repo-root DIR (default: parent
 // of config dir)  --detector onnx|mock:<fixture>|fixed:<cam>=<cls>,<x>,<y>,<w>,<h>[;...]
@@ -23,6 +23,7 @@
 
 #include "the_eyes/fusion/fusion.hpp"
 #include "the_eyes/runtime/backends.hpp"
+#include "the_eyes/runtime/console.hpp"
 #include "the_eyes/runtime/clock.hpp"
 #include "the_eyes/runtime/metrics_log.hpp"
 #include "the_eyes/runtime/pipeline.hpp"
@@ -62,6 +63,7 @@ struct Options {
   bool record_only = false;
   uint64_t frames = 0;           // live: stop after N processed pairs; 0 = until Ctrl-C
   bool show = false;
+  bool console = false;
   bool realtime = false;
   uint64_t start_pair = 0;
   uint64_t max_pairs = 0;
@@ -75,8 +77,8 @@ struct Options {
 void Usage(std::ostream& os) {
   os << "usage:\n"
         "  the_eyes_run check  [--live]\n"
-        "  the_eyes_run live   [--record [NAME] | --record-only [NAME]] [--frames N] [--show]\n"
-        "  the_eyes_run replay <session_dir> [--realtime] [--start N] [--max-pairs N] [--show]\n"
+        "  the_eyes_run live   [--record [NAME] | --record-only [NAME]] [--frames N] [--show|--show=console]\n"
+        "  the_eyes_run replay <session_dir> [--realtime] [--start N] [--max-pairs N] [--show|--show=console]\n"
         "                      [--record [NAME]]\n"
         "common: --config-dir DIR  --repo-root DIR\n"
         "        --detector onnx | mock:<fixture> | fixed:<cam>=<cls>,<x>,<y>,<w>,<h>[;<cam>=...]\n"
@@ -105,6 +107,10 @@ Options Parse(int argc, char** argv) {
     else if (a == "--record-only") { o.record = true; o.record_only = true; o.record_name = optional_value(i); }
     else if (a == "--frames") o.frames = std::stoull(value(i, a));
     else if (a == "--show") o.show = true;
+    // `--show` keeps exactly the behaviour it has always had. `--show=console`
+    // is the richer window (docs/VIZ_PLAN.md); it is a separate value rather
+    // than a replacement so an existing command line renders what it always did.
+    else if (a == "--show=console") { o.show = true; o.console = true; }
     else if (a == "--realtime") o.realtime = true;
     else if (a == "--start") o.start_pair = std::stoull(value(i, a));
     else if (a == "--max-pairs") o.max_pairs = std::stoull(value(i, a));
@@ -366,7 +372,14 @@ int Run(const Options& o) {
   }
 
   std::unique_ptr<Viewer> viewer;
-  if (o.show && !o.record_only) viewer = std::make_unique<Viewer>(c.fusion.view_names, c.extrinsics);
+  std::unique_ptr<Console> console;
+  if (o.show && !o.record_only) {
+    if (o.console) {
+      console = std::make_unique<Console>(c.fusion.view_names, c.extrinsics);
+    } else {
+      viewer = std::make_unique<Viewer>(c.fusion.view_names, c.extrinsics);
+    }
+  }
 
   // --- main loop ----------------------------------------------------------
   std::signal(SIGINT, OnSignal);
@@ -455,6 +468,10 @@ int Run(const Options& o) {
         std::cout << StatusLine(result, fps, processed) << "\n";
       }
       if (viewer && !viewer->Show(*pair, result, fps)) {
+        exit_status = "quit";
+        break;
+      }
+      if (console && !console->Show(*pair, result, fps)) {
         exit_status = "quit";
         break;
       }

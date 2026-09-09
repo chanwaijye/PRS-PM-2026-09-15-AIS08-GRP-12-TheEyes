@@ -6,6 +6,8 @@
 #include <set>
 #include <sstream>
 
+#include <iomanip>
+
 #include <opencv2/imgproc.hpp>
 
 namespace the_eyes::runtime {
@@ -45,7 +47,71 @@ void DashedRect(cv::Mat& m, const cv::Rect& r, const cv::Scalar& c) {
   }
 }
 
+
+bool Project(const Eigen::Matrix3d& K, const Eigen::Isometry3d& T_cam_world,
+             const Eigen::Vector3d& p_w, cv::Point* out) {
+  const Eigen::Vector3d p = T_cam_world * p_w;
+  if (p.z() <= 1e-6) return false;
+  const Eigen::Vector3d uv = K * (p / p.z());
+  *out = cv::Point(static_cast<int>(std::lround(uv.x())), static_cast<int>(std::lround(uv.y())));
+  return true;
+}
+
 }  // namespace
+
+void DrawCameraPanel(cv::Mat& panel, const std::string& view,
+                     const camera::CameraFrame& frame, const PipelineResult& result,
+                     const fusion::ExtrinsicsSet& extrinsics,
+                     const std::vector<std::string>& static_ids) {
+    auto dets = result.detections.find(view);
+    if (dets != result.detections.end()) {
+      for (const Detection& d : dets->second.detections) {
+        cv::rectangle(panel, d.bbox, cv::Scalar(0, 200, 255), 1);
+        std::ostringstream os;
+        os << d.cls << " " << std::fixed << std::setprecision(2) << d.score << " #" << d.track_id;
+        Label(panel, os.str(), d.bbox.tl(), cv::Scalar(0, 200, 255));
+      }
+    }
+
+    auto ex = extrinsics.cameras.find(view);
+    if (ex != extrinsics.cameras.end()) {
+      const Eigen::Isometry3d T_cam_world = ex->second.T_world_cam.inverse();
+      for (const ObjectState& o : result.scene.objects) {
+        bool is_static = false;
+        for (const std::string& id : static_ids) is_static = is_static || id == o.id;
+        if (is_static) continue;
+        cv::Point origin;
+        if (!Project(frame.K, T_cam_world, o.pose_w.translation(), &origin)) continue;
+        const double axis = 0.03;
+        const cv::Scalar colours[3] = {cv::Scalar(0, 0, 255), cv::Scalar(0, 255, 0),
+                                       cv::Scalar(255, 0, 0)};
+        for (int a = 0; a < 3; ++a) {
+          cv::Point tip;
+          const Eigen::Vector3d p = o.pose_w * (Eigen::Vector3d::Unit(a) * axis);
+          if (Project(frame.K, T_cam_world, p, &tip)) cv::line(panel, origin, tip, colours[a], 2);
+        }
+        std::ostringstream os;
+        os << o.id << " c=" << std::fixed << std::setprecision(2) << o.confidence;
+        Label(panel, os.str(), origin + cv::Point(6, 0), cv::Scalar(255, 255, 255));
+      }
+    }
+
+    std::ostringstream hud;
+    hud << view << "  det " << std::fixed << std::setprecision(1);
+    auto dm = result.timings.detect_ms.find(view);
+    hud << (dm != result.timings.detect_ms.end() ? dm->second : 0.0) << " ms  pose ";
+    auto pm = result.timings.pose_ms.find(view);
+    hud << (pm != result.timings.pose_ms.end() ? pm->second : 0.0) << " ms";
+    Label(panel, hud.str(), cv::Point(8, 22), cv::Scalar(255, 255, 255));
+}
+
+void DrawOutlinedText(cv::Mat& img, const std::string& text, cv::Point at,
+                      const cv::Scalar& colour) {
+  cv::putText(img, text, at + cv::Point(0, -4), cv::FONT_HERSHEY_SIMPLEX, 0.45,
+              cv::Scalar(0, 0, 0), 3, cv::LINE_AA);
+  cv::putText(img, text, at + cv::Point(0, -4), cv::FONT_HERSHEY_SIMPLEX, 0.45, colour, 1,
+              cv::LINE_AA);
+}
 
 std::vector<FactEdge> ParseBinaryFacts(const std::vector<std::string>& facts) {
   std::vector<FactEdge> out;

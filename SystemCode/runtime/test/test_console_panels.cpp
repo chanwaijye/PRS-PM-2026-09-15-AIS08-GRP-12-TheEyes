@@ -2,6 +2,8 @@
 // functions precisely so this suite can exist (docs/VIZ_PLAN.md §6).
 #include "the_eyes/runtime/console_panels.hpp"
 
+#include "the_eyes/runtime/console.hpp"
+
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -199,4 +201,51 @@ TEST(ConsolePanels, FitKeepsTheCamerasOutOfTheElevationStrip) {
   const double back_y = 0.155 + 0.375;
   const int back_py = static_cast<int>(PLAN / 2.0 - (back_y - v.centre_y_m) * v.px_per_m);
   EXPECT_GE(back_py, 0) << "the table's back edge is off the top of the plan";
+}
+
+// Console::Compose opens no window, which is what makes this testable at all.
+TEST(ConsolePanels, ComposeIsHeadlessDeterministicAndCorrectlySized) {
+  FramePair pair;
+  pair.pair_index = 7;
+  camera::CameraFrame f;
+  f.rgb = cv::Mat(480, 848, CV_8UC3, cv::Scalar(30, 30, 30));
+  f.K = Eigen::Matrix3d::Identity();
+  f.K(0, 0) = f.K(1, 1) = 600.0;
+  f.K(0, 2) = 424.0;
+  f.K(1, 2) = 240.0;
+  pair.frames["cam_front"] = f;
+  pair.frames["cam_over"] = f;
+
+  PipelineResult r;
+  r.pair_index = 7;
+  r.scene.objects = {Obj("red_cube_01", "red_cube", 0.0, 0.0, 0.025, 0.006),
+                     Obj("table_01", "table", 0.0, 0.155, -0.0115)};
+  r.scene.objects[1].extent = Eigen::Vector3d(0.590, 0.375, 0.0115);
+  r.static_ids = {"table_01"};
+  r.pddl.facts = {"(clear red_cube_01)", "(on red_cube_01 table_01)"};
+  r.pddl.init_block = "(:init\n  (clear red_cube_01)\n  (on red_cube_01 table_01)\n)";
+
+  const std::vector<std::string> views{"cam_front", "cam_over"};
+  const fusion::ExtrinsicsSet ex;
+  const cv::Mat a = Console::Compose(views, ex, pair, r, 19.0);
+  EXPECT_EQ(a.cols, 2 * 848);
+  EXPECT_EQ(a.rows, 480 + 520 + 24);
+
+  const cv::Mat b = Console::Compose(views, ex, pair, r, 19.0);
+  EXPECT_EQ(cv::norm(a, b, cv::NORM_L1), 0.0) << "the same pair composed differently twice";
+}
+
+TEST(ConsolePanels, ComposeSurvivesAMissingView) {
+  // A dropped camera must annotate the slot, not crash or silently shift the
+  // layout so the two views swap places.
+  FramePair pair;
+  camera::CameraFrame f;
+  f.rgb = cv::Mat(480, 848, CV_8UC3, cv::Scalar(30, 30, 30));
+  f.K = Eigen::Matrix3d::Identity();
+  pair.frames["cam_front"] = f;
+  PipelineResult r;
+  const cv::Mat c = Console::Compose({"cam_front", "cam_over"}, fusion::ExtrinsicsSet{}, pair, r,
+                                     0.0);
+  EXPECT_EQ(c.cols, 2 * 848);
+  EXPECT_GT(NonBackground(c), 0);
 }

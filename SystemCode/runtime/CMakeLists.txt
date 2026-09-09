@@ -22,7 +22,8 @@ set(RUNTIME_SOURCES
   src/startup_checks.cpp
   src/pipeline.cpp
   src/viewer.cpp
-  src/console_panels.cpp)
+  src/console_panels.cpp
+  src/console.cpp)
 
 if(THE_EYES_HAVE_REALSENSE)
   list(APPEND RUNTIME_SOURCES src/live_frame_source.cpp)
