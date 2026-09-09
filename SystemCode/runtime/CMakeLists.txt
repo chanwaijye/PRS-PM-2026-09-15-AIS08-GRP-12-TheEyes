@@ -21,7 +21,8 @@ set(RUNTIME_SOURCES
   src/fixed_box_detector.cpp
   src/startup_checks.cpp
   src/pipeline.cpp
-  src/viewer.cpp)
+  src/viewer.cpp
+  src/console_panels.cpp)
 
 if(THE_EYES_HAVE_REALSENSE)
   list(APPEND RUNTIME_SOURCES src/live_frame_source.cpp)
@@ -71,7 +72,8 @@ if(THE_EYES_BUILD_TESTS)
     test/test_fixed_box_detector.cpp
     test/test_replay_pipeline.cpp
     test/test_marker_trays.cpp
-    test/test_gt_chain.cpp)
+    test/test_gt_chain.cpp
+    test/test_console_panels.cpp)
   # Links calibration so the ground-truth chain can be tested end to end
   # against a rendered marker. Test-only: the runtime LIBRARY does not depend
   # on calibration, only gt_from_trays does.
