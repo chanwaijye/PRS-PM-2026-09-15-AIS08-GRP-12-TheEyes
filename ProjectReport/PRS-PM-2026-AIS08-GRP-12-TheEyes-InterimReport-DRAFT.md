@@ -10,7 +10,7 @@
 | Group ID / Cohort | Group 12 / AIS08 |
 | Team Members | Chan Wai Jye (A0340644J) |
 | Status as of | 2026-09-06 |
-| Companion document | `PRS-PM-2026-AIS08-GRP-12-TheEyes-Proposal-DRAFT.md` |
+| Companion document | `PRS-PM-2026-AIS08-GRP-12-TheEyes-Proposal.md` |
 
 ---
 

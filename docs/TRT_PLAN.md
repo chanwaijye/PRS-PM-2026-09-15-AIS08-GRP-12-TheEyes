@@ -171,8 +171,8 @@ internal docs are not yet:
 
 | File | Line | Says | Reality |
 |---|---|---|---|
-| `ProjectReport/…Proposal-DRAFT.md` | §4 ② | "Both deployed via ONNX Runtime / TensorRT" | Detector only |
-| `ProjectReport/…Proposal-DRAFT.md` | §5.2, §5.5, App. B | TensorRT in the stack and on the detector row | Nothing uses it; the detector is ONNX Runtime CUDA EP |
+| `ProjectReport/…Proposal.md` | §4 ② | "Both deployed via ONNX Runtime / TensorRT" | Detector only |
+| `ProjectReport/…Proposal.md` | §5.2, §5.5, App. B | TensorRT in the stack and on the detector row | Nothing uses it; the detector is ONNX Runtime CUDA EP |
 | `AGENTS.md` | 151 | `pose_agent` owns "TensorRT engine management" | It owns a Unix-socket client to a Python server |
 | `AGENTS.md` | 160 | "R1 gate: TensorRT engines build and run on sm_120" | Retired on a false premise; `SystemCode/pose/README.md` already records it Met |
 | `README.md` | 27, 173 | "ONNX Runtime / TensorRT — C++ inference deployment" | ONNX Runtime yes, TensorRT no |
