@@ -33,11 +33,11 @@ in:
   # passing every geometric test while being false.
   #
   # Default-deny, so a class listed nowhere is never a container. `in` is the
-  # expensive direction to get wrong: it suppresses every `on` fact for the
-  # contained object and PM1 reads it as not directly pickable, so a false
-  # positive removes actions from the planner while a false negative only
-  # forgoes a fact. `unknown_object` therefore never qualifies, which is right
-  # -- it has no CAD model and no class semantics.
+  # expensive direction to get wrong: containment is exclusive in extraction, so
+  # a false `in` suppresses every true `on` fact for the contained object, while
+  # a false negative forgoes only the `in` fact itself. `unknown_object`
+  # therefore never qualifies, which is right -- it has no CAD model and no
+  # class semantics.
   container_classes:
     - bowl
 

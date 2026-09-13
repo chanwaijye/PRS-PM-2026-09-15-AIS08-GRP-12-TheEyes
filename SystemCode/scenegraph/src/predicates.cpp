@@ -167,12 +167,11 @@ bool IsIn(const ObjectState& a, const ObjectState& b, const PredicateConfig& cfg
   // the slab's top and bottom faces while the volume ratio stays tiny. Every
   // geometric test below passed; the claim was still false.
   //
-  // Default-deny is the deliberate direction. `in` is a strong assertion --
-  // PM1 treats a contained object as one it cannot pick directly, and Extract
-  // below makes containment suppress every `on` fact for that object -- so a
-  // false positive silently removes actions from the planner's reach, whereas
-  // a false negative only forgoes a fact. This also settles `unknown_object`
-  // with no special case: no CAD model, no class semantics, never a container.
+  // Default-deny is the deliberate direction. `in` is a strong assertion:
+  // Extract below makes containment exclusive, so a false positive silently
+  // deletes every true `on` fact for that object, whereas a false negative
+  // forgoes only the `in` fact itself. This also settles `unknown_object` with
+  // no special case: no CAD model, no class semantics, never a container.
   if (std::find(cfg.in_container_classes.begin(), cfg.in_container_classes.end(),
                 b.cls) == cfg.in_container_classes.end()) {
     return false;
@@ -200,8 +199,8 @@ bool IsOn(const ObjectState& a, const ObjectState& b, const PredicateConfig& cfg
   if (a.id == b.id) return false;
 
   // Containment wins over support: an object inside a box is `in` it, not `on`
-  // it, even when it rests on the box's inner floor. PM1's domain treats these
-  // as distinct, so emitting both would be a contradiction, not extra detail.
+  // it, even when it rests on the box's inner floor. Both answer "what holds
+  // this object", so emitting both would be a contradiction, not extra detail.
   if (IsIn(a, b, cfg)) return false;
 
   const Aabb ba = AabbOf(a);

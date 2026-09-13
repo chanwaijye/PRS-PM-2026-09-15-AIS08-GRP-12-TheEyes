@@ -206,9 +206,9 @@ required and may be empty, but never omitted — a default would either invent
 containers or silently drop the predicate. `unknown_object` never qualifies,
 which follows from default-deny rather than a special case.
 
-The asymmetry is deliberate: `in` suppresses every `on` fact for the contained
-object and PM1 reads it as not directly pickable, so a false positive removes
-actions from the planner while a false negative only forgoes a fact.
+The asymmetry is deliberate: containment is exclusive in extraction, so a false
+`in` suppresses every true `on` fact for the contained object, while a false
+negative forgoes only the `in` fact itself.
 
 *Shipped implementation note (2026-09-06):* `the_eyes_run` emits the
 `(:init ...)` block on stdout whenever the fact set changes and logs every
