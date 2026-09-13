@@ -25,8 +25,11 @@ runs/
 *.npy
 *.bag
 *.mkv
-# Recorded RGB-D sessions from the live runner: ~30 MB/s of PNG pairs.
-captures/runtime/
+# Capture output: recorded RGB-D sessions from the live runner (~30 MB/s of PNG
+# pairs) and the calibration registration views, which
+# docs/CALIBRATION_PROTOCOL.md already describes as "kept on disk, not in git".
+# The rule used to be captures/runtime/ only, which left those views exposed.
+captures/
 
 # USD/Blender scene files stay out -- large, and regenerable from the scripts.
 #
