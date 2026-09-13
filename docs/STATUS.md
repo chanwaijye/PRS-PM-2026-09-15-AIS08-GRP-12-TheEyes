@@ -17,7 +17,7 @@ ONNX Runtime.
 | 1 | `camera_agent` | Built. **Dual-camera verified on hardware: 30 fps each; hardware-synced, jitter 4.51 ms sigma.** |
 | 2 | `calib_agent` | Built. Mock mode recovers known intrinsics/extrinsics. Hardware run pending. |
 | 3 | `detector_agent` | **Complete end to end.** RGB-D C++ input path (sentinel encoding), 4-channel training pipeline, trained on the 50k v2 set, exported to ONNX, C++/Python parity re-verified against the trained network. |
-| 4 | `pose_agent` | Built. Verified end-to-end against the real FoundationPose server. |
+| 4 | `pose_agent` | Built. Verified end-to-end against the real FoundationPose server. **Registration raised to 6 refine iterations 2026-09-13** — 5 fails grossly on ~1 in 30 registrations. See "Pose" below and `docs/TRT_PLAN.md`. |
 | 5 | `fusion_agent` ★ | Built. Ablation harness runs **eight** arms — {single views, naive, gated} × {raw, EKF}. The claim is the policy delta at a fixed filter setting (`gated−naive`, `fused−naive+ekf`); the earlier four-arm fused-vs-naive gap was the EKF, fixed 2026-09-06. See proposal §7A. |
 | 6 | `scenegraph_agent` ★ | Built. PDDL emission, contract-tested against fusion. |
 | 7 | `cluster_agent` | Not built — above MVP, cut order #2. |
@@ -328,6 +328,49 @@ worth buying one until the scene is lit and the gap is re-measured.
 
 ---
 
+## Pose: TensorRT declined, registration raised to 6 iterations — 2026-09-13
+
+Full study in `docs/TRT_PLAN.md`; raw data in `docs/results/pose_stage_profile.json`
+and `docs/results/registration_quality.json`.
+
+**TensorRT is not worth building, and the arithmetic is closed.** Per-stage
+profiling (`training/pose/profile_stages.py`) puts registration at **72.6%
+network time** (Amdahl ceiling 3.65×) and tracking at **32.9%** (ceiling 1.49×).
+But the autocast baseline already achieves **47.3 TFLOP/s, 48.9% of this card's
+fp16 peak**, and NVIDIA ships these engines **fp32 only**, explicitly "due to
+FP16 precision loss". 35.70 TFLOP at the full fp32 peak of 32.4 TFLOP/s takes
+1102 ms against the 754.6 ms autocast already costs — **a perfect fp32 engine is
+1.46× slower than what we already run.** fp16 would buy ~1.2× against a
+precision risk NVIDIA documents. No engines. The R1 line "TensorRT 11.2 builds
+fp32+fp16 engines for sm_120" still stands; it just does not follow that we
+should use them.
+
+**NVIDIA's refiner ONNX is our refiner** — bit-identical weights, reproducing
+our `RefineNet` to 9.5e-08 on translation and 1.2e-06 on rotation
+(`training/pose/verify_ngc_onnx.py`). Their **scorer ONNX is not ours**, a
+different checkpoint. It must never be substituted: the scorer picks the winning
+hypothesis, so it sets every registered pose.
+
+**Registration lands in the wrong basin on ~1 frame in 30 — at 2, 3, 4 *and* 5
+refine iterations.** Frame 634 of mustard0 registers **121 mm and 162°** from
+the pose the validated tracker holds there, and all four settings land in the
+same wrong basin; only **6** escapes. That is hypothesis selection going wrong,
+not slow convergence. Nothing downstream catches it: a 120 mm error trips the
+50 mm disagreement gate, and on a two-view conflict the gate keeps the
+higher-scoring view while the FoundationPose score is degenerate at 0.82 on
+every frame. The tie-break is a coin flip.
+
+`--register-iters` therefore ships at **6** (~1198 ms against 1043 ms at 5).
+`--register-iters 3` is 1.48× and carries exactly the failure rate 5 carried
+anyway — use it when registration latency actually matters.
+
+**[VERIFY]** 30 registrations on one sequence with one failure event cannot
+separate "6 is safe" from "6 was lucky on mustard0". Re-run
+`training/pose/registration_quality.py --scene ...` against the real captures
+once the printed objects exist.
+
+---
+
 ## Hardware on order
 
 | item | ETA | unblocks |
@@ -567,6 +610,12 @@ prints them says so in its own output.
 - Live runner end to end with FoundationPose: p50 51.7 ms per pair; detector
   13 ms per view on CPU; hardware-sync jitter 0.14–1.1 ms sigma from grabber
   threads (2026-09-06, `runs/runtime/`)
+- FoundationPose stage split: registration **72.6% network**, tracking **32.9%**,
+  and 27.1% of the track path (3.0 ms/frame) in Python and pose composition
+  (2026-09-13, `docs/results/pose_stage_profile.json`)
+- Registration accuracy against refine-iteration count: 30 independent
+  registrations on mustard0, **1-in-30 gross failure at 2–5 iterations, zero at
+  6** (2026-09-13, `docs/results/registration_quality.json`)
 
 Still unmeasured: ADD-S on real captures (needs the printed objects and a
 ground-truth tool), predicate accuracy, GPU detector latency, and IR
