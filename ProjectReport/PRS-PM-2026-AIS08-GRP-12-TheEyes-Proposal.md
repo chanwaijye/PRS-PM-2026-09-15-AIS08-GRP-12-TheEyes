@@ -57,7 +57,7 @@ Single-camera systems fail predictably under occlusion: a mug behind a cereal bo
 2. **Arbitration** — when two views disagree, is this ordinary noise to be averaged, or is one view confidently wrong and to be rejected? With only two cameras there is no majority to appeal to.
 3. **Symbolisation** — a continuous 6-DoF pose is not a plan input. `on`, `in` and `clear` are, and deriving them from noisy geometry is where a millimetre of pose error becomes a wrong fact: a pose a centimetre low puts an object *inside* a 20 mm table slab, and the planner then reasons about a scene that does not exist.
 
-Answering those three is the technical contribution. The occlusion ablation (§7.1) is the experiment that tests whether the answer works.
+Answering those three is the work of this project; the occlusion ablation (§7.1) tests how well the answers hold up on real captures.
 
 ### 2.2 Relationship to Prior and Future Modules
 
@@ -82,7 +82,7 @@ afterthought.
 
 ### 2.3 Why This Technology Stack?
 
-- **FoundationPose** (NVIDIA, CVPR 2024) is a state-of-the-art model-based 6-DoF pose estimator that generalises to novel objects given a CAD model, avoiding per-object training.
+- **FoundationPose** (NVIDIA, CVPR 2024) is a model-based 6-DoF pose estimator that generalises to novel objects given a CAD model, avoiding per-object training.
 - **YOLOv8** provides a mature, fine-tunable real-time detector to gate FoundationPose — pose estimation is expensive, so detection-first cropping keeps the pipeline real-time.
 - **Isaac Sim / Omniverse Replicator** generates photorealistic, automatically labelled synthetic training data with domain randomisation — no manual annotation.
 - All components run locally on owned hardware; zero recurring licensing cost.
@@ -115,9 +115,11 @@ Scene graphs represent a scene as objects (nodes) and spatial/semantic relations
 
 Tobin et al. (2017) showed that randomising textures, lighting and camera pose in simulation forces networks to learn transferable features, enabling sim-to-real transfer without real labels. Omniverse Replicator operationalises this with automatically generated boxes, masks and ground-truth poses. §6.2 notes a limitation specific to this project: with all three classes printed and rendered in their own filament, the appearance axis of that randomisation is largely bypassed, so the measured gap tests geometry and sensing rather than appearance transfer.
 
-### 3.6 Related Systems & What This Project Adds
+### 3.6 Related Work and Scope of This Project
 
-Mature components are deliberately adopted, not reimplemented: Isaac ROS ships a single-view FoundationPose pipeline, and detection, calibration (OpenCV), clustering (PCL) and Kalman filtering are established tooling. No packaged solution exists for the integration this project targets — object-level fusion of two RGB-D viewpoints into one consistent world state with disagreement gating, emitting relational predicates as PDDL facts for a symbolic planner. Published multi-view pose fusion exists as papers, not deployable components. The posture mirrors PM1: established components at the edges, from-first-principles C++ at the integration core — cross-view association, multi-view fusion and the scene-graph bridge, marked ★ in §5.2. Those three are where an off-the-shelf library would substitute for the work being assessed, which is why they are the modules the occlusion ablation tests and the last ones cut (§1.3).
+The techniques used here are established. Object-level multi-view fusion, quaternion averaging, Kalman filtering, outlier gating and deriving symbolic relations from geometry all have prior work, and mature components are adopted rather than reimplemented: Isaac ROS ships a single-view FoundationPose pipeline, and detection, calibration (OpenCV) and clustering (PCL) are standard tooling. This proposal makes no novelty claim for these techniques, individually or in combination.
+
+What the project does is apply them to a concrete two-camera rig and measure the result. Cross-view association, multi-view fusion and the scene-graph bridge (★ in §5.2) are written in C++ without an off-the-shelf fusion or scene-graph library, so that the techniques are implemented and understood rather than configured. They are also what the occlusion ablation tests, and the last items cut under schedule pressure (§1.3).
 
 ---
 
@@ -275,9 +277,8 @@ across 235 estimates) and differs per view on the same object (0.656 vs 0.712),
 so the fused estimate has something real to weight.
 
 **Runtime parameter budget: 36.0 M total** — 3.0 M trained here (8.4%) and 33.0 M
-pretrained and frozen. The project's deep-learning contribution is the 4-channel
-stem and its fine-tune, not the pose networks, and §3.6 states that boundary
-deliberately rather than letting the parameter count imply otherwise.
+pretrained and frozen. What this project trains is the 4-channel stem and its
+fine-tune; the pose networks are used as supplied.
 
 ### 5.5 Technology Stack
 
@@ -475,13 +476,12 @@ diameter, so they additionally require the object meshes — acquired 2026-09-04
 with diameters computed exactly rather than sampled, since a sampled diameter
 shifts every ADD-S verdict.
 
-### 7.1 Test setup for the headline experiment
+### 7.1 Test setup for the main experiment
 
-The headline experiment is the **occlusion ablation**: identical captures scored
+The main experiment is the **occlusion ablation**: identical captures scored
 with camera 1 only, camera 2 only, and fused, testing whether fusion recovers
-objects a single view cannot resolve. Because it is the project's entire
-technical claim, its protocol is fixed here rather than decided after seeing the
-data.
+objects a single view cannot resolve. Because the project's conclusions rest on
+it, its protocol is fixed here rather than decided after seeing the data.
 
 **Capture protocol.** 10 benchmark scenes (§6.4), 4 graded difficulty tiers,
 **300 synchronised pairs per scene** recorded once and replayed — not re-captured
@@ -552,7 +552,7 @@ pass under `-Wall -Wextra -Wpedantic`; every module has a mock mode needing no
 hardware. The rig is mounted and calibrated, and the whole chain has run on a
 real object.
 
-| Claim | Status | Headline figure |
+| Claim | Status | Key figure |
 |---|---|---|
 | Dual-camera capture | **Hardware verified** | 30 fps each, hardware-synced, pair jitter 0.14–1.1 ms sigma |
 | Calibration | **Run on the real rig** | Reprojection RMSE 0.47 / 0.41 px, round trip 0.12 mm mean (recalibrated 09 Sep after the cameras moved) |
@@ -679,7 +679,7 @@ its cause are the reported result.
 
 ## 12. Conclusion
 
-*The Eyes* closes the perception gap left deliberately open in PM1. It is scoped to be individually achievable, demonstrates all four PRS technique categories with two from-first-principles C++ contributions (multi-view fusion, scene-graph bridge), produces a quantitative headline result (occlusion ablation), and delivers the exact object-centric state representation the MANIP-WM capstone world model requires.
+*The Eyes* closes the perception gap left deliberately open in PM1. It is scoped to be individually achievable, covers all four PRS technique categories, implements multi-view fusion and the scene-graph bridge in C++ without off-the-shelf libraries, evaluates them with an occlusion ablation whose protocol is fixed in advance, and delivers the exact object-centric state representation the MANIP-WM capstone world model requires.
 
 ---
 
@@ -697,7 +697,7 @@ This project is undertaken as a solo submission under Group 12, AIS08, with the 
 
 ### A.3 Academic Integrity Statement
 
-Use of AI tools follows the NUS-ISS Policy for Use of AI in Teaching and Learning (2024). All AI assistance is disclosed above; the system architecture, the two core C++ contributions, the evaluation design, and all analysis are my own work.
+Use of AI tools follows the NUS-ISS Policy for Use of AI in Teaching and Learning (2024). All AI assistance is disclosed above; the system architecture, the C++ fusion and scene-graph modules, the evaluation design, and all analysis are my own work.
 
 ---
 
