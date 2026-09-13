@@ -1,0 +1,88 @@
+{
+  "scene": "/home/wjchan/src/FoundationPose/demo_data/mustard0",
+  "frames": 200,
+  "warmup": 10,
+  "est_refine_iter": 5,
+  "track_refine_iter": 2,
+  "envelope": {
+    "register_ms": 1046.6248550001183,
+    "register_all_ms": [
+      1241.2777549998282,
+      1050.6286059999184,
+      1046.6248550001183
+    ],
+    "track": {
+      "n": 200,
+      "mean": 10.265282559976185,
+      "p50": 10.141997499886202,
+      "p95": 11.461824849675395,
+      "min": 9.54593999995268,
+      "max": 12.163141000200994
+    }
+  },
+  "instrumented": {
+    "register_ms": 1039.409109999724,
+    "track": {
+      "n": 200,
+      "mean": 11.094513490011195,
+      "p50": 10.90357800012498,
+      "p95": 12.179536249732337,
+      "min": 10.48268900012772,
+      "max": 13.59679200049868
+    }
+  },
+  "stages_s": {
+    "register": {
+      "crop_window": 0.0019800919999397593,
+      "render": 0.131894726999235,
+      "warp": 0.07011430900092819,
+      "normalise": 0.06824425100057852,
+      "net_refine": 0.6420207549999759,
+      "empty_cache": 0.01116906300012488,
+      "net_score": 0.11256168899944896
+    },
+    "track_warmup": {
+      "crop_window": 0.0050536170001578284,
+      "render": 0.01689602099759213,
+      "warp": 0.01767238199863641,
+      "normalise": 0.005141531998560822,
+      "net_refine": 0.03708870699938416,
+      "empty_cache": 0.016993504001220572
+    },
+    "track": {
+      "crop_window": 0.09852268699614797,
+      "render": 0.303126663007788,
+      "warp": 0.35307397799533646,
+      "normalise": 0.10072374300307274,
+      "net_refine": 0.730654935997336,
+      "empty_cache": 0.0312108440002703
+    }
+  },
+  "stage_calls": {
+    "register": {
+      "crop_window": 6,
+      "render": 6,
+      "warp": 14,
+      "normalise": 6,
+      "net_refine": 5,
+      "empty_cache": 2,
+      "net_score": 1
+    },
+    "track_warmup": {
+      "crop_window": 20,
+      "render": 20,
+      "warp": 40,
+      "normalise": 20,
+      "net_refine": 20,
+      "empty_cache": 10
+    },
+    "track": {
+      "crop_window": 400,
+      "render": 400,
+      "warp": 800,
+      "normalise": 400,
+      "net_refine": 400,
+      "empty_cache": 200
+    }
+  }
+}
