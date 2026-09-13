@@ -119,7 +119,7 @@ Tobin et al. (2017) showed that randomising textures, lighting and camera pose i
 
 The techniques used here are established. Object-level multi-view fusion, quaternion averaging, Kalman filtering, outlier gating and deriving symbolic relations from geometry all have prior work, and mature components are adopted rather than reimplemented: Isaac ROS ships a single-view FoundationPose pipeline, and detection, calibration (OpenCV) and clustering (PCL) are standard tooling. This proposal makes no novelty claim for these techniques, individually or in combination.
 
-What the project does is apply them to a concrete two-camera rig and measure the result. Cross-view association, multi-view fusion and the scene-graph bridge (★ in §5.2) are written in C++ without an off-the-shelf fusion or scene-graph library, so that the techniques are implemented and understood rather than configured. They are also what the occlusion ablation tests, and the last items cut under schedule pressure (§1.3).
+What the project does is apply them to a concrete two-camera rig and measure the result. Cross-view association, multi-view fusion and the scene-graph bridge (★ in §5.2) are written in C++ without an off-the-shelf fusion or scene-graph library, so that the techniques are implemented and understood rather than configured. They are also what the occlusion ablation tests, and part of the MVP that is not cut under schedule pressure (§1.3).
 
 ---
 
