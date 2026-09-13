@@ -2,7 +2,7 @@
 
 ## Multi-View Perception and Scene Understanding for Robot Manipulation
 
-### NUS-ISS Pattern Recognition Systems Practice Module — Project Proposal (DRAFT)
+### NUS-ISS Pattern Recognition Systems Practice Module — Project Proposal
 
 | Field | Detail |
 |---|---|
@@ -19,7 +19,7 @@
 
 ## 1. Introduction
 
-A robot that plans intelligently but cannot see is blind. In the preceding IRS practice module, the author built *The Planner* — a hybrid symbolic-neural task reasoning system that converts natural language instructions into executed robot motion. That system established the perception *interface* — the schema of object identities, poses and relations the planner consumes — and demonstrated task reasoning against simulator ground-truth poses. *The Eyes* implements that interface with real sensing: multi-view fusion, occlusion resilience, and quantified sim-to-real transfer, none of which existed in the prior module.
+A robot that plans intelligently but cannot see is blind. In the preceding Intelligent Reasoning Systems practice module, I built *The Planner* — a hybrid symbolic-neural task reasoning system that converts natural language instructions into executed robot motion. That system established the perception *interface* — the schema of object identities, poses and relations the planner consumes — and demonstrated task reasoning against simulator ground-truth poses. *The Eyes* implements that interface with real sensing: multi-view fusion, occlusion resilience, and quantified sim-to-real transfer, none of which existed in the prior module.
 
 *The Eyes* is a real-time perception system that takes raw RGB-D streams from two cameras at different vantage points and produces a structured, relational scene graph: which objects are present, their full 6-DoF poses, and their spatial relationships (on, in, clear, occluded-by). The output interface is identical to the PDDL state facts consumed by *The Planner*, so the perception layer drops into the existing planning stack without modification — replacing simulator ground truth with genuine machine perception.
 
@@ -61,16 +61,24 @@ Answering those three is the technical contribution. The occlusion ablation (§7
 
 ### 2.2 Relationship to Prior and Future Modules
 
-This project is the second of four modules building toward the MANIP-WM capstone:
+This is the second of four practice modules: two fundamental graduate certificates
+followed by two specialist ones, with the MANIP-WM capstone project running
+alongside the specialist pair.
 
-| Module | System | Contribution to Capstone |
-|---|---|---|
-| PM1 (IRS) — completed | The Planner | Symbolic task planning: NL → PDDL → action sequence |
-| **PM2 (PRS) — this proposal** | **The Eyes** | **Perception: RGB-D → fused 6-DoF poses → scene graph** |
-| PM3 (Language) | — | GR00T N1.6 fine-tuning, language interface |
-| PM4 (Capstone) | MANIP-WM | RSSM world model over the object-centric state produced here |
+| Module | Graduate certificate | System | Contribution to the capstone |
+|---|---|---|---|
+| PM1 — completed | Intelligent Reasoning Systems (fundamental) | The Planner | Symbolic task planning: NL → PDDL → action sequence |
+| **PM2 — this proposal** | **Pattern Recognition Systems (fundamental)** | **The Eyes** | **Perception: RGB-D → fused 6-DoF poses → scene graph** |
+| PM3 / PM4 | Intelligent Robotic Systems (specialist) | — | Acting on the perceived scene: manipulation on the SO-ARM101 |
+| PM3 / PM4 | Intelligent Sensing Systems (specialist) | — | Extends the sensing layer this project establishes |
+| Capstone — alongside PM3 and PM4 | — | MANIP-WM | RSSM world model over the object-centric state produced here |
 
-The scene-graph output schema defined in this project is the state representation the PM4 world model will operate on. Interface stability is therefore a first-class design requirement, not an afterthought.
+The scene-graph output schema defined here is the state representation the
+MANIP-WM world model operates on. Because the capstone runs concurrently with the
+specialist modules rather than after them, that schema has to be stable before
+either specialist module starts — there is no later stage in which to change it.
+Interface stability is therefore a first-class design requirement, not an
+afterthought.
 
 ### 2.3 Why This Technology Stack?
 
@@ -173,10 +181,10 @@ while leaving each one self-consistent.
 | Scene-Graph Bridge ★ | Convert fused poses into symbolic relational predicates | Custom C++ | Geometric rules over object bounding volumes: on(a,b), in(a,b), clear(a), occluded_from(a, view). Emits scene graph JSON + PDDL init facts. |
 | Calibration Suite | Intrinsics + stereo extrinsics + world-frame registration | OpenCV (ChArUco board) | One-time offline; validated by reprojection error report. |
 
-### 5.3 Interface Contract (PM1 / PM4 consumers)
+### 5.3 Interface Contract (PM1 and capstone consumers)
 
 ```cpp
-// Scene graph output — consumed by The Planner (PM1) and MANIP-WM (PM4).
+// Scene graph output — consumed by The Planner (PM1) and the MANIP-WM capstone.
 // Normative definition: INTERFACES.md §3.
 struct ObjectState {
   std::string id;              // stable instance id, e.g. "red_cube_01"
@@ -196,10 +204,11 @@ struct ObjectState {
 ```
 
 **Interface stability rule: fields may be added, never removed or re-typed**, so
-PM4 can rely on this contract. Two consequences are already visible. First, the
-belief fields exist because PM4's world model is an RSSM over this state — a
-point estimate is not a sufficient input for it, and adding uncertainty later
-would have been legal under the rule but would have left PM1 and PM4 disagreeing
+the capstone can rely on this contract. Two consequences are already visible.
+First, the belief fields exist because the capstone's world model is an RSSM over
+this state — a point estimate is not a sufficient input for it, and adding
+uncertainty later would have been legal under the rule but would have left PM1
+and the capstone disagreeing
 about what a pose means. Second, `relations` is `vector<string>` and can
 therefore *never* be re-typed to an enum under this same rule; the strings are
 treated as the contract and are validated against `config/predicates.yaml`
@@ -282,13 +291,13 @@ machine it buys nothing over direct calls and costs serialisation on the hot
 path, a second build system, and a distro pin that conflicts with PM1's Humble.
 The message-shaped contract survives the change unaltered — `INTERFACES.md`
 still specifies `scene_state` and the PDDL facts as the boundary, so a ROS2
-publisher is a thin adapter over the same structs if PM1 or PM4 later wants
-one. This keeps the PM1 integration a contract, not a shared workspace, which
+publisher is a thin adapter over the same structs if PM1 or the capstone later
+wants one. This keeps the PM1 integration a contract, not a shared workspace, which
 is what §2.2 required of it.
 
 ### 5.6 Digital-Twin Reconstruction (stretch deliverable)
 
-Because the scene graph carries `{class, CAD mesh, world-frame 6-DoF pose}` per object, real-to-sim scene reconstruction is nearly free: each detected object is spawned at its fused pose in Isaac Sim, producing a live digital twin of the physical tabletop. Limitations: known-CAD objects only (unknown objects appear as placeholder bounding volumes); poses are snapped-to-contact or spawned kinematic to avoid physics conflicts from residual pose error; the static environment (table) is pre-modelled. Beyond its demonstration value, the twin validates that the scene-graph representation is a sufficient world-state encoding — the property the PM4 world model depends on. Stretch item: cut fourth under schedule pressure (§1.3).
+Because the scene graph carries `{class, CAD mesh, world-frame 6-DoF pose}` per object, real-to-sim scene reconstruction is nearly free: each detected object is spawned at its fused pose in Isaac Sim, producing a live digital twin of the physical tabletop. Limitations: known-CAD objects only (unknown objects appear as placeholder bounding volumes); poses are snapped-to-contact or spawned kinematic to avoid physics conflicts from residual pose error; the static environment (table) is pre-modelled. Beyond its demonstration value, the twin validates that the scene-graph representation is a sufficient world-state encoding — the property the capstone world model depends on. Stretch item: cut fourth under schedule pressure (§1.3).
 
 ---
 
@@ -670,7 +679,7 @@ its cause are the reported result.
 
 ## 12. Conclusion
 
-*The Eyes* closes the perception gap left deliberately open in PM1. It is scoped to be individually achievable, demonstrates all four PRS technique categories with two from-first-principles C++ contributions (multi-view fusion, scene-graph bridge), produces a quantitative headline result (occlusion ablation), and delivers the exact object-centric state representation the MANIP-WM capstone world model requires. Every module in the four-module programme remains load-bearing.
+*The Eyes* closes the perception gap left deliberately open in PM1. It is scoped to be individually achievable, demonstrates all four PRS technique categories with two from-first-principles C++ contributions (multi-view fusion, scene-graph bridge), produces a quantitative headline result (occlusion ablation), and delivers the exact object-centric state representation the MANIP-WM capstone world model requires.
 
 ---
 
@@ -678,17 +687,17 @@ its cause are the reported result.
 
 ### A.1 Solo Submission Declaration
 
-This project is undertaken as a solo submission under Group 12, AIS08, with the associated peer-review deduction understood and accepted. Rationale: full project control and architectural continuity across the four-module capstone programme.
+This project is undertaken as a solo submission under Group 12, AIS08, with the associated peer-review deduction understood and accepted. Rationale: full project control and architectural continuity across my practice modules and the capstone project.
 
 ### A.2 AI Agents as Development Collaborators
 
-**Development-time AI (not present at runtime):** Claude (architecture review, code generation under supervision, documentation drafting), Claude Code (orchestrated coding subagents per AGENTS.md conventions established in PM1). All AI-generated code is reviewed, tested, and understood by the author before inclusion. All externally sourced factual claims in this proposal marked [VERIFY] are checked against primary sources before final submission.
+**Development-time AI (not present at runtime):** Claude (architecture review, code generation under supervision, documentation drafting), Claude Code (orchestrated coding subagents per AGENTS.md conventions established in PM1). I review, test and understand all AI-generated code before including it. All externally sourced factual claims in this proposal marked [VERIFY] are checked against primary sources before final submission.
 
-**Runtime AI (embedded in the submitted system):** YOLOv8 (fine-tuned by the author), FoundationPose (pretrained, NVIDIA). No LLM is present in the runtime perception pipeline.
+**Runtime AI (embedded in the submitted system):** YOLOv8 (which I fine-tuned), FoundationPose (pretrained, NVIDIA). No LLM is present in the runtime perception pipeline.
 
 ### A.3 Academic Integrity Statement
 
-Use of AI tools follows the NUS-ISS Policy for Use of AI in Teaching and Learning (2024). All AI assistance is disclosed above; the system architecture, the two core C++ contributions, the evaluation design, and all analysis are the author's own work.
+Use of AI tools follows the NUS-ISS Policy for Use of AI in Teaching and Learning (2024). All AI assistance is disclosed above; the system architecture, the two core C++ contributions, the evaluation design, and all analysis are my own work.
 
 ---
 
