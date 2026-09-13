@@ -142,13 +142,12 @@ The module requires the project to develop, integrate and demonstrate at least t
 
 ```mermaid
 flowchart TD
-    C1["Camera 1 — Front<BR>RGB-D stream"] --> D1["YOLOv8 Detector<BR>per-view ROIs"]
+    C1["Camera 1 — Front<BR>RGB-D stream"] -. residual point cloud .-> U["Unsupervised Clustering<BR>unknown-object segmentation"]
+    C1 --> D1["YOLOv8 Detector<BR>per-view ROIs"]
     C2["Camera 2 — Overhead<BR>RGB-D stream"] --> D2["YOLOv8 Detector<BR>per-view ROIs"]
 
     D1 --> P1["FoundationPose<BR>6-DoF per view"]
     D2 --> P2["FoundationPose<BR>6-DoF per view"]
-
-    C1 -. residual point cloud .-> U["Unsupervised Clustering<BR>unknown-object segmentation"]
 
     P1 & P2 --> W["World-Frame Lift<BR>T_world_cam per unit"]
     W --> A["Cross-View Association ★<BR>which detection is which object<BR>(C++)"]
