@@ -16,7 +16,9 @@ estimator:
   socket_path: "/tmp/the_eyes_foundationpose.sock"
   # A per-request ceiling. FoundationPose registration measured ~1258 ms
   # typical and 4332 ms worst case on the RTX 5070 Ti (docs/R1_STATUS.md,
-  # SystemCode/pose/README.md), tracking ~11-17 ms. 15 s clears the worst
+  # SystemCode/pose/README.md) at 5 refine iterations; the server now defaults
+  # to 6 for registration robustness (docs/TRT_PLAN.md 7A), so scale both by
+  # ~1.15. Tracking is unchanged at ~11-17 ms. 15 s clears the worst
   # registration with margin -- the server holds one CUDA lock, so a second
   # camera's registration can queue behind the first -- and still catches a
   # hung server rather than stalling the pipeline forever. The live runner

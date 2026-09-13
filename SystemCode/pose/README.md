@@ -74,8 +74,9 @@ response: "FPS1" | u32 len | header
 The client tracks which objects the *server* believes it has registered, and
 clears that set on every disconnect — the server holds the per-object estimator
 state, so a reconnected server has forgotten it and would refine against
-nothing. First sighting sends `mode: register` (~1.3 s), thereafter
-`mode: track` (~11 ms).
+nothing. First sighting sends `mode: register` (~1.2 s at the shipped 6 refine
+iterations; ~0.7 s with `--register-iters 3`), thereafter `mode: track`
+(~11 ms).
 
 ## Findings worth knowing
 
@@ -99,6 +100,25 @@ derive confidence from depth-inlier ratio instead.
 **`track_one` produces no score at all** — it is pure refinement. The server
 carries the registration score forward and labels it `score_source:
 carried_from_register` rather than inventing a fresh one.
+
+**Registration lands in the wrong basin on roughly 1 in 30 frames, and this is
+not a tuning artefact.** Measured over 30 independent registrations on mustard0
+(`training/pose/registration_quality.py`, `docs/results/registration_quality.json`):
+at 2, 3, 4 *and* 5 refine iterations, frame 634 registers **121 mm and 162°**
+from the pose the validated tracker holds at that frame. All four land in the
+same wrong basin; only **6 iterations** escapes it. Everywhere else every arm
+agrees to under 1% of object diameter.
+
+Nothing downstream catches such a failure: fusion's disagreement gate keeps the
+higher-scoring view, and the score is degenerate per the finding above, so the
+tie-break is arbitrary. A badly registered view wins it about half the time.
+
+**This is why `--register-iters` ships at 6 rather than upstream's 5.** It costs
+~1.2 s against ~1.05 s, and registration comes off the pair loop's critical path
+once async registration lands, so the 15% is cheap against a silent 1-in-30
+pose error. **Pass `--register-iters 3` when registration latency actually
+matters** — a live demo, a throughput run — which is ~0.7 s and carries the same
+failure rate 5 did.
 
 **The ROI crop moves the principal point.** The server subtracts the crop origin
 from `cx`/`cy`. Passing the full-frame `K` would put the object at the wrong

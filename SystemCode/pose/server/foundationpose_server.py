@@ -290,7 +290,30 @@ def main() -> int:
                         help="FoundationPose checkout to import from. This server lives in our "
                              "repo, so the checkout is not on sys.path by default and must be "
                              "named explicitly rather than assumed from the working directory.")
-    parser.add_argument("--register-iters", type=int, default=5)
+    # 6, not upstream's 5 and not NVIDIA's 3. This is a correctness setting, and
+    # the reason is measured: training/pose/registration_quality.py over 30
+    # independent registrations on mustard0 (docs/results/registration_quality.json,
+    # docs/TRT_PLAN.md 7A).
+    #
+    # Registration picks a winner from 252 orientation hypotheses. At 2, 3, 4 AND
+    # 5 iterations it picks the WRONG one on ~1 frame in 30 -- frame 634 lands
+    # 121 mm and 162 deg from the pose the validated tracker holds there, and all
+    # four settings land in the same wrong basin. 6 was the only value tested
+    # with zero such failures; 8 confirms it from the other side. So this is not
+    # slow convergence that more iterations polish away, it is hypothesis
+    # selection that more iterations escape.
+    #
+    # It matters because nothing downstream catches it. Fusion's disagreement
+    # gate keeps the higher-scoring view, and the FoundationPose score is
+    # degenerate -- 0.82 on every frame (see README.md "Findings worth knowing").
+    # A badly registered view therefore wins the tie-break about half the time.
+    #
+    # Cost: ~1198 ms against 1043 ms at 5, and 706 ms at 3. Registration is off
+    # the pair loop's critical path once async registration lands, so the 15% is
+    # cheap insurance. **Pass --register-iters 3 when registration latency
+    # actually matters** (a live demo, a throughput measurement) and accept the
+    # 1-in-30 failure rate that 5 carried anyway.
+    parser.add_argument("--register-iters", type=int, default=6)
     parser.add_argument("--track-iters", type=int, default=2)
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
