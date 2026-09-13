@@ -120,7 +120,7 @@ The module requires the project to develop, integrate and demonstrate at least t
 | # | PRS Aspect | Implementation in The Eyes |
 |---|---|---|
 | ① | Supervised / unsupervised learning scenarios | **Supervised:** YOLOv8 fine-tuned on synthetically generated labelled data (detection). **Unsupervised:** Euclidean/DBSCAN clustering of the residual depth point cloud to segment and flag *unknown* objects that have no CAD model — an anomaly path the closed-set detector cannot cover. |
-| ② | Machine learning / deep learning techniques | **Multimodal RGB-D CNN detector:** YOLOv8n with a 4-channel early-fusion input stem (RGB + aligned metric depth), transfer-learned from COCO weights with stem inflation. FoundationPose transformer-based pose refinement and scoring, itself an RGB-D multimodal network. Both deployed via ONNX Runtime / TensorRT. Architectures and parameter counts in §5.4. |
+| ② | Machine learning / deep learning techniques | **Multimodal RGB-D CNN detector:** YOLOv8n with a 4-channel early-fusion input stem (RGB + aligned metric depth), transfer-learned from COCO weights with stem inflation, exported to ONNX and deployed to the C++ runtime through the ONNX Runtime CUDA execution provider. FoundationPose transformer-based pose refinement and scoring, itself an RGB-D multimodal network, run as PyTorch checkpoints behind the byte protocol of §5.2 — upstream FoundationPose ships no TensorRT (R1, §10). Architectures and parameter counts in §5.4. |
 | ③ | Hybrid / ensemble approach | Object-level multi-view fusion: two independent per-camera detection+pose estimates treated as ensemble members, fused by confidence-weighted pose averaging with outlier rejection (disagreement gating). Hybrid DL + classical estimation: learned per-view poses refined by a classical temporal filter (per-object EKF). |
 | ④ | Intelligent sensing / sense-making | Dual RGB-D sensing with extrinsic calibration; C++ scene-graph bridge converting fused poses into relational predicates (on, in, clear, occluded_from(view)); occlusion reasoning across viewpoints. |
 
@@ -165,7 +165,7 @@ while leaving each one self-consistent.
 
 | Component | Role | Technology | Implementation Detail |
 |---|---|---|---|
-| Detector (×2) | Per-view object detection, ROI gating | YOLOv8, RGB-D 4-channel early fusion, fine-tuned | Python training / ONNX Runtime or TensorRT inference. Trained on Replicator synthetic data (RGB + depth + labels rendered together) with domain randomisation. Depth channel initialised by inflating COCO stem weights. |
+| Detector (×2) | Per-view object detection, ROI gating | YOLOv8, RGB-D 4-channel early fusion, fine-tuned | Python training / ONNX Runtime (CUDA EP) inference in C++. Trained on Replicator synthetic data (RGB + depth + labels rendered together) with domain randomisation. Depth channel initialised by inflating COCO stem weights. |
 | Pose Estimator (×2) | Per-view 6-DoF pose from RGB-D + CAD mesh | FoundationPose | PyTorch checkpoints on sm_120 — upstream FoundationPose uses no TensorRT (R1 retired). Runs out-of-process as an inference service behind a byte protocol, keeping all runtime logic in C++17. |
 | Unknown-Object Segmenter | Cluster residual depth points not explained by detected objects | Euclidean clustering / DBSCAN (PCL) | C++. Flags unknown_object nodes in the scene graph with centroid + bounding volume. |
 | **Cross-view association ★** | Decide which detection in view A is the same physical object as which in view B | Custom C++ | Runs *before* any averaging and is the precondition for it. Per-view poses are lifted to the world frame, then greedy nearest-neighbour within a class under a 150 mm radius, with the constraint that a cluster holds **at most one estimate per camera** — two detections from one view are by definition two instances. Association order is made deterministic by sorting, so ablation arms differ in fusion policy and never in association. |
@@ -272,7 +272,7 @@ deliberately rather than letting the parameter count imply otherwise.
 
 ### 5.5 Technology Stack
 
-C++17 (fusion, scene graph, drivers) · Python 3.11 (training pipelines) · YOLOv8 · FoundationPose · ONNX Runtime C++ API / TensorRT · PCL · OpenCV · Eigen · Isaac Sim + Omniverse Replicator · Ubuntu 24.04 · SQLite (metric logging).
+C++17 (fusion, scene graph, drivers) · Python 3.11 (training pipelines) · YOLOv8 · FoundationPose · ONNX Runtime C++ API (CUDA EP) · PCL · OpenCV · Eigen · Isaac Sim + Omniverse Replicator · Ubuntu 24.04 · SQLite (metric logging).
 
 **Runtime process model: one C++ process, not ROS2** (decided 2026-09-06 when
 the live runner was built). The stages above are function calls passing the
@@ -697,7 +697,7 @@ Use of AI tools follows the NUS-ISS Policy for Use of AI in Teaching and Learnin
 | Course Module | Techniques Applied in The Eyes |
 |---|---|
 | Problem Solving Using Pattern Recognition (PSUPR) | Pattern recognition problem framing (closed-set detection + open-set anomaly path), supervised vs. unsupervised scenario design, evaluation methodology (mAP, PR curves, ADD/ADD-S) |
-| Pattern Recognition and Machine Learning Systems (PRMLS) | Deep learning for vision: CNN detector (YOLOv8 transfer learning), transformer-based pose estimation (FoundationPose), ensemble fusion of independent estimators, ONNX Runtime / TensorRT deployment |
+| Pattern Recognition and Machine Learning Systems (PRMLS) | Deep learning for vision: CNN detector (YOLOv8 transfer learning), transformer-based pose estimation (FoundationPose), ensemble fusion of independent estimators, ONNX Runtime C++ deployment |
 | Intelligent Sensing and Sense Making (ISSM) | Dual RGB-D sensing and extrinsic calibration, point-cloud clustering (DBSCAN), multi-sensor fusion with EKF temporal filtering, scene-graph relational predicate extraction (sense-making) |
 
 ---
