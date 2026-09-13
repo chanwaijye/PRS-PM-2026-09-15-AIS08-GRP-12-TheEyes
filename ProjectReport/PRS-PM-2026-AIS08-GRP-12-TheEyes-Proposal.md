@@ -425,7 +425,7 @@ Marker ids are allocated globally (the ChArUco board holds 0–31), because
 per-tray numbering would make id 100 ambiguous the moment two objects share a
 scene — which is every scene in the occlusion ablation.
 
-Marker visibility is ray-cast against the seated object at the rig's actual 35°
+Marker visibility is ray-cast against the seated object at the rig's design 35°
 elevation and ±40° azimuth rather than argued: each camera sees at least one
 marker on every tray. Because the two cameras generally read *different* markers
 on the wing trays, agreement between their independently derived object poses is
@@ -506,7 +506,7 @@ no reported delta confounds two changes.
 |---|---|---|
 | Ground truth (socket clearance, §6.3) | ≤ 0.23 mm | Negligible; cannot move a verdict |
 | Depth sensor at working distance (§7A) | 2–4 mm | **The floor.** A fused ADD-S at or below this is sensor noise, not algorithm quality |
-| Calibration residual | 0.39 / 0.33 px RMSE | Enters as a fixed world-frame bias, not scatter |
+| Calibration residual | 0.47 / 0.41 px RMSE | Enters as a fixed world-frame bias, not scatter |
 
 ADD-S is reported as **mean with a 95% bootstrap confidence interval over
 scenes** (resampling scenes, not frames — frames within a scene are strongly
@@ -555,7 +555,7 @@ real object.
 | Claim | Status | Headline figure |
 |---|---|---|
 | Dual-camera capture | **Hardware verified** | 30 fps each, hardware-synced, pair jitter 0.14–1.1 ms sigma |
-| Calibration | **Run on the real rig** | Reprojection RMSE 0.39 / 0.33 px |
+| Calibration | **Run on the real rig** | Reprojection RMSE 0.47 / 0.41 px, round trip 0.12 mm mean (recalibrated 09 Sep after the cameras moved) |
 | Sensor error budget | **Measured** | 2–4 mm depth noise at working distance — the floor the ablation is read against |
 | RGB-D detector | **Trained and deployed** | mAP@0.5:0.95 = 0.956 on synthetic val; GPU p50 3.6 ms per view |
 | Modality ablation (RGB vs. RGB-D) | **Run — negative** | +0.00076 mAP@0.5:0.95. Depth does not earn its place on this benchmark |
@@ -584,7 +584,7 @@ every outstanding metric in §7.
 |---|---|---|
 | P0 — Environment | now – mid Jul 2026 | **DONE.** Ubuntu 24.04; FoundationPose verified on sm_120, R1 retired |
 | P1 — Perception baseline | mid Jul – early Aug | **DONE.** FoundationPose end-to-end via the C++ pose_agent; detector C++/Python parity verified |
-| P2 — Fusion + hardware | Aug | **Done bar calibration.** Fusion, scene graph, dual-camera bring-up and hardware sync complete; rig geometry derived from measured intrinsics; calibration awaits the ChArUco board (~05 Sep) |
+| P2 — Fusion + hardware | Aug – early Sep | **DONE.** Fusion, scene graph, dual-camera bring-up and hardware sync complete; rig geometry derived from measured intrinsics; rig calibrated 06 Sep, recalibrated 09 Sep after the cameras moved (RMSE 0.47 / 0.41 px) |
 | P3 — Dataset + evaluation | late Aug – Sep | **Largely done.** `synth50k_v2` generated (40,012 train / 9,988 val), RGB-D detector trained and exported to ONNX, C++/Python parity re-verified against the trained network, both ablations run — modality (negative result) and dataset-size — see §7A. Outstanding: real-capture evaluation, which needs the printed objects |
 | P4 — Proposal | by **15 Sep 2026** | Proposal submitted (this document, finalised) |
 | — First Presentation | **30 Sep 2026**, 6:30–10:30 pm, Zoom | Goals, data resources, techniques, progress |

@@ -41,7 +41,7 @@ Reported from actual runs; nothing in this table is projected. Figures marked
 | Module | State | Evidence |
 |---|---|---|
 | `camera` | Built, **verified on hardware** | Both D435i at 30.0 fps, 848×480 aligned; hardware-synced pair jitter **0.14–1.1 ms sigma** (33 ms budget); selection by serial survived four replugs |
-| `calibration` | Built, **run on the real rig 2026-09-06** | Real extrinsics committed: reprojection RMSE **0.39 / 0.33 px**. Round-trip check catches a 2 cm misregistration per-camera RMSE cannot see |
+| `calibration` | Built, **run on the real rig 2026-09-06, recalibrated 2026-09-09** | Current extrinsics: reprojection RMSE **0.47 / 0.41 px**, round trip 0.12 mm mean against a 5 mm gate. Recalibration was forced by a physical move the camera-to-camera invariant caught: baseline 749.9 → 706.7 mm, relative rotation 81.96° → 76.77° (design 737 mm, 80°) |
 | `detector` | Built, **trained and deployed** | `synth50k_v2`, 40 epochs, ONNX, C++/Python parity re-verified. GPU **p50 3.60 / 3.43 ms per view** (12.60 / 12.37 CPU), same detections either provider |
 | `pose` | Built, **verified end-to-end** | Drives the real FoundationPose server: 30/30 frames, p50 11.1 ms end to end |
 | `fusion` ★ | Built, **first real-object run 2026-09-06** | Eight-arm ablation harness (below, *synthetic*). 150 live pairs of a printed cube: both views fused on every pair, 0 gate rejections, per-view disagreement 11 mm |
@@ -501,8 +501,9 @@ negative result.
 **No delivery gates anything, and the rig is calibrated.** The sync cable
 (08-27), ChArUco board (08-28, decode-verified on a real capture) and Isaac Sim
 5.1.0 are all in place, meshes acquired 09-04. On 2026-09-06 `calib_agent` ran
-against the mounted rig and the real extrinsics are committed (RMSE 0.39 / 0.33
-px), and `runtime_agent` drives the full pipeline live at p50 51.7 ms per pair.
+against the mounted rig, and after the cameras moved it was rerun on 2026-09-09
+(RMSE 0.47 / 0.41 px); `runtime_agent` drives the full pipeline live at p50
+51.7 ms per pair.
 
 **The whole chain has run on a real object.** On 150 live pairs of a printed cube
 — with fixed boxes standing in for a detector not yet trained on real data — the
