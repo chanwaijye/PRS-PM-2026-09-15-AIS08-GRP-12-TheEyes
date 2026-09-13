@@ -212,7 +212,7 @@ distance is the board's oblique far corner at 884 mm, not the 0.70 m standoff
 
 ### 4.1 Multi-view fusion: the eight-arm ablation (*synthetic*)
 
-Headline ablation through the real module chain on *synthetic* input (200
+The fusion ablation, run through the real module chain on *synthetic* input (200
 frames, 3 objects, 10 mm/axis Gaussian per-view noise, two objects occluded from
 `cam_over` on 3 of 4 frames). Views, policy (naive mean vs. gated
 confidence-weighted fuse) and EKF each vary independently:
@@ -313,8 +313,7 @@ Retrained on the harder data, 40 epochs, 40,012 train / 9,988 val:
 | **red_cube** | **6,622** | 0.988 | **0.963** | 0.992 | **0.915** |
 | **all** | 25,932 | 0.991 | 0.983 | **0.994** | **0.956** |
 
-**The headline finding is that harder scenes did not prevent saturation at
-mAP@0.5.** It converged to 0.994 against the easy dataset's 0.995 — a difference
+**Harder scenes did not prevent saturation at mAP@0.5.** It converged to 0.994 against the easy dataset's 0.995 — a difference
 of one thousandth. What changed is everything underneath: mAP@0.5:0.95 fell from
 0.985 to 0.956, and convergence slowed from one epoch to roughly eleven.
 
