@@ -19,9 +19,9 @@
 
 ## 1. Introduction
 
-A robot that plans intelligently but cannot see is blind. In the preceding Intelligent Reasoning Systems practice module, I built *The Planner* — a hybrid symbolic-neural task reasoning system that converts natural language instructions into executed robot motion. That system established the perception *interface* — the schema of object identities, poses and relations the planner consumes — and demonstrated task reasoning against simulator ground-truth poses. *The Eyes* implements that interface with real sensing: multi-view fusion, occlusion resilience, and quantified sim-to-real transfer, none of which existed in the prior module.
+A robot that plans intelligently but cannot see is blind. In the preceding Intelligent Reasoning Systems practice module, I built *The Planner* — a hybrid symbolic-neural task reasoning system that converts natural language instructions into executed robot motion. That system defined what it needs from perception — object identities, poses and relations — and demonstrated task reasoning against simulator ground-truth poses. *The Eyes* supplies them from real sensing: multi-view fusion, occlusion resilience, and quantified sim-to-real transfer, none of which existed in the prior module.
 
-*The Eyes* is a real-time perception system that takes raw RGB-D streams from two cameras at different vantage points and produces a structured, relational scene graph: which objects are present, their full 6-DoF poses, and their spatial relationships (on, in, clear, occluded-by). The output interface is identical to the PDDL state facts consumed by *The Planner*, so the perception layer drops into the existing planning stack without modification — replacing simulator ground truth with genuine machine perception.
+*The Eyes* is a real-time perception system that takes raw RGB-D streams from two cameras at different vantage points and produces a structured, relational scene graph: which objects are present, their full 6-DoF poses, and their spatial relationships (on, in, clear, occluded-by). Real output from this system, fed to *The Planner*'s world-state ingress, has already produced valid plans with no code changed on either side (`docs/PM1_INTEGRATION.md`). The PDDL vocabularies themselves differ — of *The Planner*'s eleven predicates only `clear` matches — so the scene graph is a perception interface in its own right rather than a drop-in replacement for the planner's state facts.
 
 ### 1.1 Project Goals
 
@@ -39,7 +39,7 @@ The system perceives a tabletop manipulation scene containing up to 6 rigid obje
 
 The MVP is the minimum slice satisfying every graded deliverable and all four PRS technique categories: the **single-camera pipeline** on a real camera; the **second camera + multi-view fusion ★** with its occlusion ablation (§7.1), which *is* the ensemble claim ③ and is non-negotiable; the **scene-graph bridge ★** emitting PDDL init facts; and the **evaluation numbers**. Acceptance criteria for each are in §11.1.
 
-Items above MVP are cut in this order under schedule pressure (Risk R5): (1) Jetson deployment test; (2) unknown-object DBSCAN path — losing the unsupervised half of category ①, though the supervised half still satisfies it; (3) live PM1 integration demo — the contract stays demonstrable via logged output; (4) digital-twin viewport (§5.6).
+Items above MVP are cut in this order under schedule pressure (Risk R5): (1) Jetson deployment test; (2) unknown-object DBSCAN path — losing the unsupervised half of category ①, though the supervised half still satisfies it; (3) live PM1 integration demo — **cut 2026-09-08** on schedule grounds, and discharged by logged output: real fused poses from two live runs drove *The Planner* to valid plans (`docs/PM1_INTEGRATION.md`); (4) digital-twin viewport (§5.6).
 
 ---
 
@@ -117,7 +117,7 @@ Tobin et al. (2017) showed that randomising textures, lighting and camera pose i
 
 ### 3.6 Related Systems & What This Project Adds
 
-Mature components are deliberately adopted, not reimplemented: Isaac ROS ships a single-view FoundationPose pipeline, and detection, calibration (OpenCV), clustering (PCL) and Kalman filtering are established tooling. No packaged solution exists for the integration this project targets — object-level fusion of two RGB-D viewpoints into one consistent world state with disagreement gating, emitting relational predicates in the exact state language of a downstream PDDL planner. Published multi-view pose fusion exists as papers, not deployable components. The posture mirrors PM1: established components at the edges, from-first-principles C++ at the integration core — cross-view association, multi-view fusion and the scene-graph bridge, marked ★ in §5.2. Those three are where an off-the-shelf library would substitute for the work being assessed, which is why they are the modules the occlusion ablation tests and the last ones cut (§1.3).
+Mature components are deliberately adopted, not reimplemented: Isaac ROS ships a single-view FoundationPose pipeline, and detection, calibration (OpenCV), clustering (PCL) and Kalman filtering are established tooling. No packaged solution exists for the integration this project targets — object-level fusion of two RGB-D viewpoints into one consistent world state with disagreement gating, emitting relational predicates as PDDL facts for a symbolic planner. Published multi-view pose fusion exists as papers, not deployable components. The posture mirrors PM1: established components at the edges, from-first-principles C++ at the integration core — cross-view association, multi-view fusion and the scene-graph bridge, marked ★ in §5.2. Those three are where an off-the-shelf library would substitute for the work being assessed, which is why they are the modules the occlusion ablation tests and the last ones cut (§1.3).
 
 ---
 
@@ -156,7 +156,7 @@ flowchart TD
     F --> S["Scene-Graph Bridge ★<BR>poses → relational predicates<BR>(C++)"]
 
     S --> O1(["scene_state<BR>scene graph JSON"])
-    S --> O2(["PDDL state facts<BR>→ The Planner (PM1)"])
+    S --> O2(["PDDL (:init) facts"])
 ```
 
 ★ = written from first principles in C++; no off-the-shelf fusion or scene-graph library, per §3.6.
@@ -288,12 +288,11 @@ the live runner was built). The stages above are function calls passing the
 `INTERFACES.md` structs in-process, not nodes exchanging messages. ROS2 Jazzy
 was the original plan and is not used: for a fixed six-stage pipeline on one
 machine it buys nothing over direct calls and costs serialisation on the hot
-path, a second build system, and a distro pin that conflicts with PM1's Humble.
-The message-shaped contract survives the change unaltered — `INTERFACES.md`
-still specifies `scene_state` and the PDDL facts as the boundary, so a ROS2
-publisher is a thin adapter over the same structs if PM1 or the capstone later
-wants one. This keeps the PM1 integration a contract, not a shared workspace, which
-is what §2.2 required of it.
+path and a second build system. Nothing downstream needs it either: *The
+Planner* ships no ROS2 code — its bridge is FastAPI (verified 2026-09-08). The
+message-shaped contract survives unaltered — `INTERFACES.md` still specifies
+`scene_state` and the PDDL facts as the boundary, so a ROS2 publisher remains a
+thin adapter over the same structs if the capstone later wants one.
 
 ### 5.6 Digital-Twin Reconstruction (stretch deliverable)
 
@@ -589,7 +588,7 @@ every outstanding metric in §7.
 | P3 — Dataset + evaluation | late Aug – Sep | **Largely done.** `synth50k_v2` generated (40,012 train / 9,988 val), RGB-D detector trained and exported to ONNX, C++/Python parity re-verified against the trained network, both ablations run — modality (negative result) and dataset-size — see §7A. Outstanding: real-capture evaluation, which needs the printed objects |
 | P4 — Proposal | by **15 Sep 2026** | Proposal submitted (this document, finalised) |
 | — First Presentation | **30 Sep 2026**, 6:30–10:30 pm, Zoom | Goals, data resources, techniques, progress |
-| P5 — Hardening + integration | Oct | Full evaluation, PM1 integration demo, unknown-object path, Jetson test |
+| P5 — Hardening | Oct | Full evaluation, unknown-object path, Jetson test |
 | P6 — Final deliverables | by **31 Oct 2026** | Runnable system, datasets, final report, 10–15 min video, both slide decks, individual report, peer review |
 
 ---
@@ -661,7 +660,8 @@ than asserted:
 
 **Cut order under schedule pressure** (§1.3, mirrored here so the graded list and
 the MVP agree): Jetson deployment test → unknown-object DBSCAN path → live PM1
-integration demo (logged output suffices) → digital-twin viewport. The occlusion
+integration demo (**cut 2026-09-08**, discharged by logged output) → digital-twin
+viewport. The occlusion
 ablation is never cut; if it cannot be produced on real captures, that fact and
 its cause are the reported result.
 
@@ -670,7 +670,7 @@ its cause are the reported result.
 | Component | Weight | How this project addresses it |
 |---|---|---|
 | First Presentation | 5% | Goals, data resources, techniques, progress at end of P3 — concrete baseline metrics already in hand |
-| Final Presentation | 10% | Occlusion ablation as the demo centrepiece; live PM1 integration if stable |
+| Final Presentation | 10% | Occlusion ablation as the demo centrepiece |
 | Final Report | 15% | Evaluation plan (§7) maps directly onto required report sections |
 | Final System | 15% | Fully runnable, self-contained, documented; reproducible from ZIP |
 | Peer Review | 5% | Solo submission — 5% deduction accepted (established PM1 precedent) |

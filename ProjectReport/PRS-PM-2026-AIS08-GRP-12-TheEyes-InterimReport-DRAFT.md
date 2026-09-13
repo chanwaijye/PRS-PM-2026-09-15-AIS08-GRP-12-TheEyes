@@ -62,8 +62,9 @@ Reported from actual runs; nothing in this table is projected. Figures marked
 The delivered runtime is **one C++ process, not ROS2** (decided 2026-09-06 with
 the live runner). The six stages pass the `INTERFACES.md` structs by function
 call rather than as messages. For a fixed pipeline on one machine this costs
-nothing and avoids serialisation on the hot path, a second build system, and a
-distro pin conflicting with PM1's Humble. `INTERFACES.md` still specifies
+nothing and avoids serialisation on the hot path and a second build system. Nor
+does anything downstream need ROS2: *The Planner* ships none — its bridge is
+FastAPI (verified 2026-09-08). `INTERFACES.md` still specifies
 `scene_state` and the PDDL facts as the boundary, so a ROS2 publisher remains a
 thin adapter over the same structs.
 
@@ -478,9 +479,9 @@ geometric test passes on a false claim.
 `in` now requires the container's class to be declared in
 `predicates.yaml: in.container_classes`, default-deny, checked before any
 geometry. The shipped list is `[bowl]`. Default-deny because the errors are not
-symmetric: containment suppresses every `on` fact for the contained object and
-PM1 reads it as not directly pickable, so a false positive removes actions from
-the planner while a false negative only forgoes a fact. `unknown_object` never
+symmetric: containment is exclusive in extraction, so a false `in` suppresses
+every true `on` fact for the contained object, while a false negative forgoes
+only the `in` fact itself. `unknown_object` never
 qualifies, which follows from the default rather than a special case.
 
 The regression test asserts that the volume and centroid gates would *not* have
