@@ -177,10 +177,10 @@ and where the output of offline training enters the runtime.
 
 ```mermaid
 flowchart TD
-    MESH[("Object meshes<br>re-centred OBJ<br>[C]")]
     FPW[("FoundationPose weights<br>pretrained, frozen")]
 
     subgraph TRAIN["Offline training — Python"]
+        MESH[("Object meshes<br>re-centred OBJ<br>[C]")]
         REP["Replicator render<br>domain randomisation,<br>D435i depth-noise model<br>[A]"]
         DS[("synth50k_v2<br>RGB-D .npy + YOLO labels<br>[B]")]
         TR["train.py<br>YOLOv8n, 4-channel stem"]
@@ -199,7 +199,7 @@ flowchart TD
         SCN[("scene.yaml<br>static table")] --> SG
         CAM["2× D435i<br>selected by serial"] --> PAIR["frame pairer<br>hardware-synced"]
         PAIR --> DET["RGB-D detector ×2<br>ONNX Runtime, CUDA<br>[A] [B]"]
-        DET --> POSE["FoundationPose ×2<br>socket server"]
+        DET --> POSE["FoundationPose ×2<br>socket server<br>[C]"]
         POSE --> FUS["association + fusion ★"]
         FUS --> SG["scene graph ★"]
         SG --> PDDL(["PDDL (:init) facts"])
@@ -209,25 +209,22 @@ flowchart TD
     end
 
     subgraph EVAL["Offline evaluation — C++"]
-        GT["gt_from_trays<br>session + ArUco trays"]
-        ABL["ablation_from_log<br>8-arm ADD-S"]
+        GT["gt_from_trays<br>session, ArUco trays,<br>extrinsics"]
+        ABL["ablation_from_log<br>8-arm ADD-S<br>[C]"]
     end
 
     MESH --> REP
-    MESH --> POSE
-    MESH --> ABL
     FPW --> POSE
     ONNX -->|"parity-checked<br>[D]"| DET
     EXT --> FUS
-    EXT --> GT
     GT -->|ground_truth| DB
     DB --> ABL
 ```
 
 Solid arrows carry data; the dotted arrow is replay, which feeds a recorded
 session back into the same pipeline in place of the cameras. Four things must
-agree between training and inference, and a mismatch in any of them fails
-silently rather than raising an error:
+agree between training and inference — tagged [A]–[D] where they occur — and a
+mismatch in any of them fails silently rather than raising an error:
 
 - **[A] Depth encoding** — invalid-depth sentinel, 0.20–1.50 m clip and letterbox
   padding, written once in Python for training and once in C++ for inference;
