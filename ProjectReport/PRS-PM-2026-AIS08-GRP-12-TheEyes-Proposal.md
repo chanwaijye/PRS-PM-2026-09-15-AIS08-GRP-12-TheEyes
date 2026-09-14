@@ -345,9 +345,10 @@ Evidence for every row is in the companion **Interim Report** (`PRS-PM-2026-AIS0
 | Modality and dataset-size ablations | **Run** | Depth adds +0.00076 mAP@0.5:0.95; more data still improves localisation |
 | Multi-view fusion, 8 arms | **Run (*synthetic*)** | Second camera buys recall (0.352 → 0.485); EKF buys accuracy (~2.7 mm) |
 | Whole chain, live | **Run on hardware** | p50 51.7 ms per pair; two views fused on 150/150 pairs of a printed cube |
-| **Real-capture ADD-S, mAP, predicate accuracy** | **Not measured** | Needs the printed object set and its ArUco trays |
+| Objects, trays and ArUco markers | **Printed** (all six parts) | Red cube within 0.30% of CAD; its socket clearance 0.225 mm; marker squares 40.00 mm |
+| **Real-capture ADD-S, mAP, predicate accuracy** | **Not measured** | Next: bottle and bowl fit checks, then capture |
 
-The remaining dependency is the printed object set and its trays (§6.3), without which no real-capture metric in §7 can be measured.
+All six parts are printed, and the cube, its tray and the marker scale have passed their checks. Before the scored captures (§7.1), the bottle and bowl still need socket fit checks and the marker cards a flush check.
 
 ---
 

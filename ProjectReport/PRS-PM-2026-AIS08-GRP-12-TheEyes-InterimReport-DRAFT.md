@@ -346,6 +346,53 @@ they print in one of the three **distractor neutrals** the renderer already
 samples (§3.3) rather than a target colour — a tray in a class colour would put a
 large slab of that class's colour directly beneath the object.
 
+### 3.5 Printed parts: checks so far
+
+All six parts — the three objects and their three trays — and the ArUco marker
+sheet were printed by 2026-09-14. The checks below are recorded in
+`docs/PRINT_PLAN.md` §2d and §4; anything not listed there has not been measured.
+
+**Dimensional check — red cube, passed 2026-09-13.**
+
+| axis | nominal | measured | error |
+|---|---|---|---|
+| X | 50.00 mm | 49.88 mm | −0.12 mm (−0.24%) |
+| Y | 50.00 mm | 49.85 mm | −0.15 mm (−0.30%) |
+| Z | 50.00 mm | 50.10 mm | +0.10 mm (+0.20%) |
+
+Worst axis 0.30%, a third of the 1% stop line. No compensation is applied, and
+`config/meshes.yaml` is unchanged: the mesh stays the reference, and this table is
+the recorded error of the part against it.
+
+**Socket fit — red cube tray, passed 2026-09-13.** The cube seats under its own
+weight with no lateral play perceptible by hand.
+
+| socket opening | drawn | measured | realised clearance per side |
+|---|---|---|---|
+| X | 50.40 mm | 50.32 mm | 0.220 mm |
+| Y | 50.40 mm | 50.30 mm | 0.225 mm |
+
+The measured **0.225 mm** replaces the CAD figure as the ground-truth bound for
+`red_cube`: 2.6% of its 8.66 mm ADD-S threshold. It does not carry over to the
+other trays, whose sockets are curved; the bowl's is also drawn tighter, at
+0.082–0.118 mm.
+
+**Marker scale — ArUco sheet, passed 2026-09-13.** Both 100 mm scale bars
+measure 100.0 mm, and a marker square measures 40.00 mm across and down, so
+`marker_length_m: 0.0400` stands as configured. This check matters more than
+socket clearance: a marker printed 0.5% large would put every ground-truth pose
+about 3.5–4.5 mm too close to the camera at the rig's 0.7–0.9 m.
+
+**Bowl tray corrected before printing, 2026-09-12.** Cutting the socket from the
+bowl's 0.99 mm shell had left the bowl's interior behind as a loose island of
+plate material. The generator now removes any body the cut leaves enclosed by the
+object, and its `--verify` fails on more than one body. The tray fell from 193 g
+to 176 g, and `config/marker_trays.yaml` — the transform chain and the measured
+clearances — is byte-identical.
+
+**Not yet checked:** the bottle and bowl against CAD, the bottle and bowl socket
+fits, and whether the marker cards sit flush in their recesses.
+
 ---
 
 ## 4. Measured results
@@ -625,8 +672,8 @@ qualifies, which follows from the default rather than a special case.
 
 The regression test asserts that the volume and centroid gates would *not* have
 rejected the failing geometry, so this cannot later be mistaken for a tolerance
-that needed widening. Predicate accuracy is no longer blocked on this; it
-remains blocked on the printed objects, like every other real-capture metric.
+that needed widening. Predicate accuracy is no longer blocked on this; like
+every other real-capture metric, it now waits on the scored captures.
 
 ---
 
@@ -653,10 +700,9 @@ consistent with 2–4 mm depth noise plus calibration. *This is one observation,
 not a measurement, and it is not an ADD-S number* — but it is the first evidence
 on real data that the multi-view claim holds end to end.
 
-The longest pole is now **the printed object set with its ArUco trays** (proposal §6.3):
-the tray geometry is authored and the cube is printed, but the bottle, bowl and
-trays are not, and without them there is no ground truth and so no real ADD-S.
-The order is print → calliper-verify → mount → capture → score.
+**All six printed parts exist as of 2026-09-14** (§3.5). The cube, its tray and
+the marker scale have passed their checks; the bottle and bowl fit checks and the
+marker-card flush check remain, then capture → score.
 
 Synthetic scene fidelity was the last blocker and closed on 2026-09-04: depth
 validity went from 4–15% to **100.0%** and labelled targets per frame from ~0 to
