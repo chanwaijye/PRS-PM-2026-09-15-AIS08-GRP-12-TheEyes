@@ -1,6 +1,6 @@
 # Digital-twin reconstruction — implementation plan
 
-`twin_agent` (AGENTS.md §8), proposal §5.6. **Stretch deliverable, cut order #4.**
+`twin_agent` (AGENTS.md §8), proposal §5.7. **Stretch deliverable, cut order #4.**
 Written 2026-09-07; nothing here is built yet.
 
 This is a plan, not a status file. Every number quoted below is sourced from
@@ -15,7 +15,7 @@ Spawn the CAD meshes in Isaac Sim at the fused world poses, so the observed
 tabletop is reconstructed as a live virtual scene.
 
 Its demonstration value is obvious and is not the reason to build it. The reason
-is the second one proposal §5.6 gives: **a reconstruction that stands up is
+is the second one proposal §5.7 gives: **a reconstruction that stands up is
 evidence that `SceneState` is a sufficient world-state encoding**, which is the
 property PM4 depends on. If `{class, mesh, pose_w, extent}` per object is enough
 to rebuild the scene, then it is enough to be a world model's state. That claim

@@ -93,7 +93,7 @@ outside the code because the module is written from first principles:
 
 Read from `runs/detector/rgbd_50k_v2/weights/best.pt` with a forward pass at
 1×4×640×640, so the shapes are observed rather than derived from the YAML.
-Design rationale is in proposal §5.4; this is the as-built record.
+Design rationale is in proposal §5.5; this is the as-built record.
 
 | # | Module | Output | Params |
 |---|---|---|---|

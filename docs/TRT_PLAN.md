@@ -70,7 +70,7 @@ ring-trimmed frames in the pairer.
 
 Both networks take two 6-channel 160×160 crops (rendered vs. observed) and share
 the same encoder topology. Refiner 17,043,797 parameters, scorer 15,986,512 —
-read from `model_best.pth`, matching proposal §5.4. Multiply–accumulates per
+read from `model_best.pth`, matching proposal §5.5. Multiply–accumulates per
 hypothesis, from the layer shapes in `learning/models/`:
 
 | Block | Shape work | GMAC |
@@ -151,10 +151,10 @@ There is, however, a line to fix before 09-15. Proposal §4, category ②, ends:
 > multimodal network. **Both deployed via ONNX Runtime / TensorRT.**
 
 FoundationPose is not deployed via either — it runs PyTorch checkpoints behind
-the byte protocol. The proposal's own §5.2 table already says so correctly
+the byte protocol. The proposal's own §5.3 table already says so correctly
 ("PyTorch checkpoints on sm_120 — upstream FoundationPose uses no TensorRT
-(R1 retired)"), so the proposal currently contradicts itself. Its §5.5 stack
-list, its §5.2 detector row and its Appendix B course-module mapping carry
+(R1 retired)"), so the proposal currently contradicts itself. Its §5.6 stack
+list, its §5.3 detector row and its Appendix B course-module mapping carry
 TensorRT for the same reason and have the same problem.
 
 **Edit applied 2026-09-13**, independent of this plan: the ONNX/TensorRT
@@ -172,7 +172,7 @@ internal docs are not yet:
 | File | Line | Says | Reality |
 |---|---|---|---|
 | `ProjectReport/…Proposal.md` | §4 ② | "Both deployed via ONNX Runtime / TensorRT" | Detector only |
-| `ProjectReport/…Proposal.md` | §5.2, §5.5, App. B | TensorRT in the stack and on the detector row | Nothing uses it; the detector is ONNX Runtime CUDA EP |
+| `ProjectReport/…Proposal.md` | §5.3, §5.6, App. B | TensorRT in the stack and on the detector row | Nothing uses it; the detector is ONNX Runtime CUDA EP |
 | `AGENTS.md` | 151 | `pose_agent` owns "TensorRT engine management" | It owns a Unix-socket client to a Python server |
 | `AGENTS.md` | 160 | "R1 gate: TensorRT engines build and run on sm_120" | Retired on a false premise; `SystemCode/pose/README.md` already records it Met |
 | `README.md` | 27, 173 | "ONNX Runtime / TensorRT — C++ inference deployment" | ONNX Runtime yes, TensorRT no |

@@ -39,7 +39,7 @@ The system perceives a tabletop manipulation scene containing up to 6 rigid obje
 
 The MVP is the minimum slice satisfying every graded deliverable and all four PRS technique categories: the **single-camera pipeline** on a real camera; the **second camera + multi-view fusion ★** with its occlusion ablation (§7.1), which *is* the ensemble claim ③ and is non-negotiable; the **scene-graph bridge ★** emitting PDDL init facts; and the **evaluation numbers**. Acceptance criteria for each are in §11.1.
 
-Items above MVP are cut in this order under schedule pressure (Risk R5): (1) Jetson deployment test; (2) unknown-object DBSCAN path — losing the unsupervised half of category ①, though the supervised half still satisfies it; (3) live PM1 integration demo — **cut 2026-09-08** on schedule grounds, and discharged by logged output: real fused poses from two live runs drove *The Planner* to valid plans (`docs/PM1_INTEGRATION.md`); (4) digital-twin viewport (§5.6).
+Items above MVP are cut in this order under schedule pressure (Risk R5): (1) Jetson deployment test; (2) unknown-object DBSCAN path — losing the unsupervised half of category ①, though the supervised half still satisfies it; (3) live PM1 integration demo — **cut 2026-09-08** on schedule grounds, and discharged by logged output: real fused poses from two live runs drove *The Planner* to valid plans (`docs/PM1_INTEGRATION.md`); (4) digital-twin viewport (§5.7).
 
 ---
 
@@ -105,7 +105,7 @@ FoundationPose (Wen et al., NVIDIA 2024) unifies model-based pose estimation and
 
 ### 3.3 Multi-View / Multi-Sensor Fusion
 
-Fusing estimates from multiple sensors is classical estimation theory: independent measurements of one latent state combined by uncertainty weighting (Kalman formulation for Gaussian errors). For 6-DoF poses rotation averaging requires care — quaternion averaging via the eigendecomposition of Markley et al. (2007). Object-level multi-view fusion, as opposed to pixel-level stereo, resolves occlusion because at least one viewpoint typically retains line of sight. What the literature does not settle is the *association* step that must precede any averaging: deciding which detection in view A is the same physical object as which in view B, under per-view pose error large enough that naive nearest-neighbour matching fails. §5.2 specifies the approach taken.
+Fusing estimates from multiple sensors is classical estimation theory: independent measurements of one latent state combined by uncertainty weighting (Kalman formulation for Gaussian errors). For 6-DoF poses rotation averaging requires care — quaternion averaging via the eigendecomposition of Markley et al. (2007). Object-level multi-view fusion, as opposed to pixel-level stereo, resolves occlusion because at least one viewpoint typically retains line of sight. What the literature does not settle is the *association* step that must precede any averaging: deciding which detection in view A is the same physical object as which in view B, under per-view pose error large enough that naive nearest-neighbour matching fails. §5.3 specifies the approach taken.
 
 ### 3.4 Scene Graphs for Robotics
 
@@ -119,7 +119,7 @@ Tobin et al. (2017) showed that randomising textures, lighting and camera pose i
 
 The techniques used here are established. Object-level multi-view fusion, quaternion averaging, Kalman filtering, outlier gating and deriving symbolic relations from geometry all have prior work, and mature components are adopted rather than reimplemented: Isaac ROS ships a single-view FoundationPose pipeline, and detection, calibration (OpenCV) and clustering (PCL) are standard tooling. This proposal makes no novelty claim for these techniques, individually or in combination.
 
-What the project does is apply them to a concrete two-camera rig and measure the result. Cross-view association, multi-view fusion and the scene-graph bridge (★ in §5.2) are written in C++ without an off-the-shelf fusion or scene-graph library, so that the techniques are implemented and understood rather than configured. They are also what the occlusion ablation tests, and part of the MVP that is not cut under schedule pressure (§1.3).
+What the project does is apply them to a concrete two-camera rig and measure the result. Cross-view association, multi-view fusion and the scene-graph bridge (★ in §5.3) are written in C++ without an off-the-shelf fusion or scene-graph library, so that the techniques are implemented and understood rather than configured. They are also what the occlusion ablation tests, and part of the MVP that is not cut under schedule pressure (§1.3).
 
 ---
 
@@ -130,7 +130,7 @@ The module requires the project to develop, integrate and demonstrate at least t
 | # | PRS Aspect | Implementation in The Eyes |
 |---|---|---|
 | ① | Supervised / unsupervised learning scenarios | **Supervised:** YOLOv8 fine-tuned on synthetically generated labelled data (detection). **Unsupervised:** Euclidean/DBSCAN clustering of the residual depth point cloud to segment and flag *unknown* objects that have no CAD model — an anomaly path the closed-set detector cannot cover. |
-| ② | Machine learning / deep learning techniques | **Multimodal RGB-D CNN detector:** YOLOv8n with a 4-channel early-fusion input stem (RGB + aligned metric depth), transfer-learned from COCO weights with stem inflation, exported to ONNX and deployed to the C++ runtime through the ONNX Runtime CUDA execution provider. FoundationPose transformer-based pose refinement and scoring, itself an RGB-D multimodal network, run as PyTorch checkpoints behind the byte protocol of §5.2 — upstream FoundationPose ships no TensorRT (R1, §10). Architectures and parameter counts in §5.4. |
+| ② | Machine learning / deep learning techniques | **Multimodal RGB-D CNN detector:** YOLOv8n with a 4-channel early-fusion input stem (RGB + aligned metric depth), transfer-learned from COCO weights with stem inflation, exported to ONNX and deployed to the C++ runtime through the ONNX Runtime CUDA execution provider. FoundationPose transformer-based pose refinement and scoring, itself an RGB-D multimodal network, run as PyTorch checkpoints behind the byte protocol of §5.3 — upstream FoundationPose ships no TensorRT (R1, §10). Architectures and parameter counts in §5.5. |
 | ③ | Hybrid / ensemble approach | Object-level multi-view fusion: two independent per-camera detection+pose estimates treated as ensemble members, fused by confidence-weighted pose averaging with outlier rejection (disagreement gating). Hybrid DL + classical estimation: learned per-view poses refined by a classical temporal filter (per-object EKF). |
 | ④ | Intelligent sensing / sense-making | Dual RGB-D sensing with extrinsic calibration; C++ scene-graph bridge converting fused poses into relational predicates (on, in, clear, occluded_from(view)); occlusion reasoning across viewpoints. |
 
@@ -170,7 +170,77 @@ both metric world-frame quantities. Fusion refuses to start if any camera's
 reprojection RMSE exceeds 0.5 px, because bad extrinsics poison every fused pose
 while leaving each one self-consistent.
 
-### 5.2 Component Specifications
+### 5.2 Data Flow: Training and Inference
+
+This view follows data rather than components: what each stage reads and writes,
+and where the output of offline training enters the runtime.
+
+```mermaid
+flowchart TD
+    MESH[("Object meshes<br>re-centred OBJ<br>[C]")]
+    FPW[("FoundationPose weights<br>pretrained, frozen")]
+
+    subgraph TRAIN["Offline training — Python"]
+        REP["Replicator render<br>domain randomisation,<br>D435i depth-noise model<br>[A]"]
+        DS[("synth50k_v2<br>RGB-D .npy + YOLO labels<br>[B]")]
+        TR["train.py<br>YOLOv8n, 4-channel stem"]
+        EV["evaluate.py<br>synthetic-val mAP"]
+        ONNX[("yolov8_the_eyes.onnx")]
+        REP --> DS --> TR
+        TR --> EV
+        TR -->|export_onnx.py| ONNX
+    end
+
+    subgraph SETUP["Rig setup"]
+        CAL["calibrate<br>ChArUco board"] --> EXT[("extrinsics.yaml")]
+    end
+
+    subgraph RUN["Runtime inference — C++, one process"]
+        SCN[("scene.yaml<br>static table")] --> SG
+        CAM["2× D435i<br>selected by serial"] --> PAIR["frame pairer<br>hardware-synced"]
+        PAIR --> DET["RGB-D detector ×2<br>ONNX Runtime, CUDA<br>[A] [B]"]
+        DET --> POSE["FoundationPose ×2<br>socket server"]
+        POSE --> FUS["association + fusion ★"]
+        FUS --> SG["scene graph ★"]
+        SG --> PDDL(["PDDL (:init) facts"])
+        SG -->|every pair| DB[("metrics.sqlite")]
+        PAIR -->|record| REC[("recorded session<br>PNG pairs")]
+        REC -.->|replay| PAIR
+    end
+
+    subgraph EVAL["Offline evaluation — C++"]
+        GT["gt_from_trays<br>session + ArUco trays"]
+        ABL["ablation_from_log<br>8-arm ADD-S"]
+    end
+
+    MESH --> REP
+    MESH --> POSE
+    MESH --> ABL
+    FPW --> POSE
+    ONNX -->|"parity-checked<br>[D]"| DET
+    EXT --> FUS
+    EXT --> GT
+    GT -->|ground_truth| DB
+    DB --> ABL
+```
+
+Solid arrows carry data; the dotted arrow is replay, which feeds a recorded
+session back into the same pipeline in place of the cameras. Four things must
+agree between training and inference, and a mismatch in any of them fails
+silently rather than raising an error:
+
+- **[A] Depth encoding** — invalid-depth sentinel, 0.20–1.50 m clip and letterbox
+  padding, written once in Python for training and once in C++ for inference;
+  the two were verified once as an exact round trip.
+- **[B] Class list** — the same names in the same order in the training labels,
+  `detector.yaml` and `meshes.yaml`; a C++ test checks `detector.yaml` against
+  the mesh registry.
+- **[C] Meshes** — the same re-centred meshes render the training data (converted
+  to USD), register FoundationPose and score ADD-S.
+- **[D] Detector numerics** — the C++ ONNX path is checked against the ultralytics
+  reference implementation.
+
+### 5.3 Component Specifications
 
 | Component | Role | Technology | Implementation Detail |
 |---|---|---|---|
@@ -182,7 +252,7 @@ while leaving each one self-consistent.
 | Scene-Graph Bridge ★ | Convert fused poses into symbolic relational predicates | Custom C++ | Geometric rules over object bounding volumes: on(a,b), in(a,b), clear(a), occluded_from(a, view). Emits scene graph JSON + PDDL init facts. |
 | Calibration Suite | Intrinsics + stereo extrinsics + world-frame registration | OpenCV (ChArUco board) | One-time offline; validated by reprojection error report. |
 
-### 5.3 Interface Contract (PM1 and capstone consumers)
+### 5.4 Interface Contract (PM1 and capstone consumers)
 
 ```cpp
 // Scene graph output — consumed by The Planner (PM1) and the MANIP-WM capstone.
@@ -219,7 +289,7 @@ rather than being left free-form.
 single-view object **is** emitted, with one bit set, so a consumer can tell a
 fused pose from an unfused one and weight it accordingly.
 
-### 5.4 Network Architectures
+### 5.5 Network Architectures
 
 Three networks run at inference. Only the first is trained in this project; the
 other two are pretrained and frozen. Every figure below is read from the shipped
@@ -279,7 +349,7 @@ so the fused estimate has something real to weight.
 pretrained and frozen. What this project trains is the 4-channel stem and its
 fine-tune; the pose networks are used as supplied.
 
-### 5.5 Technology Stack
+### 5.6 Technology Stack
 
 C++17 (fusion, scene graph, drivers) · Python 3.11 (training pipelines) · YOLOv8 · FoundationPose · ONNX Runtime C++ API (CUDA EP) · PCL · OpenCV · Eigen · Isaac Sim + Omniverse Replicator · Ubuntu 24.04 · SQLite (metric logging).
 
@@ -294,7 +364,7 @@ message-shaped contract survives unaltered — `INTERFACES.md` still specifies
 `scene_state` and the PDDL facts as the boundary, so a ROS2 publisher remains a
 thin adapter over the same structs if the capstone later wants one.
 
-### 5.6 Digital-Twin Reconstruction (stretch deliverable)
+### 5.7 Digital-Twin Reconstruction (stretch deliverable)
 
 Because the scene graph carries `{class, CAD mesh, world-frame 6-DoF pose}` per object, real-to-sim scene reconstruction is nearly free: each detected object is spawned at its fused pose in Isaac Sim, producing a live digital twin of the physical tabletop. Limitations: known-CAD objects only (unknown objects appear as placeholder bounding volumes); poses are snapped-to-contact or spawned kinematic to avoid physics conflicts from residual pose error; the static environment (table) is pre-modelled. Beyond its demonstration value, the twin validates that the scene-graph representation is a sufficient world-state encoding — the property the capstone world model depends on. Stretch item: cut fourth under schedule pressure (§1.3).
 
