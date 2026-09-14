@@ -42,3 +42,7 @@ img { max-width: 100%; max-height: 180mm; object-fit: contain; }
 
 /* Slightly tighter tables than the default 6px 13px padding. */
 table th, table td { padding: 4px 8px; }
+
+/* Interim report: the printed-parts record starts its own page, so it sits whole
+   instead of straddling two with a few lines stranded before section 4. */
+h3[id^="35-printed-parts"] { break-before: page; }
