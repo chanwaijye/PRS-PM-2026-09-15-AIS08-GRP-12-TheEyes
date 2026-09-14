@@ -1,0 +1,44 @@
+/* Print layout for scripts/md_to_pdf.sh, appended to md-to-pdf's default
+   GitHub-style stylesheet. Page boundaries follow the document's structure. */
+
+/* Each major section starts on a new page. The subtitle directly under the
+   title is an h2 too, so the title block stays together on page 1. */
+h2 { break-before: page; }
+h1 + h2 { break-before: auto; }
+
+/* Exceptions: short closing sections share a page instead of each leaving one
+   nearly empty. The conclusion follows the deliverables, and Appendix B follows
+   Appendix A. Attribute selectors, because these ids start with a digit. */
+h2[id="12-conclusion"],
+h2[id^="appendix-b"] { break-before: auto; margin-top: 2em; }
+
+/* A subsection that opens with a diagram starts on a new page, so the heading,
+   the diagram and its caption read as one page. Not when it directly follows
+   its section heading, which has already started the page. */
+h3:has(+ p img) { break-before: page; }
+h2 + h3:has(+ p img) { break-before: auto; }
+
+/* The --- separators are redundant once sections start pages. */
+hr { display: none; }
+
+/* A heading never ends a page, and blocks never split across one. An
+   introductory sentence stays with the table it introduces, and no paragraph
+   leaves a one- or two-line fragment at a page edge. */
+h1, h2, h3, h4 { break-after: avoid; }
+p:has(+ table) { break-after: avoid; }
+p, li { orphans: 3; widows: 3; }
+img, pre, tr, li, blockquote { break-inside: avoid; }
+
+/* Keep each table whole. Protecting rows alone let a header row sit at the foot
+   of one page with its body on the next. Every table here fits on a page; a
+   table that did not would still break, since avoid is a preference. */
+table { break-inside: avoid; }
+thead { break-after: avoid; }
+p:has(> img) { break-inside: avoid; text-align: center; margin: 0.5em 0 1em; }
+
+/* A tall diagram shrinks to fit its page together with its heading and legend
+   (A4 at 20 mm margins leaves about 255 mm). */
+img { max-width: 100%; max-height: 180mm; object-fit: contain; }
+
+/* Slightly tighter tables than the default 6px 13px padding. */
+table th, table td { padding: 4px 8px; }
