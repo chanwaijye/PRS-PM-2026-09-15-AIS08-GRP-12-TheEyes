@@ -127,6 +127,15 @@ raw head emits 67 channels per anchor (4 box edges × 16 DFL bins + 3 classes);
 ONNX export decodes the distribution to four coordinates, giving the deployed
 `1×7×8400`.
 
+**The depth channel's cost.** The 4-channel stem is `Conv(16, 4, 3×3, s2)`, and
+it is the only layer that differs from the RGB-only ablation control:
+
+| | stem weights | total parameters |
+|---|---|---|
+| RGB-only (ablation control) | 432 — `(16,3,3,3)` | 3,011,433 |
+| **RGB-D (deployed)** | **576 — `(16,4,3,3)`** | **3,011,577** |
+| difference | +144 | **+144 (+0.005%)** |
+
 ### 2.4 Pose networks
 
 FoundationPose ships two checkpoints, both frozen. Parameter counts and module
@@ -205,6 +214,137 @@ Calibration is captured at 1920 × 1080 while the pipeline streams 848 × 480,
 because DICT_5X5 markers stop decoding below ~3 px/module and the binding
 distance is the board's oblique far corner at 884 mm, not the 0.70 m standoff
 (Appendix A.2).
+
+### 3.3 Object models and their physical instantiation
+
+Proposal §6.2 summarises this; the full record is kept here.
+
+**Acquired 2026-09-04.** Three MVP classes: `mustard_bottle` (YCB 006, from the
+FoundationPose demo data — its 0.196463 m diameter matches the 0.19646
+FoundationPose itself reports, confirming it is the mesh the estimator was
+validated against), `bowl` (YCB 024, `google_16k`), and `red_cube` (an authored
+50 mm cube, exact by construction). All are watertight, as FoundationPose
+requires.
+
+**Object-frame convention — the origin is the mesh AABB centre.** A scanned
+mesh's origin is wherever the scanner left it, and FoundationPose reports the
+pose of *that* origin, so `ObjectState::pose_w.translation()` inherits it. Two
+downstream assumptions need the centre instead: the scene-graph bounding box is
+built as `translation() ± extent`, and the `symmetric` flag asserts that
+rotations about the symmetry axis are equivalent. The raw YCB bowl fails both —
+its origin lies 43.7 mm off centre (27% of its own diameter) and off the
+symmetry axis (rim radius sd 30.5 mm about the mesh-origin axis versus 2.5 mm
+about the AABB-centre axis). Re-centring on ingest is a rigid re-parameterisation
+that leaves diameters, extents, ADD/ADD-S and pose accuracy unchanged.
+`training/prepare_meshes.py` enforces it and two automated tests re-derive it
+from the mesh files, so `config/meshes.yaml` cannot drift from the geometry it
+describes.
+
+**All three classes are 3D printed.** A mesh is only useful if the physical
+object it describes is the one in front of the cameras: FoundationPose registers
+the mesh against observed depth and ADD/ADD-S is computed over mesh vertices, so
+any object/mesh shape mismatch is added to the pose error and cannot afterwards
+be separated from it. Printing makes the match exact by construction. The cube
+is authored, so it matches trivially; the YCB bowl mesh is watertight and fully
+manifold (0 boundary, 0 non-manifold edges) and slices without repair, and
+printing additionally avoids the original's glossy enamelware, which returns
+little usable IR to an active-stereo sensor. Purchase was preferred for
+`mustard_bottle`, whose printed label is the visual signature the RGB half of
+the detector learns — but the YCB original is French's Classic Yellow **20 oz**
+(identified from the texture atlas, whose front label reads "40% MORE THAN OUR
+14 OZ", and corroborated by the YCB paper's 603 g), and that product is not
+retail-available in Singapore. Substituting the common 14 oz would reintroduce
+exactly the mismatch printing exists to prevent, and would do so invisibly: the
+detector would still fire, FoundationPose would still return a pose, and only
+ADD-S would silently carry the difference.
+
+**The synthetic renders therefore use filament, not the scanned textures.** A
+scanned texture describes an object that will never be photographed, and the
+bowl's has the scan's own specular highlights baked in, which a renderer would
+light a second time. `replicator_dataset.py` renders all three in their print
+colours with `FILAMENT_SPREAD = 0.12` of linear randomisation, so the print
+colours are fixed by the shipped `synth50k_v2` set rather than chosen at print
+time; the per-class sRGB targets and acceptable bands are in that script. Matte
+is a requirement in both directions — gloss defeats the IR projector on the real
+object (§3.2) and the renderer draws these classes at roughness 0.55–0.90, so a
+glossy print would depict something the training set does not contain.
+
+**Print constraints that affect measurement.** Slice at 100% with no bed-fitting
+rescale, and verify dimensional accuracy with callipers before relying on any
+object: a printer 1% out of true reintroduces the mismatch printing avoids. The
+bowl's scanned wall is 0.99 mm — thinner than two perimeters at a 0.4 mm nozzle
+— and must **not** be thickened for durability, since any deviation from the mesh
+enters ADD-S and cannot be separated from estimator error. Material per object
+set, computed from the meshes: 227 g.
+
+**Limitation, stated rather than glossed: all three classes are
+controlled-appearance.** Both sides of the sim-to-real comparison are under the
+project's control, so the measured gap isolates geometry, sensor and lighting
+effects rather than testing appearance-domain randomisation. That is a cleaner
+experiment in one sense and a **weaker test of proposal goal G4** in another, and the proposal's §7 reports it
+as such rather than presenting an artificially small gap as a result. Should the
+bottle become obtainable, restoring it as a purchased real-texture class recovers
+the stronger test at no cost to anything else.
+
+### 3.4 Ground-truth marker trays
+
+Proposal §6.3 summarises this; the full record is kept here.
+
+**The marker sits on a tray derived from the object mesh, not glued to the
+object.** A marker attached to a finished object gives ground truth only as good
+as the subsequent measurement of the marker-to-object offset — an error that
+enters every ADD/ADD-S figure as a constant bias, and one that is invisible
+because it leaves all results self-consistent. The offset must come from CAD, not
+callipers. Cutting a marker seat *into* the objects was rejected for a second
+reason: `synth50k_v2` was rendered from the **unmodified** meshes, so modifying a
+target object would introduce a sim-to-real gap the trained detector has never
+seen, and closing it would mean regenerating 88 GB
+(`/opt/the-eyes-data/synth50k_v2`) for a change that serves evaluation rather
+than perception.
+
+`training/author_marker_trays.py` therefore generates one tray per class: a plate
+whose socket is **boolean-subtracted from that object's own mesh**, so the fit is
+derived from the geometry rather than measured, plus recessed seats for 40 mm
+`DICT_5X5_250` markers in the same plate. The ground-truth chain is
+
+`T_cam_object = T_cam_marker · T_marker_tray · T_tray_object`
+
+where only `T_cam_marker` is observed; the other two are chosen in CAD and
+written to `config/marker_trays.yaml`. The objects themselves are untouched, so
+`assets/meshes/*.obj` remain the meshes FoundationPose registers against and
+`config/meshes.yaml`'s `diameter_m`, `extent` and `symmetric` flags remain true
+statements about the physical objects. All three classes consequently have
+ground truth that is exact by construction.
+
+The generator verifies what it produces rather than asserting it:
+
+| | `red_cube` | `mustard_bottle` | `bowl` |
+|---|---|---|---|
+| plate (mm) | 170 × 90 × 10.5 | 216 × 100 × 14.5 | 210 × 210 × 8.5 |
+| socket depth | 8.0 mm | 12.0 mm | 6.0 mm |
+| **measured socket clearance** | 0.20 mm | 0.12–0.23 mm | 0.08–0.12 mm |
+| markers visible per camera | 1 of 2 | 1 of 2 | 3 of 4 |
+| marker ids | 100–101 | 102–103 | 104–107 |
+
+**Socket clearance is the ground-truth error budget**, which is why it is
+measured rather than nominal: the object can sit anywhere within it, so the worst
+case — **0.23 mm** — bounds the ground-truth translation error. Against the
+bottle's 19.6 mm ADD-S threshold that is 1.2%, so it cannot move a verdict.
+Marker ids are allocated globally (the ChArUco board holds 0–31), because
+per-tray numbering would make id 100 ambiguous the moment two objects share a
+scene — which is every scene in the occlusion ablation.
+
+Marker visibility is ray-cast against the seated object at the rig's design 35°
+elevation and ±40° azimuth rather than argued: each camera sees at least one
+marker on every tray. Because the two cameras generally read *different* markers
+on the wing trays, agreement between their independently derived object poses is
+a free check on the print.
+
+Distractor objects used for clutter and false-positive testing need no meshes, as
+they are never detected classes. The trays are likewise not a detected class, so
+they print in one of the three **distractor neutrals** the renderer already
+samples (§3.3) rather than a target colour — a tray in a class colour would put a
+large slab of that class's colour directly beneath the object.
 
 ---
 
