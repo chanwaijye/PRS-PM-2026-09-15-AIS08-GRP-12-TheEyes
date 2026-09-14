@@ -81,6 +81,27 @@ def print_mass_g(mesh: trimesh.Trimesh) -> float:
     return (shell + INFILL * max(0.0, v_cm3 - shell)) * PLA_G_PER_CM3
 
 
+def outer_loop_xy(sec) -> np.ndarray:
+    """The xy points of a cross-section's OUTERMOST closed loop.
+
+    The bowl's section at mid-socket height is an ANNULUS: a 0.99 mm shell has an
+    inner contour as well as an outer one, and once the socket is a solid cavity
+    (`solid_cutter`) the inner contour faces no tray material at all. Measuring it
+    would report the shell's own wall thickness as though it were clearance, and
+    the number it lands on -- about 1.2 mm -- looks like a plausible fit rather
+    than a bug.
+
+    The cube and the bottle section as a single loop, so this returns every point
+    for them and the published figures for those two are unaffected.
+    """
+    loops = [np.asarray(p) for p in sec.discrete if len(p) >= 3]
+    if len(loops) <= 1:
+        return np.asarray(sec.vertices)[:, :2]
+    c = np.vstack(loops)[:, :2].mean(axis=0)
+    reach = [np.linalg.norm(l[:, :2] - c, axis=1).max() for l in loops]
+    return loops[int(np.argmax(reach))][:, :2]
+
+
 def socket_clearance_mm(tray: trimesh.Trimesh, obj_seated: trimesh.Trimesh,
                         depth_m: float) -> tuple[float, float]:
     """Measured gap between the seated object and the socket wall.
@@ -89,13 +110,13 @@ def socket_clearance_mm(tray: trimesh.Trimesh, obj_seated: trimesh.Trimesh,
     realised clearance is only approximately SOCKET_CLEARANCE_MM and varies over
     the profile. It bounds the ground-truth translation error, so it is measured
     rather than assumed. Sampled on a ring of points around the object at
-    mid-socket height.
+    mid-socket height, on the object's outer contour only -- see outer_loop_xy.
     """
     z = -depth_m / 2.0
     sec = obj_seated.section(plane_origin=[0, 0, z], plane_normal=[0, 0, 1])
     if sec is None:
         return float("nan"), float("nan")
-    pts = np.asarray(sec.vertices)[:, :2]
+    pts = outer_loop_xy(sec)
     tsec = tray.section(plane_origin=[0, 0, z], plane_normal=[0, 0, 1])
     if tsec is None:
         return float("nan"), float("nan")
@@ -187,6 +208,72 @@ def load_mesh(path: Path) -> trimesh.Trimesh:
     if len(parts) > 1:
         m = max(parts, key=lambda c: len(c.faces))
     return m
+
+
+def solidify_socket(tray: trimesh.Trimesh, plate_x: float, plate_y: float,
+                    seated: trimesh.Trimesh) -> tuple[trimesh.Trimesh, float]:
+    """Remove anything the socket cut left floating inside the cavity.
+
+    THE BUG THIS EXISTS TO KILL
+    ---------------------------
+    The socket is cut by subtracting the object's own mesh from the plate, which
+    is what makes the fit exact by construction. That is correct for a SOLID --
+    the cube and the bottle -- because the object's mesh and the volume it
+    occupies are the same thing. The bowl is a 0.99 mm SHELL, and for a shell
+    they are not: subtracting the surface removes only the wall, and the bowl's
+    own interior stays behind as plate material.
+
+    Measured on the 2026-09-09 geometry, that left a 98.5 x 98.3 x 5.3 mm,
+    18.7 cm3 island sitting in the socket, disconnected from the plate and --
+    because `lighten` bores the floor out from under it -- unsupported. Sliced
+    with supports off it prints as spaghetti in the cavity the bowl is supposed
+    to seat in, and the 193 g figure in docs/RIG_BOM.md counted material that
+    cannot go where it was drawn. Nothing caught it: the tray was still
+    watertight, still inside the bed, and the markers still cleared the opening.
+
+    WHY DELETING THE ISLAND IS THE RIGHT FIX AND NOT A PATCH
+    --------------------------------------------------------
+    What the socket should be cut by is the solid the object DISPLACES, i.e. the
+    region enclosed by its outer surface. Differencing the shell and then
+    dropping the bodies that end up enclosed by it computes exactly that, with no
+    remeshing, no filling heuristic and no assumption of symmetry -- so the
+    socket still follows the bowl's real, slightly out-of-round outer profile
+    rather than an idealised circle. That matters: the outer radius over the
+    socket band varies by 0.5-1.0 mm peak to peak at a given height, so a
+    circumscribing circular socket would carry that as lateral play and cost
+    roughly 5x the ground-truth bound the shaped socket gives.
+
+    The consequence to know about is that the bowl's socket is shape-keyed: it
+    accepts the bowl at essentially one yaw. For a class whose yaw is undefined
+    for ADD-S that costs nothing to the measurement, and it has to be rotated
+    into place once when the scene is set.
+
+    Returns the plate body and the volume removed, in cm3.
+    """
+    parts = tray.split(only_watertight=False)
+    if len(parts) <= 1:
+        return tray, 0.0
+
+    # The tray is the body that spans the plate outline; nothing else can.
+    keep = [c for c in parts if c.extents[0] > 0.99 * plate_x
+            and c.extents[1] > 0.99 * plate_y]
+    if len(keep) != 1:
+        raise RuntimeError(f"expected exactly one plate-sized body, got {len(keep)}"
+                           f" of {len(parts)}")
+
+    # Refuse to delete anything that is not the object's own interior. A body
+    # outside the object's envelope means the cut went wrong somewhere else, and
+    # silently dropping it would hide that.
+    lo, hi = seated.bounds
+    dropped = 0.0
+    for c in parts:
+        if c is keep[0]:
+            continue
+        if (c.bounds[0] < lo - 1e-6).any() or (c.bounds[1] > hi + 1e-6).any():
+            raise RuntimeError("loose body lies outside the seated object's "
+                               f"envelope: extents {c.extents * 1000} mm")
+        dropped += c.volume * 1e6
+    return keep[0], dropped
 
 
 def inflate_lateral(mesh: trimesh.Trimesh, clearance_mm: float) -> trimesh.Trimesh:
@@ -316,6 +403,10 @@ def build_tray(cls: str, spec: dict) -> tuple[trimesh.Trimesh, dict]:
     cutter = trimesh.boolean.union([cutter, _cap_above(cutter)], engine="manifold")
     tray = trimesh.boolean.difference([plate, cutter], engine="manifold")
 
+    # A shell-shaped object leaves its own interior behind as a loose island.
+    # Do this BEFORE the bore and the recesses so those cut a clean solid.
+    tray, island_cm3 = solidify_socket(tray, plate_x, plate_y, seated)
+
     # Lightening bore through the floor, inside the object's contact footprint.
     if spec.get("lighten", 0.0) > 0.0:
         bore = trimesh.creation.cylinder(radius=spec["lighten"] / 2000.0,
@@ -334,7 +425,7 @@ def build_tray(cls: str, spec: dict) -> tuple[trimesh.Trimesh, dict]:
                             t_tray_marker=[mx / 1000.0, my / 1000.0, -d]))
     return tray, dict(t_tray_object=t_tray_object.tolist(), markers=markers,
                       socket_depth_m=depth, plate_m=[plate_x, plate_y, thickness],
-                      obj=obj)
+                      obj=obj, island_cm3=island_cm3)
 
 
 def _cap_above(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
@@ -383,8 +474,9 @@ def main() -> int:
     OUT_STL.mkdir(parents=True, exist_ok=True)
     report, ok = {}, True
     print(f"{'class':<16}{'plate mm':<21}{'socket':>7}{'print g':>9}"
-          f"{'clearance mm':>16}{'watertight':>12}{'bed':>6}{'vis L/R':>9}{'card gap':>9}")
-    print("-" * 92)
+          f"{'clearance mm':>16}{'watertight':>12}{'bodies':>8}{'island':>9}"
+          f"{'bed':>6}{'vis L/R':>9}{'card gap':>9}")
+    print("-" * 117)
 
     cfg_lines = [
         "# ArUco ground-truth marker trays — GENERATED by training/author_marker_trays.py.",
@@ -417,10 +509,17 @@ def main() -> int:
         px, py, pz = info["plate_m"]
         fits = max(px, py) * 1000 <= BED_MM
         wt = tray.is_watertight
-        ok &= bool(wt and fits)
+        # A tray that is not ONE body is not printable as drawn -- the extra
+        # body prints somewhere it does not belong. This is the check whose
+        # absence let the bowl's 18.7 cm3 socket island through; watertightness
+        # does not imply it, because each body was watertight on its own.
+        bodies = tray.body_count
+        one_body = bodies == 1
+        ok &= bool(wt and fits and one_body)
         print(f"{cls:<16}{px*1000:6.1f} x{py*1000:6.1f} x{pz*1000:5.1f}   "
               f"{spec['depth']:>5.1f}{mass:>9.0f}"
-              f"{cl_lo:>8.2f}-{cl_hi:<7.2f}{str(wt):>12}{str(fits):>6}"
+              f"{cl_lo:>8.2f}-{cl_hi:<7.2f}{str(wt):>12}{bodies:>8}"
+              f"{info['island_cm3']:>8.1f}{'':1}{str(fits):>6}"
               f"{vis['cam_left']:>4}/{vis['cam_right']}{gap:>9.1f}")
         if not args.verify:
             tray.export(OUT_STL / f"{cls}_tray.stl")

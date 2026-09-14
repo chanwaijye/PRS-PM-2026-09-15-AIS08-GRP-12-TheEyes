@@ -406,8 +406,10 @@ sets plus a 20 mm test cube per colour plus 10% waste comes to ~303 g yellow,
 ~110 g red, ~93 g blue, so 1 kg spools leave room for printed distractors.
 
 **A fourth spool, grey — ORDERED 2026-09-05.** The ArUco ground-truth trays
-(§H, `training/author_marker_trays.py`) come to **385 g** — `red_cube` 74 g,
-`mustard_bottle` 119 g, `bowl` 193 g. A tray is not a detected class, so it must
+(§H, `training/author_marker_trays.py`) come to **368 g** — `red_cube` 74 g,
+`mustard_bottle` 119 g, `bowl` 176 g. (The bowl figure was 193 g until
+2026-09-12, when the socket cut was found to be leaving the bowl's own interior
+behind as a loose island; see `docs/PRINT_PLAN.md` §2b.) A tray is not a detected class, so it must
 NOT be printed in a target colour: that would put a large slab of a class's own
 colour directly under the object. Grey is one of the three distractor neutrals
 the renderer already samples (`#E7E7E7`, `#898989`, `#BCB3AA`), so a tray reads

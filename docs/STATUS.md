@@ -436,7 +436,7 @@ region (7.5 mm sagitta over 24 mm) and the bowl's wall is 0.99 mm — and, decis
 because `synth50k_v2` was rendered from the unmodified meshes, so modifying a
 target object would open a sim-to-real gap the detector has never seen. Measured
 worst-case socket clearance **0.23 mm**, which bounds ground-truth translation
-error at 1.2% of the bottle's ADD-S threshold. Trays add **385 g** of filament in
+error at 1.2% of the bottle's ADD-S threshold. Trays add **368 g** of filament in
 a neutral colour; the grey spool for them was ordered 2026-09-05.
 
 Filament was ordered 2026-09-05, ETA ~2026-09-12, so track A is blocked on
