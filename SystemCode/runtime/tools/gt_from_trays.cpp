@@ -111,12 +111,32 @@
 //                      0.24-0.44% under in y, ordinary PLA shrinkage, and that
 //                      ~0.997 is not what any tray's pose data wants either.
 //
-//                      So the residual is PER-TRAY, not a global scale. The
-//                      measurements that would settle it are the printed marker
-//                      side (declared 40.0 mm), the marker centre-to-centre
-//                      spacing on each tray (114.0 / 160.0 / 144.0 mm declared)
-//                      and a straightedge across each tray for warp. None has
-//                      been taken. Resolve that before making this the default.
+//                      So the residual is PER-TRAY, not a global scale.
+//
+//                      CALLIPERED 2026-09-20, and it points away from the
+//                      layout: printed markers measure 40.0 mm, exactly as
+//                      declared -- which is the value that scales every
+//                      recovered distance while leaving reprojection untouched,
+//                      so the depth scale is right. The bowl's marker spacing
+//                      measures 143.4 mm against 144.0 declared, 0.42% under.
+//
+//                      That error is HARMLESS on the default path and costly on
+//                      this one. Averaging per-marker poses, a symmetric layout
+//                      cancels it exactly: each of the bowl's four markers
+//                      implies an object centre 0.30 mm off, in four opposing
+//                      directions, mean zero. Solving jointly, the layout is a
+//                      rigid constraint, so the same 0.42% scales recovered
+//                      depth -- 2.5 mm at this standoff.
+//
+//                      And the sign is wrong for the joint fit's own preference:
+//                      it wants the bowl layout LARGER (best cross-camera at
+//                      1.008), while the callipers say it is SMALLER (0.9958).
+//                      Feeding in the true measured spacing makes cross-camera
+//                      worse, 5.43 -> 8.12 mm. So that minimum is not tracking
+//                      the real geometry; it is absorbing a different error.
+//                      With marker size and spacing both now measured, tray
+//                      flatness is what is left untested. Take a straightedge to
+//                      each tray before making this the default.
 //     --dry-run        report only, write nothing
 #include <algorithm>
 #include <cstring>
