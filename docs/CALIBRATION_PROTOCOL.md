@@ -286,22 +286,23 @@ again: factory intrinsics, registration pair only.
 
 | | cam_front `261722073945` | cam_over `261822074567` | gate |
 |---|---|---|---|
-| registration RMSE | **0.280 px** | **0.334 px** | < 0.50 |
+| registration RMSE | **0.273 px** | **0.334 px** | < 0.50 |
 | corners on the registration frame | 49 | 49 | ≥ 12 |
 | world position (mm) | −412, −378, +396 | +324, −431, +398 | BOM ±369, −439, +402 |
 
-Round trip over **49 shared corners: mean 0.08 mm, p95 0.17 mm, max 0.34 mm** —
+Round trip over **49 shared corners: mean 0.08 mm, p95 0.17 mm, max 0.22 mm** —
 the best this rig has recorded. Baseline **738.1 mm** (BOM 737), relative
 rotation **79.19°** (BOM 80), standoff 678 mm (BOM 700), heights 396 / 398 mm
 (BOM 402). Shared field of view **470 × 370 mm**. `RESULT: PASS`, exit 0, and
 all eight test suites green afterwards.
 
-cam_front's reprojection is bimodal and unresolved: six consecutive shots read
-0.750, 0.280, 0.331, 0.693, 0.308, 0.368 px while cam_over held 0.327–0.346.
-Shoot several pairs and keep one that clears the gate — the committed set is the
-0.280 px frame. Position repeatability is sub-millimetre throughout, so this is
-image quality on that unit rather than the mount. Diagnosis in
-`CAPTURE_PROTOCOL.md` §4.2f. Cause **[VERIFY]**.
+cam_front's reprojection looked bimodal at first — six consecutive shots read
+0.750, 0.280, 0.331, 0.693, 0.308, 0.368 px while cam_over held 0.327–0.346 —
+and was wrongly attributed to image quality on that unit. **It was the detector,
+not the camera**: `CORNER_REFINE_SUBPIX` snapping one marker corner of 49 by
+4.6 px. Refinement is now off for ChArUco and the report prints the worst single
+corner beside the RMSE. The same six frames now read 0.267–0.331 px and all
+pass. Full evidence in `CAPTURE_PROTOCOL.md` §4.2f.
 
 ### Re-registration, every session after this one
 

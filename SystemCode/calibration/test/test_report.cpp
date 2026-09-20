@@ -102,6 +102,7 @@ Rig BuildRig(double round_trip_perturbation_m = 0.0, const SyntheticNoise& noise
         ProjectBoard(camera, rig.board, spec.T_cam_board, /*stamp_ns=*/0, noise);
     const PoseResult pose = EstimateBoardPose(registration, calibration.intrinsics, rig.board);
     calibration.registration_rmse_px = pose.reprojection_rmse_px;
+    calibration.registration_max_residual_px = pose.max_residual_px;
     calibration.T_world_cam = RegisterToWorld(pose.T_cam_board, T_world_board);
 
     if (std::string(spec.id) == "cam_over" && round_trip_perturbation_m != 0.0) {

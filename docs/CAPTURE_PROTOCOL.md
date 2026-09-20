@@ -173,7 +173,7 @@ no rig and no capture.
 4. **Trays printed and calliper-verified.** Filament ETA ~2026-09-12
    (`docs/STATUS.md`); worst-case socket clearance target 0.23 mm.
 5. **Extrinsics still valid.** `config/extrinsics.yaml` holds real values from
-   2026-09-20 (RMSE 0.28 / 0.33 px). This is a computer desk that gets leaned on:
+   2026-09-20 (RMSE 0.27 / 0.33 px). This is a computer desk that gets leaned on:
    re-detect the board at its marked spot and confirm before every session
    (`docs/RIG_BOM.md` — a ~30 s check versus a 20 min recalibration). The marked
    spot is the **workspace centre**, taped; a table corner cannot serve, because
@@ -491,18 +491,49 @@ standoff. The result is the closest this rig has been to design:
 | relative rotation | 76.77° | **79.19°** | 80 |
 | standoff | 663 mm | **678 mm** | 700 |
 | camera heights | 385 / 392 mm | **396 / 398 mm** | 402 |
-| round trip mean / p95 / max | 0.12 / 0.32 / 0.86 mm | **0.08 / 0.17 / 0.34 mm** | < 5 mm |
+| round trip mean / p95 / max | 0.12 / 0.32 / 0.86 mm | **0.08 / 0.17 / 0.22 mm** | < 5 mm |
 
 This supersedes §4.2e's closing advice to move the tripods apart — they were,
 and viewpoint diversity is now 79.19° against a design 80°. It also supersedes
 the 0.033 px headroom caution above.
 
-**Still open, and it is cam_front again.** Its reprojection is bimodal: across
-the final six shots, 0.750, 0.280, 0.331, 0.693, 0.308, 0.368 px — two of six
-over the 0.50 px gate — while cam_over held 0.327–0.346. Position repeatability
-is sub-millimetre throughout, so this is image quality on that unit rather than
-the mount. Expect to shoot several registration pairs and keep one that clears
-the gate; the committed set is the 0.280 px frame. Cause **[VERIFY]**.
+**A second fault was hiding on top of the first, and it was software.** After
+the remount cam_front's reprojection was still bimodal — 0.750, 0.280, 0.331,
+0.693, 0.308, 0.368 px across six consecutive shots, two of six over the gate,
+while cam_over held 0.327–0.346. That was first written up here as image quality
+on the unit. **It was not the camera.** Re-solving the same six images through an
+independent OpenCV pipeline gave 0.267–0.331 px with no bimodality at all, and
+the difference was one detector setting: `CORNER_REFINE_SUBPIX`.
+
+Marker corner refinement moves 48 of 49 corners by a median 0.005 px and then
+snaps exactly one corner 4.6 px onto a neighbouring feature. One such outlier in
+a 49-point fit lifts the RMSE to ~0.70 px while moving the recovered pose by
+0.09 mm — a gate failure on a calibration that is fine. Measured over 21
+registration frames per camera:
+
+| camera | refinement | median RMSE | max | over the 0.50 gate |
+|---|---|---|---|---|
+| cam_front | `SUBPIX` | 0.460 | 0.910 | 10 / 21 |
+| cam_front | none | **0.354** | 0.543 | **2 / 21** |
+| cam_over | `SUBPIX` | 0.342 | 0.450 | 0 / 21 |
+| cam_over | none | 0.341 | 0.421 | 0 / 21 |
+
+It bites cam_front and not cam_over because cam_front's view is more oblique: at
+the board's far edge the 5 px refinement window spans more than one feature.
+Refinement is now off in `charuco_detector.cpp` — `interpolateCornersCharuco`
+sub-pixel-refines the chessboard corners itself, so the marker-level pass was
+redundant here — and the calibration report now prints the worst single corner
+beside the RMSE, so one bad corner is never again mistaken for a bad pose.
+
+**The lesson generalises: an RMSE is an average, and an average hides exactly
+the failure that matters here.** Two numbers separate "the pose is wrong" from
+"one corner is wrong"; one number cannot.
+
+`marker_detector.cpp` keeps refinement on and is **[VERIFY]**: there the marker
+corners go straight to pose with no charuco interpolation to re-refine them, so
+the pass is load-bearing rather than redundant — but a 4.6 px snap would hit a
+tray's ground-truth pose directly, with no 49-corner average to dilute it. There
+are no tray captures on disk yet to measure it against.
 
 ### 4.3 Recognise it — cross-check the plane from depth
 

@@ -12,6 +12,12 @@
 #include <yaml-cpp/yaml.h>
 
 namespace the_eyes::calibration {
+
+// A clean 49-corner fit has its worst corner a small multiple of the RMSE --
+// measured 2.4x-3.1x on good frames from this rig. Past this, the error is
+// concentrated in one corner rather than spread over the board, which is a
+// detection problem and not a pose problem.
+constexpr double kWorstCornerNoteRatio = 4.0;
 namespace {
 
 Eigen::Isometry3d ParseRowMajor4x4(const YAML::Node& node, const std::string& where) {
@@ -262,6 +268,17 @@ std::string CalibrationReport::Format() const {
       os << "  intrinsic RMSE       : " << camera.intrinsics.reprojection_rmse_px << " px\n";
     }
     os << "  registration RMSE    : " << camera.registration_rmse_px << " px\n";
+    // Printed beside the RMSE, never gated on. An RMSE is an average: one
+    // badly localised corner out of 49 can push it past the gate while the
+    // pose is fine, and only the pair of numbers tells the two cases apart.
+    if (camera.registration_max_residual_px > 0.0) {
+      os << "  worst single corner  : " << camera.registration_max_residual_px << " px";
+      if (camera.registration_max_residual_px >
+          kWorstCornerNoteRatio * camera.registration_rmse_px) {
+        os << "  <- one corner dominates; suspect corner localisation, not the pose";
+      }
+      os << "\n";
+    }
     os << std::setprecision(1);
     os << "  world position       : [" << camera.T_world_cam.translation().x() * 1000.0 << ", "
        << camera.T_world_cam.translation().y() * 1000.0 << ", "

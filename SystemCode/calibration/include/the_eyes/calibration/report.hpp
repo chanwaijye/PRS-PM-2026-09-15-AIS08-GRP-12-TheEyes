@@ -42,6 +42,9 @@ struct CameraCalibration {
   IntrinsicResult intrinsics;
   Eigen::Isometry3d T_world_cam = Eigen::Isometry3d::Identity();
   double registration_rmse_px = 0.0;  // RMSE of the world-registration view
+  // Worst single corner in that same view. Reported, never gated on: the gate
+  // stays the RMSE so acceptance semantics do not change. See PoseResult.
+  double registration_max_residual_px = 0.0;
 };
 
 // The acceptance criterion that actually says whether the two views agree: a

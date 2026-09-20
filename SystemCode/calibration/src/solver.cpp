@@ -1,5 +1,6 @@
 #include "the_eyes/calibration/solver.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <numeric>
 #include <sstream>
@@ -48,6 +49,19 @@ void ToRvecTvec(const Eigen::Isometry3d& pose, cv::Mat* rvec, cv::Mat* tvec) {
   cv::Rodrigues(rotation, *rvec);
   *tvec = (cv::Mat_<double>(3, 1) << pose.translation().x(), pose.translation().y(),
            pose.translation().z());
+}
+
+// Largest single-corner reprojection error in the same fit. Reported beside the
+// RMSE so that one mislocalised corner is distinguishable from a bad pose.
+double MaxResidual(const std::vector<cv::Point2f>& a, const std::vector<cv::Point2f>& b) {
+  if (a.empty() || a.size() != b.size()) return 0.0;
+  double worst = 0.0;
+  for (size_t i = 0; i < a.size(); ++i) {
+    const double dx = a[i].x - b[i].x;
+    const double dy = a[i].y - b[i].y;
+    worst = std::max(worst, std::sqrt(dx * dx + dy * dy));
+  }
+  return worst;
 }
 
 double Rmse(const std::vector<cv::Point2f>& a, const std::vector<cv::Point2f>& b) {
@@ -171,6 +185,7 @@ PoseResult EstimateBoardPose(const BoardObservation& observation,
   std::vector<cv::Point2f> projected;
   cv::projectPoints(object_points, rvec, tvec, intrinsics.K, intrinsics.distortion, projected);
   result.reprojection_rmse_px = Rmse(image_points, projected);
+  result.max_residual_px = MaxResidual(image_points, projected);
   return result;
 }
 

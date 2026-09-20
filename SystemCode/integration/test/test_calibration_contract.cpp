@@ -76,6 +76,7 @@ calibration::CalibrationReport Calibrate() {
     const calibration::PoseResult pose =
         calibration::EstimateBoardPose(registration, calib.intrinsics, board);
     calib.registration_rmse_px = pose.reprojection_rmse_px;
+    calib.registration_max_residual_px = pose.max_residual_px;
     calib.T_world_cam =
         calibration::RegisterToWorld(pose.T_cam_board, Eigen::Isometry3d::Identity());
 

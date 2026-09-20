@@ -172,5 +172,54 @@ TEST(Solver, ReprojectionRmseIsZeroForTheTruePose) {
   EXPECT_GT(ReprojectionRmse(observation, intrinsics, board, wrong), 10.0);
 }
 
+
+// The 2026-09-20 failure, pinned: a single mislocalised corner is enough to
+// fail the acceptance gate on a pose that is actually correct. Marker corner
+// refinement was snapping one corner of 49 by ~4.6 px, which lifted the RMSE
+// from 0.27 to 0.75 px against a 0.50 px gate while moving the recovered pose
+// by 0.09 mm. The RMSE alone cannot tell that story; the pair can.
+TEST(Solver, OneBadCornerInflatesRmseWhileThePoseSurvives) {
+  const BoardSpec board = Board();
+  const SyntheticCamera camera = Camera();
+  const IntrinsicResult intrinsics = CalibrateIntrinsics(SyntheticViews(camera, board, 40), board);
+
+  Eigen::Isometry3d truth = Eigen::Isometry3d::Identity();
+  truth.linear() =
+      Eigen::AngleAxisd(0.30, Eigen::Vector3d(0.2, 1.0, 0.1).normalized()).toRotationMatrix();
+  truth.translation() = Eigen::Vector3d(-0.08, -0.05, 0.58);
+
+  const BoardObservation clean = ProjectBoard(camera, board, truth);
+  ASSERT_GE(clean.size(), 30u);  // the synthetic board is 8x6 -> 7x5 = 35 corners
+  const PoseResult before = EstimateBoardPose(clean, intrinsics, board);
+
+  // Displace exactly one corner, the way a bad sub-pixel refinement does.
+  BoardObservation nudged = clean;
+  nudged.image_points[nudged.image_points.size() / 2].x += 4.6f;
+  const PoseResult after = EstimateBoardPose(nudged, intrinsics, board);
+
+  // The RMSE degrades sharply...
+  EXPECT_GT(after.reprojection_rmse_px, 3.0 * before.reprojection_rmse_px);
+  // ...the worst-corner figure names the cause, sitting far above the RMSE...
+  EXPECT_GT(after.max_residual_px, 4.0 * after.reprojection_rmse_px);
+  // ...and the pose barely moves, which is the whole point: the calibration
+  // was never bad, one corner was.
+  EXPECT_LT((after.T_cam_board.translation() - before.T_cam_board.translation()).norm(), 1e-3);
+}
+
+// On a clean fit the worst corner stays close to the RMSE, so the ratio above
+// is diagnostic rather than a property of every fit.
+TEST(Solver, WorstCornerTracksTheRmseOnACleanFit) {
+  const BoardSpec board = Board();
+  const SyntheticCamera camera = Camera();
+  const IntrinsicResult intrinsics = CalibrateIntrinsics(SyntheticViews(camera, board, 40), board);
+
+  Eigen::Isometry3d truth = Eigen::Isometry3d::Identity();
+  truth.translation() = Eigen::Vector3d(-0.07, -0.05, 0.52);
+  const PoseResult pose = EstimateBoardPose(ProjectBoard(camera, board, truth), intrinsics, board);
+
+  EXPECT_GE(pose.max_residual_px, pose.reprojection_rmse_px);
+  EXPECT_LT(pose.max_residual_px, 4.0 * std::max(pose.reprojection_rmse_px, 1e-6));
+}
+
 }  // namespace
 }  // namespace the_eyes::calibration

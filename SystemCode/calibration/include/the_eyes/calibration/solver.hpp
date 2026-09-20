@@ -62,6 +62,13 @@ IntrinsicResult CalibrateIntrinsics(const std::vector<BoardObservation>& observa
 struct PoseResult {
   Eigen::Isometry3d T_cam_board = Eigen::Isometry3d::Identity();
   double reprojection_rmse_px = 0.0;
+  // Worst single corner in the same fit. An RMSE is an average, so one badly
+  // localised corner out of 49 can push it over the acceptance gate while the
+  // recovered pose is fine -- that failure cost a session's debugging on
+  // 2026-09-20 before it was traced to marker corner refinement. Carrying the
+  // maximum alongside the mean makes the difference between "this pose is bad"
+  // and "one corner is bad" visible without re-running anything.
+  double max_residual_px = 0.0;
   int corners_used = 0;
 };
 

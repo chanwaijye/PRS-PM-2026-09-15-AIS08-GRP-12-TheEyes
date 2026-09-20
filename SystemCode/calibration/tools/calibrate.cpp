@@ -101,6 +101,7 @@ int RunMock(const std::string& out_path) {
     BoardObservation registration = ProjectBoard(camera, board, spec.T_cam_board);
     const PoseResult pose = EstimateBoardPose(registration, calibration.intrinsics, board);
     calibration.registration_rmse_px = pose.reprojection_rmse_px;
+    calibration.registration_max_residual_px = pose.max_residual_px;
     calibration.T_world_cam = RegisterToWorld(pose.T_cam_board, Eigen::Isometry3d::Identity());
 
     registrations.push_back(std::move(registration));
@@ -767,6 +768,7 @@ int RunReal(const std::string& config_path, const std::string& front_dir,
     const BoardObservation& registration = views.back();
     const PoseResult pose = EstimateBoardPose(registration, calibration.intrinsics, board);
     calibration.registration_rmse_px = pose.reprojection_rmse_px;
+    calibration.registration_max_residual_px = pose.max_residual_px;
     calibration.T_world_cam = RegisterToWorld(pose.T_cam_board, world.T_world_board);
 
     registrations.push_back(registration);
@@ -863,6 +865,7 @@ int RunReRegister(const std::string& config_path, const std::string& previous_pa
 
     const PoseResult pose = EstimateBoardPose(observation, calibration.intrinsics, board);
     calibration.registration_rmse_px = pose.reprojection_rmse_px;
+    calibration.registration_max_residual_px = pose.max_residual_px;
     calibration.T_world_cam = RegisterToWorld(pose.T_cam_board, world.T_world_board);
 
     ids.push_back(id);

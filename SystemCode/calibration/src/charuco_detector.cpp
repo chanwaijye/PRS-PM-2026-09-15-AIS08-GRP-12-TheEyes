@@ -32,10 +32,33 @@ CharucoDetector::CharucoDetector(const BoardSpec& board) : impl_(std::make_uniqu
       static_cast<float>(board.marker_length_m), impl_->dictionary);
 
   impl_->parameters = cv::aruco::DetectorParameters::create();
-  // Sub-pixel marker corner refinement. Without it corner localisation is
-  // integer-ish and the reprojection RMSE floor sits well above the 0.5 px
-  // acceptance threshold no matter how good the capture is.
-  impl_->parameters->cornerRefinementMethod = cv::aruco::CORNER_REFINE_SUBPIX;
+  // Marker corner refinement is deliberately OFF here, which reverses an
+  // earlier decision. The claim it rested on -- that without it corner
+  // localisation is integer-ish and the RMSE floor sits above the 0.5 px gate
+  // -- is false for ChArUco: interpolateCornersCharuco runs its own
+  // cornerSubPix on the interpolated chessboard corners, so the marker-level
+  // pass is redundant. It is also actively harmful on an oblique view.
+  //
+  // MEASURED over 21 registration frames per camera (2026-09-20):
+  //
+  //                   median RMSE   max     over the 0.50 px gate
+  //   cam_front  on        0.460   0.910          10 / 21
+  //   cam_front  off       0.354   0.543           2 / 21
+  //   cam_over   on        0.342   0.450           0 / 21
+  //   cam_over   off       0.341   0.421           0 / 21
+  //
+  // The mechanism: refinement moves 48 of 49 corners by a median 0.005 px --
+  // nothing -- and then snaps ONE corner 4.6 px onto a neighbouring feature.
+  // A single such outlier in a 49-point fit lifts the RMSE to ~0.70 px while
+  // moving the recovered pose by 0.09 mm, so it fails the gate on a
+  // calibration that is actually fine. It bites cam_front and not cam_over
+  // because cam_front's view is more oblique: at the board's far edge the
+  // 5 px refinement window spans more than one feature.
+  //
+  // NOT the same call as marker_detector.cpp, which keeps refinement on: there
+  // the marker corners go straight to pose with no charuco interpolation to
+  // re-refine them, so the refinement is load-bearing rather than redundant.
+  impl_->parameters->cornerRefinementMethod = cv::aruco::CORNER_REFINE_NONE;
 }
 
 CharucoDetector::~CharucoDetector() = default;
