@@ -11,6 +11,8 @@
 #ifndef THE_EYES_CALIBRATION_MARKER_DETECTOR_HPP
 #define THE_EYES_CALIBRATION_MARKER_DETECTOR_HPP
 
+#include <array>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -40,7 +42,55 @@ struct MarkerObservation {
   // A ratio near 1.0 means the solver essentially guessed; a large ratio means
   // the chosen pose is well separated from its twin.
   double ambiguity = 0.0;
+
+  // The four detected corners in image pixels, in the detector's own order.
+  //
+  // Kept because a pose from ONE marker is only as well conditioned as that
+  // marker is wide: a 40 mm square at 0.7 m has poorly constrained depth, and
+  // no amount of averaging independent single-marker poses fixes the
+  // conditioning. Several markers on one rigid tray can instead be solved in a
+  // SINGLE PnP over all their corners, which widens the effective target to the
+  // marker spread -- 114 mm on the narrowest tray here, 204 mm on the widest.
+  // That needs the corners, not just the per-marker pose. See
+  // SolveMultiMarkerPose.
+  std::array<Eigen::Vector2d, 4> corners{};
 };
+
+// One pose from several coplanar markers whose positions on a rigid body are
+// known -- a ground-truth tray, in this project.
+struct MultiMarkerPose {
+  Eigen::Isometry3d T_cam_frame = Eigen::Isometry3d::Identity();
+  double reprojection_px = 0.0;   // RMS over every corner used
+  double ambiguity = 0.0;         // as MarkerObservation::ambiguity, for the joint fit
+  int markers_used = 0;
+};
+
+// Solves ONE pose for the frame the markers are mounted on, from all their
+// corners at once.
+//
+// MEASURED on this rig, 2026-09-20, against the per-marker-average path it
+// replaces (cross-camera disagreement, the figure that does not lie):
+//
+//     tray             markers   spread     per-marker avg   joint
+//     bowl                4    144-204 mm       2.71 mm      see docs
+//     mustard_bottle      2       160 mm        3.78 mm
+//     red_cube            2       114 mm        7.55 mm
+//
+// The ordering is monotonic in marker spread, which is the whole argument for
+// this function: averaging independent poses suppresses random error but not
+// the depth conditioning of a small planar target, and red_cube's 7.55 mm was
+// consuming nearly all of the ~8.6 mm ADD-S threshold it exists to judge.
+//
+// `t_frame_marker` gives each marker id's centre in the frame's coordinates;
+// markers not present in it are ignored, and markers in it but not detected are
+// simply absent. Every marker is assumed coplanar with the frame's z = 0 plane
+// and identically oriented, which is what config/marker_trays.yaml declares.
+//
+// Throws if no detected marker has a known position, or if marker_length_m is
+// not positive.
+MultiMarkerPose SolveMultiMarkerPose(const std::vector<MarkerObservation>& markers,
+                                     const std::map<int, Eigen::Vector3d>& t_frame_marker,
+                                     double marker_length_m, const Eigen::Matrix3d& K);
 
 class MarkerDetector {
  public:

@@ -13,6 +13,7 @@
 #ifdef THE_EYES_WITH_ARUCO
 
 #include <cmath>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -67,6 +68,38 @@ cv::Mat RenderMarker(int id, double side_m, const Eigen::Isometry3d& T_cam_marke
   cv::Mat H = cv::getPerspectiveTransform(src, dst);
   cv::warpPerspective(tag, frame, H, frame.size(), cv::INTER_CUBIC, cv::BORDER_TRANSPARENT);
   return frame;
+}
+
+// Draws one more marker onto an existing frame, so a whole tray can be rendered.
+void RenderMarkerInto(cv::Mat& frame, int id, double side_m,
+                      const Eigen::Isometry3d& T_cam_marker, const Eigen::Matrix3d& K) {
+  cv::Mat tag;
+  auto dict = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_5X5_250);
+  cv::aruco::drawMarker(dict, id, 400, tag, 1);
+  cv::cvtColor(tag, tag, cv::COLOR_GRAY2BGR);
+  const double h = side_m / 2.0;
+  const std::vector<Eigen::Vector3d> obj = {
+      {-h, h, 0}, {h, h, 0}, {h, -h, 0}, {-h, -h, 0}};
+  std::vector<cv::Point2f> dst;
+  for (const Eigen::Vector3d& p : obj) {
+    const Eigen::Vector3d c = T_cam_marker * p;
+    EXPECT_GT(c.z(), 0.0);
+    const Eigen::Vector3d uv = K * (c / c.z());
+    dst.emplace_back(static_cast<float>(uv.x()), static_cast<float>(uv.y()));
+  }
+  const std::vector<cv::Point2f> src = {{0, 0},
+                                        {static_cast<float>(tag.cols - 1), 0},
+                                        {static_cast<float>(tag.cols - 1),
+                                         static_cast<float>(tag.rows - 1)},
+                                        {0, static_cast<float>(tag.rows - 1)}};
+  cv::Mat H = cv::getPerspectiveTransform(src, dst);
+  cv::warpPerspective(tag, frame, H, frame.size(), cv::INTER_CUBIC, cv::BORDER_TRANSPARENT);
+}
+
+Eigen::Isometry3d Translation(const Eigen::Vector3d& t) {
+  Eigen::Isometry3d T = Eigen::Isometry3d::Identity();
+  T.translation() = t;
+  return T;
 }
 
 }  // namespace
@@ -192,6 +225,120 @@ TEST(GroundTruthChain, AveragingAcrossViewsBeatsAnySingleObservation) {
   EXPECT_LE(pooled, worst_single) << "pooling made it worse: " << pooled * 1000 << " mm vs "
                                   << worst_single * 1000 << " mm";
   EXPECT_GT(avg.translation_rms_m, 0.0) << "the spread must be reported, not zero";
+}
+
+
+// Why SolveMultiMarkerPose exists, measured on the estimator itself.
+//
+// red_cube is the worst case on this rig: two markers only 114 mm apart. A
+// single 40 mm marker at this distance has poorly conditioned DEPTH, and
+// averaging two independent poses cannot fix conditioning -- it averages the
+// noise and leaves the geometry alone. Solving both markers' eight corners in
+// one PnP widens the effective target from 40 mm to 114 mm, which is what
+// actually constrains depth.
+//
+// Corners are projected analytically and perturbed, rather than rendered: a
+// rendered tag carries ~3 mm of its own rasterisation noise (see the bounds
+// above), which is the same floor for both methods and would hide the effect
+// being measured. Fixed seed, so this is deterministic.
+TEST(GroundTruthChain, JointMultiMarkerSolveIsBetterConditionedThanAveragingPoses) {
+  const TrayConfig trays = LoadTrayConfig(std::string(THE_EYES_CONFIG_DIR) + "/marker_trays.yaml");
+  const Tray& tray = trays.trays.at("red_cube");
+  const Eigen::Matrix3d K = TestK();
+  ASSERT_GE(tray.markers.size(), 2u);
+
+  const fusion::ExtrinsicsSet ex =
+      fusion::LoadExtrinsics(std::string(THE_EYES_CONFIG_DIR) + "/extrinsics.yaml");
+  Eigen::Isometry3d T_world_tray = Eigen::Isometry3d::Identity();
+  T_world_tray.linear() =
+      Eigen::AngleAxisd(29.0 * M_PI / 180.0, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+  T_world_tray.translation() = Eigen::Vector3d(0.02, -0.01, 0.0105);
+  const Eigen::Isometry3d T_cam_tray =
+      ex.cameras.at("cam_front").T_world_cam.inverse() * T_world_tray;
+
+  const double h = trays.marker_length_m / 2.0;
+  const Eigen::Vector3d offset[4] = {{-h, h, 0.0}, {h, h, 0.0}, {h, -h, 0.0}, {-h, -h, 0.0}};
+  std::map<int, Eigen::Vector3d> layout;
+  for (const TrayMarker& tm : tray.markers) layout[tm.id] = tm.t_tray_marker;
+
+  std::mt19937 rng(20260920u);
+  std::normal_distribution<double> jitter(0.0, 0.3);  // px, the order a real corner wobbles
+  double sq_joint = 0.0, sq_avg = 0.0;
+  const int kTrials = 200;
+  for (int trial = 0; trial < kTrials; ++trial) {
+    std::vector<calibration::MarkerObservation> obs;
+    for (const TrayMarker& tm : tray.markers) {
+      calibration::MarkerObservation m;
+      m.id = tm.id;
+      for (int c = 0; c < 4; ++c) {
+        const Eigen::Vector3d p = T_cam_tray * (tm.t_tray_marker + offset[c]);
+        const Eigen::Vector3d uv = K * (p / p.z());
+        m.corners[c] = Eigen::Vector2d(uv.x() + jitter(rng), uv.y() + jitter(rng));
+      }
+      obs.push_back(m);
+    }
+
+    // The path this replaces: each marker solved alone, then averaged. Solving
+    // one marker through the same entry point keeps the comparison honest --
+    // only the number of markers in the fit differs.
+    std::vector<Eigen::Isometry3d> per_marker;
+    for (const calibration::MarkerObservation& m : obs) {
+      const std::map<int, Eigen::Vector3d> alone{{m.id, Eigen::Vector3d::Zero()}};
+      const calibration::MultiMarkerPose single =
+          calibration::SolveMultiMarkerPose({m}, alone, trays.marker_length_m, K);
+      per_marker.push_back(single.T_cam_frame * Translation(-layout.at(m.id)));
+    }
+    const PoseAverage avg = AveragePoses(per_marker);
+    const calibration::MultiMarkerPose joint =
+        calibration::SolveMultiMarkerPose(obs, layout, trays.marker_length_m, K);
+    ASSERT_EQ(joint.markers_used, static_cast<int>(tray.markers.size()));
+
+    sq_avg += (avg.mean.translation() - T_cam_tray.translation()).squaredNorm();
+    sq_joint += (joint.T_cam_frame.translation() - T_cam_tray.translation()).squaredNorm();
+  }
+  const double rms_avg = std::sqrt(sq_avg / kTrials);
+  const double rms_joint = std::sqrt(sq_joint / kTrials);
+
+  EXPECT_LT(rms_joint, rms_avg) << "joint " << rms_joint * 1000 << " mm rms vs averaged "
+                                << rms_avg * 1000 << " mm rms";
+  // MEASURED, and smaller than the geometry argument suggests: 1.63 mm rms
+  // against 1.73 mm, about 5%, not the ~3x the 114/40 mm width ratio would
+  // imply. Averaging two independent poses already recovers much of what the
+  // joint fit does, because their depth errors are independent and partly
+  // cancel. The bound is set just inside the measured margin rather than at a
+  // hoped-for one -- if a change makes the joint fit merely equal to averaging,
+  // that is worth knowing, and this catches it.
+  EXPECT_LT(rms_joint, 0.98 * rms_avg)
+      << "joint " << rms_joint * 1000 << " mm rms vs averaged " << rms_avg * 1000 << " mm rms";
+}
+
+// One visible marker must still work, and must agree with the single-marker
+// solve it falls back to -- a tray half out of frame is normal, not an error.
+TEST(GroundTruthChain, JointSolveWithOneMarkerMatchesTheSingleMarkerPose) {
+  const TrayConfig trays = LoadTrayConfig(std::string(THE_EYES_CONFIG_DIR) + "/marker_trays.yaml");
+  const Tray& tray = trays.trays.at("red_cube");
+  const Eigen::Matrix3d K = TestK();
+  const int id = tray.markers.front().id;
+
+  const fusion::ExtrinsicsSet ex =
+      fusion::LoadExtrinsics(std::string(THE_EYES_CONFIG_DIR) + "/extrinsics.yaml");
+  Eigen::Isometry3d T_world_marker = Eigen::Isometry3d::Identity();
+  T_world_marker.translation() = Eigen::Vector3d(0.01, 0.0, 0.0105);
+  const Eigen::Isometry3d T_cam_marker =
+      ex.cameras.at("cam_front").T_world_cam.inverse() * T_world_marker;
+
+  const cv::Mat frame = RenderMarker(id, trays.marker_length_m, T_cam_marker, K);
+  calibration::MarkerDetector det(trays.dictionary, trays.marker_length_m);
+  const std::vector<calibration::MarkerObservation> obs = det.Detect(frame, K);
+  ASSERT_EQ(obs.size(), 1u);
+
+  // Its position is the frame origin here, so the joint pose IS the marker pose.
+  const std::map<int, Eigen::Vector3d> layout{{id, Eigen::Vector3d::Zero()}};
+  const calibration::MultiMarkerPose joint =
+      calibration::SolveMultiMarkerPose(obs, layout, trays.marker_length_m, K);
+
+  EXPECT_EQ(joint.markers_used, 1);
+  EXPECT_LT((joint.T_cam_frame.translation() - obs[0].T_cam_marker.translation()).norm(), 1e-6);
 }
 
 #endif  // THE_EYES_WITH_ARUCO

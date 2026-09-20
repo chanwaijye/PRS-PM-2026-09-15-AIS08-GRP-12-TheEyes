@@ -79,6 +79,28 @@
 // declared resolution and the image is refused rather than scaled.
 //     --min-ambiguity R  reject a marker whose two planar poses fit almost
 //                      equally well (default 2.0; see MarkerObservation::ambiguity)
+//     --joint          solve ONE pose per tray from all its markers' corners at
+//                      once, instead of one pose per marker averaged. It widens
+//                      the effective target from the 40 mm marker to the marker
+//                      spread (114-204 mm here) and is better conditioned in
+//                      depth -- measured on synthetic corners, 1.63 mm rms
+//                      against 1.73 mm.
+//
+//                      NOT the default, on evidence. On the first real tray
+//                      stills (2026-09-20) it improved the pooled scatter a lot
+//                      -- bowl 6.51 -> 2.69 mm, rotation 0.83 -> 0.20 deg -- but
+//                      moved the CROSS-CAMERA disagreement, which this file
+//                      argues is the figure that does not lie, the wrong way for
+//                      two trays of three: bowl 2.71 -> 5.36, mustard 3.78 ->
+//                      5.51, red_cube 7.55 -> 6.06 mm. Its joint reprojection
+//                      also sits at 0.686 px rms where free per-marker poses
+//                      reach ~0.2 px, so the printed trays do not quite match a
+//                      rigid coplanar layout. A uniform print-scale error was
+//                      tested and ruled out (reprojection is minimised at scale
+//                      1.000 and degrades either side), which leaves tray
+//                      flatness -- the calliper check PRINT_PLAN gates on, and
+//                      which has not been done. Resolve that before making this
+//                      the default.
 //     --dry-run        report only, write nothing
 #include <algorithm>
 #include <cstring>
@@ -120,6 +142,12 @@ struct Options {
   double max_reproj_px = 1.5;
   double min_size_px = 40.0;
   double min_ambiguity = 2.0;
+  // One pose per tray from all its markers' corners at once, instead of one
+  // pose per marker averaged. Better conditioned in principle and measurably
+  // better on synthetic corners -- but NOT the default, because on the first
+  // real trays it moved the cross-camera disagreement the wrong way for two of
+  // three trays. See --joint in the usage above.
+  bool joint = false;
   bool dry_run = false;
   bool stills = false;
   bool factory = false;
@@ -140,7 +168,7 @@ int Usage() {
 struct Sample {
   std::string cls;
   std::string camera_id;
-  int marker_id;
+  int markers_used = 1;   // 1 on the --per-marker path, else the joint solve's count
   double size_px = 0.0;
   Eigen::Isometry3d pose_w;
 };
@@ -255,6 +283,7 @@ int main(int argc, char** argv) {
       else if (a == "--max-reproj") o.max_reproj_px = std::stod(next());
       else if (a == "--min-size") o.min_size_px = std::stod(next());
       else if (a == "--min-ambiguity") o.min_ambiguity = std::stod(next());
+      else if (a == "--joint") o.joint = true;
       else if (a == "--dry-run") o.dry_run = true;
       else if (a == "--stills") o.stills = true;
       else if (a == "--factory") o.factory = true;
@@ -288,6 +317,10 @@ int main(int argc, char** argv) {
               << "\n"
               << "  dictionary: " << trays.dictionary << "  marker "
               << trays.marker_length_m * 1000.0 << " mm\n"
+              << "  solve     : "
+              << (o.joint ? "one pose per TRAY from all its corners (joint)"
+                          : "one pose per MARKER, averaged")
+              << "\n"
               << "  gates     : reproj <= " << o.max_reproj_px << " px, side >= " << o.min_size_px
               << " px, ambiguity >= " << o.min_ambiguity << ", >= " << o.min_obs
               << " observations per class\n";
@@ -310,6 +343,11 @@ int main(int argc, char** argv) {
                                  "' is in the input but not in extrinsics.yaml");
       }
       ++frames_scanned;
+      // Markers that passed the per-marker gates, grouped by the tray they are
+      // on. The gates stay per-marker either way: a marker that is too small,
+      // fits badly or was a coin flip should not enter a joint solve any more
+      // than it should enter an average.
+      std::map<std::string, std::vector<calibration::MarkerObservation>> accepted;
       for (const calibration::MarkerObservation& m : det.Detect(bgr, K)) {
         const auto known = trays.cls_of_marker.find(m.id);
         if (known == trays.cls_of_marker.end()) {
@@ -325,10 +363,41 @@ int main(int argc, char** argv) {
         // perfectly. Reprojection cannot catch this; only the ratio can.
         if (m.ambiguity < o.min_ambiguity) { ++rejected_ambig[known->second]; continue; }
 
-        const Tray& tray = trays.trays.at(known->second);
-        const Eigen::Isometry3d T_cam_object = m.T_cam_marker * MarkerToObject(tray, m.id);
-        samples.push_back({known->second, camera_id, m.id, m.apparent_size_px,
-                           cam->second.T_world_cam * T_cam_object});
+        if (!o.joint) {
+          const Tray& tray = trays.trays.at(known->second);
+          const Eigen::Isometry3d T_cam_object = m.T_cam_marker * MarkerToObject(tray, m.id);
+          samples.push_back({known->second, camera_id, 1, m.apparent_size_px,
+                             cam->second.T_world_cam * T_cam_object});
+        } else {
+          accepted[known->second].push_back(m);
+        }
+      }
+      if (!o.joint) return;
+
+      // One pose per tray per frame, from every corner of every accepted marker
+      // on it. With one marker this is exactly the old single-marker solve; with
+      // more it is better conditioned in depth, which is the whole point.
+      for (const auto& [cls, ms] : accepted) {
+        const Tray& tray = trays.trays.at(cls);
+        std::map<int, Eigen::Vector3d> t_tray_marker;
+        for (const TrayMarker& tm : tray.markers) t_tray_marker[tm.id] = tm.t_tray_marker;
+
+        const calibration::MultiMarkerPose jp =
+            calibration::SolveMultiMarkerPose(ms, t_tray_marker, trays.marker_length_m, K);
+        // The joint fit gets the same two gates as a single marker did. A tray
+        // whose markers disagree with their printed layout shows up here as a
+        // reprojection that no single marker would have reported.
+        if (jp.reprojection_px > o.max_reproj_px) { ++rejected_reproj[cls]; continue; }
+        if (jp.ambiguity < o.min_ambiguity) { ++rejected_ambig[cls]; continue; }
+
+        Eigen::Isometry3d T_tray_object = Eigen::Isometry3d::Identity();
+        T_tray_object.translation() = tray.t_tray_object;
+
+        double size_sum = 0.0;
+        for (const calibration::MarkerObservation& m : ms) size_sum += m.apparent_size_px;
+        samples.push_back({cls, camera_id, jp.markers_used,
+                           size_sum / static_cast<double>(ms.size()),
+                           cam->second.T_world_cam * (jp.T_cam_frame * T_tray_object)});
       }
     };
 

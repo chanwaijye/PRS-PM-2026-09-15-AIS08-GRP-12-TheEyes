@@ -127,8 +127,107 @@ std::vector<MarkerObservation> MarkerDetector::Detect(const cv::Mat& image,
     }
     m.apparent_size_px = perim / 4.0;
 
+    for (size_t c = 0; c < 4 && c < corners[i].size(); ++c) {
+      m.corners[c] = Eigen::Vector2d(corners[i][c].x, corners[i][c].y);
+    }
+
     out.push_back(m);
   }
+  return out;
+}
+
+MultiMarkerPose SolveMultiMarkerPose(const std::vector<MarkerObservation>& markers,
+                                     const std::map<int, Eigen::Vector3d>& t_frame_marker,
+                                     double marker_length_m, const Eigen::Matrix3d& K) {
+  if (!(marker_length_m > 0.0)) {
+    throw std::runtime_error("SolveMultiMarkerPose: marker_length_m must be > 0");
+  }
+
+  // Marker corners in the marker's own frame, in the detector's order:
+  // +x right, +y up, +z out of the face, origin at the centre. The markers
+  // share the frame's orientation (config/marker_trays.yaml declares
+  // translation only), so a corner in frame coordinates is just the marker's
+  // centre plus this offset.
+  const double h = marker_length_m / 2.0;
+  const Eigen::Vector3d offset[4] = {{-h, h, 0.0}, {h, h, 0.0}, {h, -h, 0.0}, {-h, -h, 0.0}};
+
+  std::vector<cv::Point3f> object_pts;
+  std::vector<cv::Point2f> image_pts;
+  int used = 0;
+  for (const MarkerObservation& m : markers) {
+    const auto placed = t_frame_marker.find(m.id);
+    if (placed == t_frame_marker.end()) continue;  // not on this frame: ignore
+    for (int c = 0; c < 4; ++c) {
+      const Eigen::Vector3d p = placed->second + offset[c];
+      object_pts.emplace_back(static_cast<float>(p.x()), static_cast<float>(p.y()),
+                              static_cast<float>(p.z()));
+      image_pts.emplace_back(static_cast<float>(m.corners[c].x()),
+                             static_cast<float>(m.corners[c].y()));
+    }
+    ++used;
+  }
+  if (used == 0) {
+    throw std::runtime_error(
+        "SolveMultiMarkerPose: none of the detected markers has a known position on this frame");
+  }
+
+  cv::Mat cam = (cv::Mat_<double>(3, 3) << K(0, 0), K(0, 1), K(0, 2), K(1, 0), K(1, 1), K(1, 2),
+                 K(2, 0), K(2, 1), K(2, 2));
+  const cv::Mat dist = cv::Mat::zeros(1, 5, CV_64F);
+
+  // Every point is coplanar, so IPPE applies and -- as with a single marker --
+  // returns BOTH planar solutions rather than hiding the twin. The ambiguity
+  // ratio stays meaningful at the frame level, which matters because the point
+  // of solving jointly is that a wider spread separates the two solutions.
+  // IPPE_SQUARE is only valid for exactly one square's four corners.
+  const cv::SolvePnPMethod flag = (used == 1) ? cv::SOLVEPNP_IPPE_SQUARE : cv::SOLVEPNP_IPPE;
+  std::vector<cv::Mat> rvs, tvs;
+  const int n = cv::solvePnPGeneric(object_pts, image_pts, cam, dist, rvs, tvs, false, flag);
+  if (n < 1 || rvs.empty()) {
+    throw std::runtime_error("SolveMultiMarkerPose: solvePnP found no solution");
+  }
+
+  auto rms_reproj = [&](const cv::Mat& rv, const cv::Mat& tv) {
+    std::vector<cv::Point2f> proj;
+    cv::projectPoints(object_pts, rv, tv, cam, dist, proj);
+    double sum = 0.0;
+    for (size_t i = 0; i < proj.size() && i < image_pts.size(); ++i) {
+      const double d = cv::norm(proj[i] - image_pts[i]);
+      sum += d * d;
+    }
+    return std::sqrt(sum / static_cast<double>(proj.size()));
+  };
+
+  size_t best = 0;
+  double best_err = rms_reproj(rvs[0], tvs[0]);
+  double second_err = std::numeric_limits<double>::infinity();
+  for (size_t j = 1; j < rvs.size(); ++j) {
+    const double e = rms_reproj(rvs[j], tvs[j]);
+    if (e < best_err) {
+      second_err = best_err;
+      best_err = e;
+      best = j;
+    } else if (e < second_err) {
+      second_err = e;
+    }
+  }
+
+  MultiMarkerPose out;
+  out.markers_used = used;
+  out.reprojection_px = best_err;
+  out.ambiguity =
+      best_err > 1e-9 ? second_err / best_err : std::numeric_limits<double>::infinity();
+
+  const cv::Vec3d rvec(rvs[best].at<double>(0), rvs[best].at<double>(1), rvs[best].at<double>(2));
+  const cv::Vec3d tvec(tvs[best].at<double>(0), tvs[best].at<double>(1), tvs[best].at<double>(2));
+  cv::Mat R;
+  cv::Rodrigues(rvec, R);
+  Eigen::Matrix3d Re;
+  for (int r = 0; r < 3; ++r)
+    for (int c = 0; c < 3; ++c) Re(r, c) = R.at<double>(r, c);
+  out.T_cam_frame = Eigen::Isometry3d::Identity();
+  out.T_cam_frame.linear() = Re;
+  out.T_cam_frame.translation() = Eigen::Vector3d(tvec[0], tvec[1], tvec[2]);
   return out;
 }
 
