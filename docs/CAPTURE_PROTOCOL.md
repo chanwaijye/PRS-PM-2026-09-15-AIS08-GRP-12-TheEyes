@@ -529,11 +529,31 @@ beside the RMSE, so one bad corner is never again mistaken for a bad pose.
 the failure that matters here.** Two numbers separate "the pose is wrong" from
 "one corner is wrong"; one number cannot.
 
-`marker_detector.cpp` keeps refinement on and is **[VERIFY]**: there the marker
-corners go straight to pose with no charuco interpolation to re-refine them, so
-the pass is load-bearing rather than redundant — but a 4.6 px snap would hit a
-tray's ground-truth pose directly, with no 49-corner average to dilute it. There
-are no tray captures on disk yet to measure it against.
+**`marker_detector.cpp` keeps refinement on, and that is now measured rather
+than assumed — the answer there is the opposite.** Its four corners *are* the
+pose (IPPE_SQUARE on one marker), so the sub-pixel pass is load-bearing rather
+than redundant. Measured on the board's own 32 ArUco markers across the static
+batches, using each marker's frame-to-frame spread so that no ground truth is
+needed, after `gt_from_trays`'s own ambiguity gate of 2.0:
+
+| refinement | markers kept | rotation spread median | p95 | translation p95 |
+|---|---|---|---|---|
+| `SUBPIX` | 63% | **0.357°** | **1.25°** | **3.76 mm** |
+| none | 66% | 0.702° | 2.26° | 7.07 mm |
+
+Refinement halves the pose noise on both axes. **Keep it there.** The board's
+markers are 28 mm against the trays' 40 mm, so this is the harder case and the
+tray path should do at least as well.
+
+**What that check did surface is unrelated to refinement: planar pose
+ambiguity.** At this geometry 34–37% of markers are rejected by the 2.0 gate,
+which is survivable because a tray carries 2–4 of them — but flips of ~120°
+*survive* the gate in both modes. `gt_from_trays.cpp` averages a tray's markers
+and **prints** the spread without gating on it (its own line 21 says so), so a
+single flipped marker would corrupt a tray pose and show up only as a large
+number a human has to notice. Gate on the spread, or raise `--min-ambiguity`,
+before the ground-truth run — and re-run this check on the first real
+`gt_test_A` capture, where the markers are 40 mm.
 
 ### 4.3 Recognise it — cross-check the plane from depth
 
