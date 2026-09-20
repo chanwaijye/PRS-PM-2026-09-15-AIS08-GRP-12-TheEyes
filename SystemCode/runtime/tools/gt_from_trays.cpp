@@ -95,12 +95,28 @@
 //                      5.51, red_cube 7.55 -> 6.06 mm. Its joint reprojection
 //                      also sits at 0.686 px rms where free per-marker poses
 //                      reach ~0.2 px, so the printed trays do not quite match a
-//                      rigid coplanar layout. A uniform print-scale error was
-//                      tested and ruled out (reprojection is minimised at scale
-//                      1.000 and degrades either side), which leaves tray
-//                      flatness -- the calliper check PRINT_PLAN gates on, and
-//                      which has not been done. Resolve that before making this
-//                      the default.
+//                      rigid coplanar layout.
+//
+//                      A uniform print-scale error is RULED OUT, but not for the
+//                      reason first recorded here: an initial sweep sampled only
+//                      scales >= 1.000 and so "found" its minimum at the edge.
+//                      Swept properly over 0.984-1.008, reprojection bottoms at
+//                      1.004 and the curve is nearly flat (0.662 px against
+//                      0.686 at 1.000). The decisive part is that the three
+//                      trays want scales in OPPOSITE directions -- red_cube
+//                      improves monotonically down to 0.984, bowl monotonically
+//                      up to 1.008, mustard sits near 1.004 -- so no single
+//                      scale describes them. Callipered plates agree the prints
+//                      are uniform: all three are 0.23-0.29% under in x and
+//                      0.24-0.44% under in y, ordinary PLA shrinkage, and that
+//                      ~0.997 is not what any tray's pose data wants either.
+//
+//                      So the residual is PER-TRAY, not a global scale. The
+//                      measurements that would settle it are the printed marker
+//                      side (declared 40.0 mm), the marker centre-to-centre
+//                      spacing on each tray (114.0 / 160.0 / 144.0 mm declared)
+//                      and a straightedge across each tray for warp. None has
+//                      been taken. Resolve that before making this the default.
 //     --dry-run        report only, write nothing
 #include <algorithm>
 #include <cstring>
