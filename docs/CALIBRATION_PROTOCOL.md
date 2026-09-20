@@ -277,6 +277,32 @@ The rig sits ~0.66 m from the workspace centre rather than the planned 0.70 m
 and cam_front is ~10° wider in azimuth than the BOM — real, not a problem, and
 it is what the tape measure should agree with.
 
+### Result — 2026-09-20, after the remount
+
+Re-registration was attempted and **refused** — baseline 7.7–43.8 mm / 1.3–3.0°
+against the 3 mm / 0.25° gate. cam_front's mount was slipping; it was secured
+and both tripods were then moved out toward the BOM standoff. Sweep skipped
+again: factory intrinsics, registration pair only.
+
+| | cam_front `261722073945` | cam_over `261822074567` | gate |
+|---|---|---|---|
+| registration RMSE | **0.280 px** | **0.334 px** | < 0.50 |
+| corners on the registration frame | 49 | 49 | ≥ 12 |
+| world position (mm) | −412, −378, +396 | +324, −431, +398 | BOM ±369, −439, +402 |
+
+Round trip over **49 shared corners: mean 0.08 mm, p95 0.17 mm, max 0.34 mm** —
+the best this rig has recorded. Baseline **738.1 mm** (BOM 737), relative
+rotation **79.19°** (BOM 80), standoff 678 mm (BOM 700), heights 396 / 398 mm
+(BOM 402). Shared field of view **470 × 370 mm**. `RESULT: PASS`, exit 0, and
+all eight test suites green afterwards.
+
+cam_front's reprojection is bimodal and unresolved: six consecutive shots read
+0.750, 0.280, 0.331, 0.693, 0.308, 0.368 px while cam_over held 0.327–0.346.
+Shoot several pairs and keep one that clears the gate — the committed set is the
+0.280 px frame. Position repeatability is sub-millimetre throughout, so this is
+image quality on that unit rather than the mount. Diagnosis in
+`CAPTURE_PROTOCOL.md` §4.2f. Cause **[VERIFY]**.
+
 ### Re-registration, every session after this one
 
 The rig mounts cameras on floor tripods and uses a shared computer desk as the
@@ -301,6 +327,15 @@ calibration gate.
 
 **If the baseline shift trips, the tripods moved, not the desk.** Re-registration
 cannot fix that; redo Phase 1 onward.
+
+**A trip does not say which tripod, or whether one is still moving.** Before
+redoing Phase 1, shoot a burst of registration pairs with nothing touched and
+compare each camera's solved position across them. A rigid camera repeats to
+well under a millimetre; a slipping mount scatters by ten or more — and the
+camera that stays put simultaneously proves the board was stationary, since a
+board that moved would shift *both* cameras' world poses. That is how the 09-20
+failure was isolated to cam_front's mount in about three minutes, before any
+tripod was touched (`CAPTURE_PROTOCOL.md` §4.2f).
 
 ---
 

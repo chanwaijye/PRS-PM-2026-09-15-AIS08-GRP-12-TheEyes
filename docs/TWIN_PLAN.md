@@ -34,7 +34,7 @@ below touches `fusion`, `scenegraph`, or the pipeline's data flow.
 | `assets/meshes/usd/{bowl,mustard_bottle,red_cube}.usd` | Converted, object frame **verified after conversion** (`training/obj_to_usd.py`) | The USD origin is the mesh AABB centre, which is exactly the frame `pose_w` is expressed in (`config/meshes.yaml`). Spawning is an assignment, not a re-origin problem. |
 | Isaac Sim 5.1.0 at `~/.local/share/ov/pkg/isaac-sim-5.1.0` | Works headless, 6.9 s startup (STATUS.md) | No install work. |
 | `training/detector/replicator_dataset.py` | Runs end to end | Already solved the four silent-failure traps: 1 m default near clip, dome light required for the beauty pass, `rep.modify.pose(scale=)` being absolute metres, and cameras created at a distribution never being placed. `apply_intrinsics()` converts measured fx to USD focal/aperture and reads it back. |
-| `config/extrinsics.yaml` | **Real** `T_world_cam`, both units, RMSE 0.39 / 0.33 px (2026-09-06) | The twin's virtual cameras go at the measured rig pose, not at `replicator_dataset.py`'s design-geometry azimuths (±40°, 0.70 m standoff), which describe where the cameras were meant to be. |
+| `config/extrinsics.yaml` | **Real** `T_world_cam`, both units, RMSE 0.28 / 0.33 px (2026-09-20) | The twin's virtual cameras go at the measured rig pose, not at `replicator_dataset.py`'s design-geometry azimuths (±40°, 0.70 m standoff), which describe where the cameras were meant to be. |
 | `PipelineResult::scene` | Populated every pair, post static injection | The twin's input already exists as a value. |
 | `metrics.sqlite` `objects` table | Every `ObjectState` field, per pair, per run | An offline twin needs no live rig. |
 

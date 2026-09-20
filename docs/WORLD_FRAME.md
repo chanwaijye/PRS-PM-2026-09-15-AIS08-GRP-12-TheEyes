@@ -76,16 +76,24 @@ out near (±0.369, −0.439, +0.402). That is only meaningful if the board reall
 was at the workspace centre, which is precisely the assumption we cannot verify.
 Replace it with quantities that hold no matter where the board sat:
 
-| Check | Measured from `config/extrinsics.yaml` | Design |
+| Check | Measured from `config/extrinsics.yaml` (2026-09-20) | Design |
 |---|---|---|
-| camera-to-camera baseline | **749.9 mm** | 737 mm |
-| camera-to-camera relative rotation | **82.0°** | 80° |
-| each camera's height above the *fitted* table plane | 386 / 392 mm | 402 mm |
+| camera-to-camera baseline | **738.1 mm** | 737 mm |
+| camera-to-camera relative rotation | **79.19°** | 80° |
+| each camera's height above the *fitted* table plane | 396 / 398 mm | 402 mm |
+
+The figures above are the current set; when this section was written they read
+749.9 mm / 82.0° / 386 / 392 mm off the 09-06 extrinsics. The check has since
+earned its keep twice — it caught the 09-09 move from the committed file with
+no rig, and on 09-20 it refused a re-registration that would otherwise have
+written a slipping mount's pose into the calibration
+(`CAPTURE_PROTOCOL.md` §4.2e, §4.2f).
 
 The first two are pure arithmetic over the committed extrinsics and need no rig,
-no capture and no board placement — and they agree with the design to 13 mm and
-2°, which is a **stronger** statement than the current check because nothing
-about board placement can fake it.
+no capture and no board placement — and on the current set they agree with the
+design to 1.1 mm and 0.8°, which is a **stronger** statement than the current
+check because nothing about board placement can fake it. (On the 09-06 set the
+same two agreed to 13 mm and 2°.)
 
 ### (b) Fit the table plane instead of declaring it — half a day
 

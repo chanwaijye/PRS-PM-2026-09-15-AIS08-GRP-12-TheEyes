@@ -173,13 +173,16 @@ no rig and no capture.
 4. **Trays printed and calliper-verified.** Filament ETA ~2026-09-12
    (`docs/STATUS.md`); worst-case socket clearance target 0.23 mm.
 5. **Extrinsics still valid.** `config/extrinsics.yaml` holds real values from
-   2026-09-06 (RMSE 0.39 / 0.33 px). This is a computer desk that gets leaned on:
+   2026-09-20 (RMSE 0.28 / 0.33 px). This is a computer desk that gets leaned on:
    re-detect the board at its marked spot and confirm before every session
    (`docs/RIG_BOM.md` — a ~30 s check versus a 20 min recalibration). The marked
    spot is the **workspace centre**, taped; a table corner cannot serve, because
-   no corner is in both frames (§4.2c).
-6. **Workspace re-taped to the shared field of view** — **480 × 340 mm** on the
-   2026-09-09 extrinsics, not the 600 × 360 in `RIG_BOM.md` (§4.2d). Objects
+   no corner is in both frames (§4.2c). If the baseline gate trips, the tripods
+   moved rather than the desk — shoot a burst of pairs before recalibrating and
+   compare per-camera position spread, which is what separates a loose mount
+   from a moved one (§4.2f).
+6. **Workspace re-taped to the shared field of view** — **470 × 370 mm** on the
+   2026-09-20 extrinsics, not the 600 × 360 in `RIG_BOM.md` (§4.2d). Objects
    outside it are single-view because they are out of frame, which is not the
    effect being measured. **Recompute after every recalibration**; it changed
    shape when the rig moved.
@@ -390,23 +393,29 @@ Falling out of the same projection, and this one matters for every scene you lay
 out. Sampling the tabletop plane at 5 mm and asking which points land inside
 **both** 848 × 480 frames:
 
-- largest origin-centred rectangle fully shared: **480 × 340 mm**
-  (2026-09-09 extrinsics; it was 400 × 400 on the 2026-09-06 set, and the
-  difference is the rig having moved — see §4.2e)
+- largest origin-centred rectangle fully shared: **470 × 370 mm**
+  (2026-09-20 extrinsics; it was 400 × 400 on the 2026-09-06 set and
+  480 × 340 on the 2026-09-09 one, and the difference each time is the rig
+  having moved — see §4.2e and §4.2f)
+- **compare areas, not edge lengths, across re-runs.** The 09-20 figure comes
+  from a search that maximises rectangle *area*; the same code on the 09-09
+  extrinsics returns 470 × 350 where this document recorded 480 × 340. Those
+  are 164,500 and 163,200 mm² — two near-equal rectangles from the same mask,
+  not a changed measurement
 - the taped workspace is **600 × 360 mm**
 - the workspace's front-left corner (−0.300, −0.180) projects to y = 546 in
   cam_front, below a 480-row frame — it is **outside cam_front entirely**
 
 `RIG_BOM.md`'s "horizontal coverage 981 mm (need 600)" is one camera's extent.
 The quantity that governs a two-view experiment is the *intersection* of two
-views ~80° apart, and that is 480 mm wide by 340 mm deep, not 981.
+views ~80° apart, and that is 470 mm wide by 370 mm deep, not 981.
 
 **Consequence for the ablation, and it is not small.** An object in the outer
 band of the taped rectangle is single-view *by construction* — not occluded,
 just out of frame. Scoring that as occlusion would manufacture exactly the result
 the experiment is supposed to test. So:
 
-- **Re-tape the workspace to the measured shared region** (480 × 340 mm centred
+- **Re-tape the workspace to the measured shared region** (470 × 370 mm centred
   on the origin on the current extrinsics, or whatever a re-run of this
   projection gives after any tripod change), and keep every object inside it in
   every scene.
@@ -448,6 +457,52 @@ refuses to start above, and both cameras regressed. The round trip says the
 geometry is trustworthy, so this is not blocking — but a cleaner register shot
 (braced board, checked focus) would buy back headroom before the next
 recalibration fails outright.
+
+### 4.2f The rig moved again on 09-20 — a slipping mount, not a moved desk
+
+Re-registration was attempted first and **refused**: baseline rigidity came back
+7.7–43.8 mm / 1.3–3.0° across repeated shots, against a 3 mm / 0.25° gate. That
+verdict is the check working. A desk that moves cannot change the baseline, so
+the tripods were what moved, and re-registration cannot recover that.
+
+What the gate could not say is *why*. Eight registration pairs shot back to back
+with nothing touched settled it:
+
+| | cam_front | cam_over |
+|---|---|---|
+| solved position spread | 11.4 mm in x, 14.5 mm in y | 0.2 mm |
+| reprojection RMSE | 0.39–0.91 px, 6 of 8 over gate | 0.33 px, steady |
+| board sharpness | 322–362, flat | 273–315, flat |
+
+cam_front's mount was slipping. Flat sharpness rules out motion blur, and
+cam_over repeating to 0.2 mm proves the board was stationary — the world frame
+is glued to the board, so a board that moved would have dragged *both* cameras'
+poses with it. **A burst of pairs is the cheapest instrument here: one shot
+cannot tell a loose mount from a moved one, and the gate reports both the same
+way.**
+
+Fixed mechanically — head locked, USB cable looped to the tripod leg so it stops
+torquing the camera — after which both tripods were moved out toward the BOM
+standoff. The result is the closest this rig has been to design:
+
+| | 2026-09-09 | 2026-09-20 | design |
+|---|---|---|---|
+| camera-to-camera baseline | 706.7 mm | **738.1 mm** | 737 |
+| relative rotation | 76.77° | **79.19°** | 80 |
+| standoff | 663 mm | **678 mm** | 700 |
+| camera heights | 385 / 392 mm | **396 / 398 mm** | 402 |
+| round trip mean / p95 / max | 0.12 / 0.32 / 0.86 mm | **0.08 / 0.17 / 0.34 mm** | < 5 mm |
+
+This supersedes §4.2e's closing advice to move the tripods apart — they were,
+and viewpoint diversity is now 79.19° against a design 80°. It also supersedes
+the 0.033 px headroom caution above.
+
+**Still open, and it is cam_front again.** Its reprojection is bimodal: across
+the final six shots, 0.750, 0.280, 0.331, 0.693, 0.308, 0.368 px — two of six
+over the 0.50 px gate — while cam_over held 0.327–0.346. Position repeatability
+is sub-millimetre throughout, so this is image quality on that unit rather than
+the mount. Expect to shoot several registration pairs and keep one that clears
+the gate; the committed set is the 0.280 px frame. Cause **[VERIFY]**.
 
 ### 4.3 Recognise it — cross-check the plane from depth
 
@@ -585,7 +640,7 @@ not required for the claim.
   invalidates them and **nothing downstream detects it**.
 - Occluding both views *before* ground truth is frozen.
 - Moving the occluder during a take — the tier is then neither T3 nor T4.
-- Placing an object outside the shared region (§4.2d — 480 × 340 mm on the
+- Placing an object outside the shared region (§4.2d — 470 × 370 mm on the
   current extrinsics). It is then single-view because it is out of frame, and
   the ablation scores an occlusion that never happened.
 - Letting the TV change what it displays mid-take, or bumping it. It is the
@@ -641,7 +696,7 @@ Binary, per `AGENTS.md` rule 3.
 - The shared region (§4.2d) is computed at z = 0 from the current extrinsics and
   the factory intrinsics. **Re-run it after any tripod or mount change** — it
   went from 400 × 400 to 480 × 340 mm when the rig moved between 09-06 and
-  09-09 — and treat it as an upper bound, since an object's top is not shared
+  09-09, and to 470 × 370 mm after the 09-20 remount — and treat it as an upper bound, since an object's top is not shared
   just because its base is. Worth folding into the §4.3 platform tool so one
   command reports the plane fit and the shared footprint together.
 - The visible-fraction figure for T3's "25–75%" band is unresolved (§8). Either
