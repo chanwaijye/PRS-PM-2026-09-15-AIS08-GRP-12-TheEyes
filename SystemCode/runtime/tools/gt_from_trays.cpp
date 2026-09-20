@@ -117,8 +117,17 @@
 //                      layout: printed markers measure 40.0 mm, exactly as
 //                      declared -- which is the value that scales every
 //                      recovered distance while leaving reprojection untouched,
-//                      so the depth scale is right. The bowl's marker spacing
-//                      measures 143.4 mm against 144.0 declared, 0.42% under.
+//                      so the depth scale is right. All three marker spacings
+//                      measure slightly under: red_cube 113.4 against 114.0,
+//                      bowl 143.4 against 144.0, mustard_bottle 159.5 against
+//                      160.0 -- and the deficit is nearly CONSTANT at 0.5-0.6 mm
+//                      across spans of 114 to 160 mm, not proportional to the
+//                      span. A constant offset fits (residuals 0.03/0.03/0.07 mm)
+//                      where a uniform scale does not (0.12/0.00/0.17), so this
+//                      is not print shrinkage -- the plates shrank
+//                      proportionally, these did not. Unexplained; it is at the
+//                      edge of calliper resolution and does not affect the
+//                      default path.
 //
 //                      That error is HARMLESS on the default path and costly on
 //                      this one. Averaging per-marker poses, a symmetric layout
