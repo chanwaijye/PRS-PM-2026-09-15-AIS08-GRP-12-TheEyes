@@ -181,8 +181,8 @@ no rig and no capture.
    moved rather than the desk — shoot a burst of pairs before recalibrating and
    compare per-camera position spread, which is what separates a loose mount
    from a moved one (§4.2f).
-6. **Workspace re-taped to the shared field of view** — **470 × 370 mm** on the
-   2026-09-20 extrinsics, not the 600 × 360 in `RIG_BOM.md` (§4.2d). Objects
+6. **Workspace re-taped to the shared field of view** — **480 × 360 mm** on the
+   current (2026-09-20 evening) extrinsics, not the 600 × 360 in `RIG_BOM.md` (§4.2d). Objects
    outside it are single-view because they are out of frame, which is not the
    effect being measured. **Recompute after every recalibration**; it changed
    shape when the rig moved.
@@ -393,9 +393,9 @@ Falling out of the same projection, and this one matters for every scene you lay
 out. Sampling the tabletop plane at 5 mm and asking which points land inside
 **both** 848 × 480 frames:
 
-- largest origin-centred rectangle fully shared: **470 × 370 mm**
-  (2026-09-20 extrinsics; it was 400 × 400 on the 2026-09-06 set and
-  480 × 340 on the 2026-09-09 one, and the difference each time is the rig
+- largest origin-centred rectangle fully shared: **480 × 360 mm**
+  (current 2026-09-20 evening extrinsics; 470 × 370 earlier that day,
+  400 × 400 on the 2026-09-06 set and 480 × 340 on the 2026-09-09 one, and the difference each time is the rig
   having moved — see §4.2e and §4.2f)
 - **compare areas, not edge lengths, across re-runs.** The 09-20 figure comes
   from a search that maximises rectangle *area*; the same code on the 09-09
@@ -408,14 +408,14 @@ out. Sampling the tabletop plane at 5 mm and asking which points land inside
 
 `RIG_BOM.md`'s "horizontal coverage 981 mm (need 600)" is one camera's extent.
 The quantity that governs a two-view experiment is the *intersection* of two
-views ~80° apart, and that is 470 mm wide by 370 mm deep, not 981.
+views ~80° apart, and that is 480 mm wide by 360 mm deep, not 981.
 
 **Consequence for the ablation, and it is not small.** An object in the outer
 band of the taped rectangle is single-view *by construction* — not occluded,
 just out of frame. Scoring that as occlusion would manufacture exactly the result
 the experiment is supposed to test. So:
 
-- **Re-tape the workspace to the measured shared region** (470 × 370 mm centred
+- **Re-tape the workspace to the measured shared region** (480 × 360 mm centred
   on the origin on the current extrinsics, or whatever a re-run of this
   projection gives after any tripod change), and keep every object inside it in
   every scene.
@@ -433,10 +433,10 @@ the experiment is supposed to test. So:
 
   | height | shared region | |
   |---|---|---|
-  | 0 mm | 470 × 370 | tray surface, marker plane |
-  | 50 mm | 520 × 410 | cube / bowl top |
-  | 100 mm | 570 × 450 | mustard bottle top |
-  | 150 mm | 620 × 490 | tallest plausible object |
+  | 0 mm | 480 × 360 | tray surface, marker plane |
+  | 50 mm | 530 × 400 | cube / bowl top |
+  | 100 mm | 580 × 440 | mustard bottle top |
+  | 150 mm | 630 × 480 | tallest plausible object |
 
   So tape the z = 0 rectangle and **add no height margin** — a tall object does
   not fall out of the shared view as it gets taller. This holds while both
@@ -708,7 +708,7 @@ not required for the claim.
   invalidates them and **nothing downstream detects it**.
 - Occluding both views *before* ground truth is frozen.
 - Moving the occluder during a take — the tier is then neither T3 nor T4.
-- Placing an object outside the shared region (§4.2d — 470 × 370 mm on the
+- Placing an object outside the shared region (§4.2d — 480 × 360 mm on the
   current extrinsics). It is then single-view because it is out of frame, and
   the ablation scores an occlusion that never happened.
 - Letting the TV change what it displays mid-take, or bumping it. It is the
@@ -764,7 +764,8 @@ Binary, per `AGENTS.md` rule 3.
 - The shared region (§4.2d) is computed at z = 0 from the current extrinsics and
   the factory intrinsics. **Re-run it after any tripod or mount change** — it
   went from 400 × 400 to 480 × 340 mm when the rig moved between 09-06 and
-  09-09, and to 470 × 370 mm after the 09-20 remount. **`training/shared_region.py`
+  09-09, to 470 × 370 mm after the 09-20 remount and 480 × 360 mm after that
+  evening's re-tape and lighting work. **`training/shared_region.py`
   does this** — the table by height, the tape offsets measured out from the
   board's own pattern corners, and `--overlay` to draw the rectangle onto a
   still from each camera so the tape can be checked by eye. It needs no rig and

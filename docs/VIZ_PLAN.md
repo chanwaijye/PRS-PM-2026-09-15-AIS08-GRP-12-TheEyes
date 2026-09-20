@@ -112,7 +112,7 @@ Drawn per object:
   point estimate, and the injected `table_01` carries sigmas of −1 by design
   (`config/scene.yaml` header);
 - both camera positions and their frusta from `config/extrinsics.yaml`
-  (real since 2026-09-06, recalibrated 2026-09-20, RMSE 0.27 / 0.33 px), so the
+  (real since 2026-09-06, recalibrated 2026-09-20, RMSE 0.26 / 0.32 px), so the
   viewpoint geometry that makes fusion work is on screen;
 - `cls == "unknown_object"`: dashed box, no heading tick — its rotation is
   meaningless by contract (`INTERFACES.md` §5).

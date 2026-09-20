@@ -304,6 +304,29 @@ not the camera**: `CORNER_REFINE_SUBPIX` snapping one marker corner of 49 by
 corner beside the RMSE. The same six frames now read 0.267–0.331 px and all
 pass. Full evidence in `CAPTURE_PROTOCOL.md` §4.2f.
 
+### Result — 2026-09-20 evening, after the re-tape and lighting work
+
+A second recalibration the same day. Re-registration was attempted and refused
+again, this time on 6.18 mm / 0.21° of baseline shift — a bump while the desk
+was being taped and a lamp positioned, not a slipping mount: a six-shot burst
+afterwards held both cameras to **0.1–0.3 mm**, the tightest this rig has been.
+
+| | cam_front `261722073945` | cam_over `261822074567` | gate |
+|---|---|---|---|
+| registration RMSE | **0.260 px** | **0.318 px** | < 0.50 |
+| worst single corner | 0.666 px | 0.780 px | reported, not gated |
+| world position (mm) | −411, −376, +396 | +319, −432, +398 | BOM ±369, −439, +402 |
+
+Round trip over **36 shared corners: mean 0.08 mm, p95 0.16 mm, max 0.20 mm**.
+Baseline 732.3 mm (BOM 737), relative rotation 79.14° (BOM 80), standoff 676 mm.
+Shared field of view **480 × 360 mm** — re-run `training/shared_region.py` rather
+than reading that figure from anywhere, including here.
+
+Corner counts fell to 47 / 36 from 49 / 49, and the frames now clip 5.0–5.6% of
+their pixels: the new lighting is undiffused and is burning out part of the
+board. It still passes every gate, but it is the same glare that left only 1 of
+8 tray markers decodable in the scene shot just before this one.
+
 ### Re-registration, every session after this one
 
 The rig mounts cameras on floor tripods and uses a shared computer desk as the
