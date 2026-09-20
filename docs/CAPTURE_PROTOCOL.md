@@ -422,9 +422,26 @@ the experiment is supposed to test. So:
 - Re-run the projection after *any* mechanical change. It is arithmetic over
   `extrinsics.yaml` plus the intrinsics already logged in every
   `metrics.sqlite`; it needs no rig and no capture.
-- Caveat: computed at z = 0 for the current tripod placement. Objects have
-  height, so an object's top is not guaranteed shared just because its base is.
-  Treat the figure as an upper bound and leave margin.
+- **The z = 0 plane is the WORST case on this rig, not the best** — which
+  reverses the caveat that stood here until 2026-09-20. Both cameras sit ~397 mm
+  up looking down, so what binds at the tabletop is the **near edge of frame**:
+  the very failure recorded above, the front-left corner projecting to v = 546
+  in a 480-row frame. Raising a point moves it *up* in the image, away from that
+  edge. Measured on the 09-20 extrinsics, the front edge at (0, −185) projects to
+  v = 341.9 at z = 0, 302.9 at 50 mm and 259.7 at 100 mm, and the shared
+  rectangle *grows* with height:
+
+  | height | shared region | |
+  |---|---|---|
+  | 0 mm | 470 × 370 | tray surface, marker plane |
+  | 50 mm | 520 × 410 | cube / bowl top |
+  | 100 mm | 570 × 450 | mustard bottle top |
+  | 150 mm | 620 × 490 | tallest plausible object |
+
+  So tape the z = 0 rectangle and **add no height margin** — a tall object does
+  not fall out of the shared view as it gets taller. This holds while both
+  cameras look down on the workspace; a rig with a camera at or below table
+  height would invert it again, so re-run rather than assume.
 
 ### 4.2e The rig moved between 09-06 and 09-09, and the gauge-invariant check caught it
 
@@ -747,9 +764,12 @@ Binary, per `AGENTS.md` rule 3.
 - The shared region (§4.2d) is computed at z = 0 from the current extrinsics and
   the factory intrinsics. **Re-run it after any tripod or mount change** — it
   went from 400 × 400 to 480 × 340 mm when the rig moved between 09-06 and
-  09-09, and to 470 × 370 mm after the 09-20 remount — and treat it as an upper bound, since an object's top is not shared
-  just because its base is. Worth folding into the §4.3 platform tool so one
-  command reports the plane fit and the shared footprint together.
+  09-09, and to 470 × 370 mm after the 09-20 remount. **`training/shared_region.py`
+  does this** — the table by height, the tape offsets measured out from the
+  board's own pattern corners, and `--overlay` to draw the rectangle onto a
+  still from each camera so the tape can be checked by eye. It needs no rig and
+  no capture for the numbers. Still worth folding into the §4.3 platform tool so
+  one command reports the plane fit and the shared footprint together.
 - The visible-fraction figure for T3's "25–75%" band is unresolved (§8). Either
   compute it properly or state the tier qualitatively and let the `frame_views`
   counters carry the severity. Do not report a number nothing computed.
