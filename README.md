@@ -15,7 +15,7 @@
 
 A robot that plans intelligently but cannot see is blind. *The Planner* (IRS practice module) established a perception interface and demonstrated task reasoning against simulator ground-truth object poses. **The Eyes** implements that interface with real sensing.
 
-Two RGB-D cameras observe a tabletop manipulation scene from complementary viewpoints. A multimodal RGB-D YOLOv8 detector — fine-tuned with a 4-channel early-fusion input stem so that geometry and appearance are consumed jointly — gates a FoundationPose 6-DoF pose estimator on each view; the independent per-view estimates are fused at the object level by a custom C++ module using confidence-weighted quaternion averaging with disagreement gating and per-object EKF temporal filtering. A scene-graph bridge converts fused poses into symbolic relational predicates (`on`, `in`, `clear`, `occluded_from`) emitted as PDDL init facts — the same state language the planner already consumes.
+Two RGB-D cameras observe a tabletop manipulation scene from complementary viewpoints. A multimodal RGB-D YOLOv8 detector — fine-tuned with a 4-channel early-fusion input stem so that geometry and appearance are consumed jointly — gates a FoundationPose 6-DoF pose estimator on each view; the independent per-view estimates are fused at the object level by a custom C++ module using confidence-weighted quaternion averaging with disagreement gating and per-object EKF temporal filtering. A scene-graph bridge converts fused poses into symbolic relational predicates (`on`, `in`, `clear`, `occluded_from`) emitted as PDDL init facts — a symbolic world state a task planner can reason over. The predicate vocabulary is defined by this project (`INTERFACES.md` §6) as the state representation for the follow-on world-model module (PM4).
 
 The headline result is an **occlusion ablation**: identical scenes evaluated with camera 1 only, camera 2 only, and fused, demonstrating that multi-view fusion recovers objects invisible to a single viewpoint. Detectors are trained entirely on synthetic data generated in Isaac Sim with domain randomisation, and evaluated against real captures to quantify the sim-to-real gap.
 
@@ -155,7 +155,7 @@ Every module has a mock mode and can be run without hardware — see `AGENTS.md`
 Camera 1 (front) ──► YOLOv8 ──► FoundationPose ──┐
                                                   ├──► Multi-View Fusion ★ ──► Scene-Graph Bridge ★ ──► /scene_state
 Camera 2 (overhead) ─► YOLOv8 ──► FoundationPose ─┘    (C++, EKF, gating)      (C++, predicates)      └► PDDL init facts
-                                                  │                                                       → The Planner (PM1)
+                                                  │                                                       → world model (PM4)
 Residual point cloud ──► DBSCAN unknown objects ──┘
 ```
 
