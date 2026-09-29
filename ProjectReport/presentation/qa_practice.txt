@@ -259,3 +259,14 @@ Answer. Before capturing any real test data, I fixed the rules of the main exper
 I also wrote down what it would mean if the gated fusion does not beat simple averaging on real data. It would mean FoundationPose rarely gives a confidently wrong view on this rig, so the gate is not needed here. The second camera would still be buying recall when objects are hidden, and the filter would still be buying accuracy. That is still a useful finding, and I would report it as it is.
 
 Why write it down first? So that I cannot change the rules after seeing the results, for example by picking only the scenes that look good, or deciding afterwards what counts as success. Scientists call this pre-registration. It makes the result believable whichever way it comes out.
+
+
+Question 39. What is your plan for the capstone?
+
+Answer. The capstone is called MANIP-WM, a world model for robot manipulation. It runs alongside my two specialist modules, Intelligent Robotic Systems and Intelligent Sensing Systems.
+
+The idea is to bring the pieces together. The Eyes, this project, tells the robot what is on the table and where. The Planner, from my first module, decides what to do. The capstone adds a world model: a network, planned as an R-S-S-M, a recurrent state-space model, that learns to predict how the scene will change when the robot acts, so the robot can think a few steps ahead before it moves. The robotics module will provide the arm, an SO-ARM101.
+
+That is why this project keeps its output format stable. The world model will learn from the same object states my system produces, and it will use the uncertainty fields too, so it knows how sure each position is, not just the position.
+
+To be clear, this is a plan, not built yet. The details will be fixed in the capstone proposal.
