@@ -68,3 +68,11 @@ venv/
 .idea/
 *.swp
 .DS_Store
+
+# Rehearsal audio for presentations: regenerable from the .txt scripts beside it
+# with edge-tts, and binary history grows on every re-record.
+*.mp3
+
+# Original phone photos (full-size, uncropped). Cropped, downscaled copies live
+# in assets/photos/.
+/photos/

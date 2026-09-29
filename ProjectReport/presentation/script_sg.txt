@@ -1,0 +1,90 @@
+The Eyes - First Presentation - speaker script (Singapore English, for presenting)
+
+Slide 1. The Eyes.
+
+Hi everyone, I'm Wai Jye from Group 12, working solo on this one. My project is called The Eyes: the perception part for a tabletop robot. Two depth cameras detect the objects, estimate their six D-O-F poses, combine the two views, and turn the result into a scene graph that a planner can use. The code was built with Claude Code, under my design and review.
+
+
+Slide 2. Why one camera is not enough.
+
+Why two cameras? With one camera, anything hidden behind another object simply drops out of view. A second camera can see it again, but then each object has two estimates that don't quite agree; in my first real run they were 11 millimetres apart. So three things need solving: matching the same object across the two views, deciding whether a disagreement is just noise or one view going wrong, and turning poses into facts reliably. For example, a pose just 1 centimetre too low once made the cube look like it was inside the table.
+
+
+Slide 3. Five project goals.
+
+There are five goals. G1 to G3 form the pipeline: detection and pose, fusion, and the scene graph. G4 is to measure honestly how much performance drops from synthetic to real data, since the detector is trained only on synthetic images. G5 is to cover all four PRS technique categories. At the bottom is where this fits: my PM1 Planner uses these facts, and the capstone world model will build on the same object state, so I keep that interface stable.
+
+
+Slide 4. Scope: what is in and what is out.
+
+I kept the scope fairly focused: rigid objects with CAD models, since FoundationPose needs a mesh, plus two D four-three-five i cameras and one GPU workstation. Open-vocabulary detection, soft objects and the robot arm are out of scope, and the live Planner demo was replaced by logged output. The dark box is the minimum I must deliver. The occlusion ablation is the main experiment, so that one stays no matter what.
+
+
+Slide 5. The rig.
+
+This is the actual rig. The two RealSense cameras sit on tripods with boom arms, about 0.73 metres apart with roughly 79 degrees between their views, and a sync cable makes them capture at the same moment. The printed objects sit in their marker trays on the desk, and the whole pipeline runs on the one workstation.
+
+
+Slide 6. Data: synthetic for training, real for evaluation.
+
+There are three kinds of data. Training is fully synthetic: 50,000 R-G-B-D frames from Isaac Sim, with lighting, materials and poses randomised, and depth noise matched to what I measured on my own cameras. The three objects are 3D printed from the same meshes, so any pose error comes from the estimator rather than a mismatched object. For evaluation, I'll record ten real scenes at four difficulty levels and replay them identically for every test. That capture is the main work remaining.
+
+
+Slide 7. Ground truth from printed marker trays.
+
+For ground truth, each object sits in a printed tray whose socket is cut from the object's own mesh, with ArUco markers on the same plate. The cameras only need to see the markers; the rest comes from CAD. The largest gap in a socket is 0.23 millimetres, so the reference is quite precise. On the left is a frame from the front camera; on the right, the trays next to the calibration board. The markers are used only for scoring, never by the pipeline itself.
+
+
+Slide 8. System design: one C++ process, two views.
+
+Here's the whole system, running as one C plus plus process. The top row runs for each camera: frames from the two synced D four-three-five i, the R-G-B-D detector, FoundationPose for the six D-O-F pose, and then each pose is moved into a shared table frame. The bottom row runs once per frame pair. The three starred modules are the core of the project, written from first principles without a library: matching objects across views, fusing them with a disagreement check, confidence weights and an EKF, and building the scene graph and PDDL facts. Every run is logged, and recordings replay exactly.
+
+
+Slide 9. Techniques: three networks, one trained here.
+
+Three networks run, but only the detector is trained in this project: YOLO v8 nano with a four-channel input, RGB plus depth. The depth channel adds just 144 parameters, and it starts from the average of the pretrained RGB filters instead of random values. FoundationPose's two networks are pretrained and frozen; they only need a CAD mesh per object. The scorer's output also serves as the confidence weight in fusion.
+
+
+Slide 10. Fusion and scene graph, from first principles.
+
+A bit more on the starred modules. Association first moves everything into the table frame, so distances are in real millimetres. Fusion checks whether the two views are more than 50 millimetres or 30 degrees apart; if so, they aren't simply averaged. Otherwise the views are weighted by pose score, rotations are averaged with Markley's method, and an EKF smooths each object over time. The scene graph uses simple geometry rules, and I learned that "in" should only apply to containers. The object format can gain fields, but never lose them.
+
+
+Slide 11. All four PRS technique categories.
+
+The project covers all four PRS technique categories. Supervised learning is the detector; the unsupervised part, DBSCAN for unknown objects, is planned but not built yet, and the detector still covers that category. Deep learning is the detector and FoundationPose, hybrid is fusing two estimators with a classical filter, and sensing is the calibrated two-camera rig turning poses into symbols.
+
+
+Slide 12. What is built and measured.
+
+Here's where things stand. Both cameras run at 30 frames a second, synced to about a millisecond, and I recalibrated on 20 September after finding a slipping mount. The detector is trained and running in C plus plus on the GPU. The fusion ablation has run on synthetic data, clearly marked as such, and the whole chain runs live on the rig. What's still missing is accuracy on real data; that's the focus for October.
+
+
+Slide 13. The whole chain, live on the rig.
+
+This is a live frame from the system, taken on 29 September. At the top are both camera views, with the detector's boxes, and the fused pose drawn back as axes, lining up with the objects. Bottom left is the table plan; bottom right, the scene graph and PDDL facts, with all three objects on the table. It averaged about 90 milliseconds per frame pair. The detector is still synthetic-only, so it occasionally picks up something on the monitor, and there's no ground truth in this run yet.
+
+
+Slide 14. Detector: depth did not help on synthetic data.
+
+The detector reaches 0.957 M-A-P on synthetic validation. Interestingly, an RGB-only version on the same frames scores almost the same, so depth didn't add much here. That's not because the task is maxed out: eight times more data still improves it, mainly on the small cube. So the room to improve is in precise localisation, which depth didn't help with. Real data may tell a different story, since real depth and images look quite different.
+
+
+Slide 15. Fusion ablation: what each part adds.
+
+The fusion test has eight arms, so each part can be changed on its own. The second camera raises recall from 0.35 to 0.49, and the EKF improves accuracy by about 2.7 millimetres. The disagreement gate makes no difference here, which is expected: with evenly spread noise there's nothing for it to reject. It should only help when one view is confidently wrong. A unit test confirms that, and the real-data ablation will show how often it happens on this rig.
+
+
+Slide 16. First real data from the rig.
+
+There are two pieces of real evidence so far. On 6 September the whole chain ran live on a printed cube, fusing both views into one object on all 150 frame pairs, 11 millimetres apart. On 20 September I solved the ground-truth trays from real photos: the bowl and bottle agree across cameras within 4 millimetres, while the cube, at 7.55 millimetres, still needs some work. Real data also showed that pose scores vary, and that my room is darker than the training images.
+
+
+Slide 17. Next: the occlusion ablation on real captures.
+
+The plan to 31 October: first improve the lighting, then run the fit checks and capture the ten scenes. Level T4, where an object is less than a quarter visible from one camera, is the key test. Then I'll compute the scores and run the eight-arm ablation with confidence intervals. I've written down in advance what a negative result would mean, so I'll report the outcome either way.
+
+
+Slide 18. Questions.
+
+That's all from me. Thank you, and I'm happy to take questions.

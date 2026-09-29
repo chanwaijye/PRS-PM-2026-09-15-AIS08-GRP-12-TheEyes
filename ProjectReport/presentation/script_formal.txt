@@ -1,0 +1,90 @@
+The Eyes - First Presentation - speaker script (formal, as submitted)
+
+Slide 1. The Eyes.
+
+The Eyes is the perception layer for a tabletop robot: two depth cameras, detection, six D-O-F pose, fusion across the two views, and a symbolic scene graph a planner can use. This is a solo project; the code was built with Claude Code under my design and review. The photo is the rig itself: two RealSense cameras on tripods, and the three printed objects in their marker trays.
+
+
+Slide 2. Why one camera is not enough.
+
+The motivation. A single camera fails under occlusion. Adding a second view fixes visibility but creates a new problem: two estimates per object that disagree. On this rig the first real run showed 11 millimetres between views. So the project has to answer three questions a single camera never asks: association, arbitration, and turning poses into symbols. The occlusion ablation tests how well those answers hold up on real captures.
+
+
+Slide 3. Five project goals.
+
+Five goals. G1 to G3 are the pipeline: detection and pose, fusion, and the scene graph. G4 is an honest sim-to-real measurement, because the detector is trained on synthetic data only. G5 is breadth: all four PRS technique categories in one system. Along the bottom, where it fits: the previous module's Planner consumes these facts, and the capstone's world model will run on the object state this project defines, so that interface has to stay stable.
+
+
+Slide 4. Scope: what is in and what is out.
+
+Scope is deliberately closed-set: rigid objects with known CAD models, because FoundationPose needs a mesh. Two D four-three-five i cameras, one GPU workstation. Out of scope: open vocabulary, deformable objects, and the robot arm itself. The live Planner demo was cut on 8 September; logged planning output covers that instead. The MVP line at the bottom is what must ship. The occlusion ablation is the main experiment and is never cut. Everything else has a fixed cut order.
+
+
+Slide 5. The rig.
+
+The rig itself: two RealSense D four-three-five i cameras on tripods with boom arms, about 0.73 m apart with roughly 79 degrees between their views (calibrated 20 September), linked by a hardware-sync cable so both capture at the same moment. The printed objects sit in their marker trays on the desk, and one workstation runs the whole pipeline.
+
+
+Slide 6. Data: synthetic for training, real for evaluation.
+
+Three kinds of data. Training is fully synthetic: 50,000 R-G-B-D frames from Isaac Sim with domain randomisation, and the depth passes through a noise model I measured on the real cameras. The three object classes are 3D printed from the same meshes, so any pose error is the estimator's, not a mismatched object. Real evaluation is ten scenes in four difficulty tiers, recorded once and replayed identically for every ablation arm. That capture has not happened yet; it is the main remaining work.
+
+
+Slide 7. Ground truth from printed marker trays.
+
+How I get ground truth without modifying the objects. Each object sits in a printed tray whose socket is cut from that object's own mesh, with ArUco markers in the same plate. Only the camera-to-marker transform is observed; the rest comes from CAD. The worst socket clearance, 0.23 millimetres, bounds the ground-truth error, about 1% of the bottle's A-D-D-S threshold. The left image is a real still from the front camera on 20 September; the right photo, from 29 September, shows the objects seated in their trays beside the ChArUco board used to calibrate both cameras. The markers are used only to score, never by the pipeline.
+
+
+Slide 8. System design: one C++ process, two views.
+
+5 minutes. The whole runtime is one C plus plus process. Top row runs once per camera: frames from two D four-three-five i units selected by serial number and hardware-synced; the R-G-B-D detector; FoundationPose for a six D-O-F pose; then each pose is lifted into a shared table frame using the calibration. Bottom row runs once per frame pair, and the three starred modules are the project's core modules, written from first principles in C plus plus with no library: association across views, fusion with a disagreement gate, confidence weighting and an EKF, and the scene graph that emits relations and PDDL facts. Every run is logged to S-Q-Lite, and recorded sessions replay bit-exact.
+
+
+Slide 9. Techniques: three networks, one trained here.
+
+Three networks run at inference. Only the detector is trained here: YOLO v8 nano with a four-channel stem, RGB plus aligned metric depth. The depth channel costs just 144 parameters, and I initialise it from the mean of the pretrained RGB filters rather than leaving it random, which the library would otherwise do. FoundationPose's refiner and scorer are pretrained and frozen; they need only a CAD mesh per object, not retraining. The scorer's output is what fusion uses as a confidence weight.
+
+
+Slide 10. Fusion and scene graph, from first principles.
+
+5 minutes. The three starred modules in more detail. Association first moves everything into the table frame so the 150 millimetres radius and the gate are in millimetres, not pixels. Fusion gates on disagreement over 50 millimetres or 30 degrees, weights by the pose score, averages rotations with Markley's eigenvector method, and smooths with a per-object EKF. The scene graph turns poses into relations with geometric rules; one real bug taught me that 'in' needs a declared container. The ObjectState struct is a contract for later modules: fields can be added, never removed.
+
+
+Slide 11. All four PRS technique categories.
+
+The project covers all four PRS technique categories. Supervised learning is the detector; the unsupervised part is DBSCAN for unknown objects, which is planned but sits above the MVP, so it is second in the cut order. If it is cut, category one is still covered by the supervised detector. Deep learning is the multimodal detector and FoundationPose. Hybrid is the fusion of two estimators with a classical filter. Sensing is the calibrated dual-camera rig and the step from poses to symbols.
+
+
+Slide 12. What is built and measured.
+
+Where things stand. The hardware is verified: both cameras at 30 fps, hardware-synced to about a millisecond. Calibration was redone on 20 September after I found a slipping mount. The detector is trained and running in C plus plus on the GPU. The fusion ablation has run, but only on synthetic input, and I label it that way everywhere. The whole chain has run live on the rig. The honest gap is the last row: no real-capture accuracy numbers yet. That is October's work.
+
+
+Slide 13. The whole chain, live on the rig.
+
+A live frame from the running system on 29 September, with the real pose estimator. Top row: both camera views; the boxes come from the detector, and the axes are the fused pose projected back into each view, so they show the world estimate agrees with the pixels. Bottom left: the same objects in the table frame. Bottom right: the scene graph and the PDDL facts it emits; here all three objects are on the table and clear. Over 200 live pairs the median was about 90 milliseconds per pair. Two caveats: the detector is still trained only on synthetic data, and in other frames it fired on the monitor; and there is no ground truth in this run, so it shows the chain working, not its accuracy.
+
+
+Slide 14. Detector: depth did not help on synthetic data.
+
+The detector reaches 0.957 M-A-P at 0.5 to 0.95 on synthetic validation. The interesting result is negative: an RGB-only twin on identical frames scores within 0.00076, so depth added nothing measurable here. The dataset-size ablation shows the task is not saturated, since eight times more data still gains 0.032, mostly on the small cube. So the headroom is in localisation, and early-fusion depth does not reach it. Real captures are where depth could still matter, because real depth has holes and the real appearance differs.
+
+
+Slide 15. Fusion ablation: what each part adds.
+
+5 minutes. Eight arms, so that views, fusion policy and the temporal filter each vary independently. Read rows in pairs that differ in one thing. The second camera lifts recall from 0.35 to 0.49. The EKF buys about 2.7 millimetres. The gate policy buys nothing here, and that is correct: with symmetric Gaussian noise there is nothing to reject. An earlier four-arm version credited the EKF's gain to the policy; splitting the arms fixed that confound. The gate earns its place only when one view is confidently wrong, and a unit test with an 8 centimetres outlier shows it winning then. Whether FoundationPose produces such views on this rig is what the real ablation measures.
+
+
+Slide 16. First real data from the rig.
+
+5 minutes. Two pieces of real evidence. On 6 September the whole chain ran live on a printed cube: both views fused into one object on every one of 150 pairs, 11 millimetres apart, well inside the gate. That shows the multi-view path works end to end, but it is not an accuracy number. On 20 September the ground-truth trays were solved from real stills: the bowl and bottle agree across cameras to under 4 millimetres; the cube is weakest at 7.55 millimetres and needs work. Real data also exposed two things synthetic data could not: pose scores do vary, and the room is far darker than the training renders.
+
+
+Slide 17. Next: the occlusion ablation on real captures.
+
+The plan to 31 October. First the lighting, because glare clips the markers and the scene is darker than the training data. Then fit checks, then the capture: ten scenes in four tiers, with T4, targets under a quarter visible from one camera, the main test of the multi-view approach. Then the scores and the eight-arm ablation with bootstrap confidence intervals over scenes. The negative outcome is written down before any data is seen, so the result gets reported either way.
+
+
+Slide 18. Questions.
+
+Wrap up in 20 seconds, then questions. Likely questions: why depth did not help (answer: the negative result and the dataset-size ablation); why not just average the two views (answer: the gate only matters for confidently wrong views, which the real ablation tests); how ground truth is trusted (answer: the tray chain, 0.23 millimetres clearance, callipered markers, cross-camera agreement).

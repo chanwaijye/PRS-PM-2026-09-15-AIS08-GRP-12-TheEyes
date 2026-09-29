@@ -1,0 +1,261 @@
+The Eyes - First Presentation - likely examiner questions, with answers.
+
+Questions marked "tough one" are the ones to practise first.
+
+
+Part 1. Motivation and novelty.
+
+Question 1. Tough one. What is new here? Multi-view fusion and scene graphs already exist.
+
+Answer. None of the techniques is new, and I don't claim novelty. The contribution is applying them to a real two-camera rig and measuring the result honestly. The main measurement is the occlusion ablation: single camera versus fused, on real captures, with the outcome stated in advance.
+
+
+Question 2. Why two cameras, and not three or more?
+
+Answer. Cost and synchronisation. Two D four-three-five i units share one hardware-sync cable. With two cameras there is no majority vote when they disagree, which is exactly the hard case the fusion gate has to handle. A third camera would make that problem easier, but more expensive.
+
+
+Question 3. Why not use one camera and move the robot's viewpoint?
+
+Answer. Then the scene has to stay still while the camera moves, and there is no arm yet. Two fixed cameras give both views at the same moment, 30 times a second.
+
+
+Part 2. Data and sim-to-real.
+
+Question 4. Tough one. Your detector is trained only on synthetic data. Will it work on real images?
+
+Answer. Not proven yet; that is goal G4. The first real evidence says there is a big gap: 82 to 93 percent of real pixels are darker than the darkest 1 percent of the training images. At 30 frames per second the camera cannot expose long enough to close that gap, so the fix is more light on the scene, not re-rendering the dataset. Whatever gap remains, I will report it as a finding.
+
+
+Question 5. Why only three objects?
+
+Answer. Each object needs a CAD mesh, a 3D print in the rendered colour, and a ground-truth marker tray printed to fit it. Three is enough for the ablation; the design allows up to six.
+
+
+Question 6. How do you know your ground truth is accurate?
+
+Answer. Each object sits in a tray whose socket is cut from its own mesh, so the object-to-marker offset comes from CAD. The worst gap between object and socket is 0.23 millimetres, and the markers measure exactly 40.0 millimetres with callipers. Independently, the two cameras agree on tray pose to within 2.7 millimetres for the bowl, 3.8 for the bottle and 7.6 for the cube. The cube is the weak one, and I am still working on it.
+
+
+Part 3. Detector.
+
+Question 7. Tough one. Depth added almost nothing, plus 0.00076 M-A-P. Why keep the R-G-B-D detector?
+
+Answer. On synthetic data the depth is perfect and the three classes look very different, so colour alone is enough. But the task is not saturated: eight times more data still adds 0.032, so there is room to improve that depth does not reach. Real depth has holes, about 97.8 percent valid pixels, and real images look different, so the real captures are the real test. I report the synthetic result as a negative result rather than hide it.
+
+
+Question 8. Why early fusion, and not a separate depth branch?
+
+Answer. Early fusion reuses the whole COCO-pretrained backbone and costs only 144 extra parameters. A separate branch would have to learn depth features from scratch.
+
+
+Question 9. Why don't you report M-A-P at 0.5?
+
+Answer. It saturated at 0.994, so it cannot tell models apart. M-A-P at 0.5 to 0.95 still separates them.
+
+
+Part 4. Pose and fusion.
+
+Question 10. Tough one. What happens if one camera gives a confidently wrong pose?
+
+Answer. If the two views are more than 50 millimetres or 30 degrees apart, the gate does not average them. It keeps the view that FoundationPose scores higher. A unit test with an 8 centimetre error confirms the gated fusion beats plain averaging in that case. Whether FoundationPose actually produces such wrong views on this rig is what the real ablation measures.
+
+
+Question 11. What if both views are wrong in the same way?
+
+Answer. Then the gate cannot catch it; two cameras cannot detect an error they share. The per-object E-K-F smooths noise over time, but not a constant bias. This is a real limitation.
+
+
+Question 12. Tough one. Your fusion policy gained 0.01 millimetres. Doesn't that mean it is useless?
+
+Answer. With symmetric Gaussian noise there is nothing to reject, so any gain would have been suspicious. That is why there are eight ablation arms: they separate the camera's contribution, recall from 0.35 to 0.49, and the E-K-F's, about 2.7 millimetres, from the policy's. An earlier four-arm version wrongly credited the E-K-F's gain to the policy.
+
+
+Question 13. Two identical objects close together: can association mix them up?
+
+Answer. Yes. Matching is greedy nearest neighbour per class within 150 millimetres, so two same-class objects closer than their pose error could be swapped. Three distinct classes avoid it in my scenes; with duplicates it is a known limitation.
+
+
+Question 14. Why an E-K-F, and not a particle filter?
+
+Answer. The objects on the table are nearly static and the motion model is simple, so an E-K-F is enough, and cheap. A particle filter would matter for multi-modal cases such as symmetric objects, which A-D-D-S handles on the evaluation side.
+
+
+Question 15. Is FoundationPose reliable?
+
+Answer. Mostly. At 5 refinement iterations, about 1 registration in 30 landed in a wrong pose, 121 millimetres and 162 degrees off. At 6 iterations that disappeared on the test sequence, so the system uses 6. Thirty registrations cannot prove it is always safe, so I will re-check on real captures.
+
+
+Part 5. Real-time performance.
+
+Question 16. Is it real-time?
+
+Answer. Live on the rig, a frame pair takes 51.7 milliseconds at the median, about 19 pairs a second. The detector is 3.6 milliseconds per view on the GPU, so almost all the time is FoundationPose. For 3 objects in 2 views I estimate about 9.7 frames per second, but I have not measured that yet.
+
+
+Question 17. Do the two cameras' infrared projectors interfere with each other?
+
+Answer. They are hardware-synced as master and slave, and mounted about 80 degrees apart, which reduces overlap. I have not measured the interference yet; that is planned now that the rig is mounted.
+
+
+Part 6. Evaluation.
+
+Question 18. Tough one. How will you know the fused result is really better?
+
+Answer. A-D-D-S with a 95 percent bootstrap confidence interval, resampling scenes, not frames, because frames in one scene are correlated. A difference only counts if the interval excludes zero, and the difference is bigger than the 2 to 4 millimetre sensor noise.
+
+
+Question 19. What if the real ablation shows fusion does not help?
+
+Answer. That outcome is written down in advance: the second camera buys recall under occlusion, the E-K-F buys accuracy, and the gate is not needed on this rig. It gets reported either way.
+
+
+Question 20. How will you measure predicate accuracy?
+
+Answer. Against hand labels, reported separately for each predicate, because rare "in" facts would disappear inside a pooled figure. The target is at least 95 percent.
+
+
+Part 7. Process.
+
+Question 21. Tough one. How much of this did you build yourself? You mentioned AI-assisted development.
+
+Answer. The code was written with Claude Code, under my design and review; that is disclosed in the proposal, Appendix A. I chose the architecture, the rig, the experiments and the evaluation protocol, and I checked the results.
+
+Tip: be ready to explain any module on the slides in your own words, especially the disagreement gate and the eight-arm ablation.
+
+
+Question 22. The unsupervised part, DBSCAN, is not built. Is that a problem?
+
+Answer. It is planned, but it sits above the MVP. If it gets cut, the supervised detector still covers category one, and the other three PRS categories are covered in full.
+
+
+Question 23. You have not captured the real evaluation data yet, and the deadline is 31 October. Is that realistic?
+
+Answer. The rig is calibrated, the cameras are synced and the objects are printed. What is left is lighting, fit checks and the capture itself. The code already exists and runs on recorded sessions, so every number comes out of the logs as soon as the data exists.
+
+
+Part 8. Slides.
+
+Question 24. What are the 16 pictures on slide 14?
+
+Answer. They are 16 synthetic validation images from Isaac Sim, with the detector's predicted boxes drawn on them. None of them was used in training. Each coloured box is a prediction, with a class name and a confidence score, such as mustard bottle 1.0, bowl 0.9, or red cube 0.9. The grey spheres, cylinders and blocks are distractors, added on purpose so the detector learns to ignore things that are not targets. The pastel colours come from domain randomisation: lighting, table and background materials change in every frame, so the network does not rely on one look. Some targets are partly hidden, for example the cube in the bowl or behind the bottle, and are still detected. In one tile there are large red blocks, and only the small cube is labelled red cube, so the detector uses size and shape, not just colour.
+
+If asked how good it is: 0.957 M-A-P at 0.5 to 0.95, on 9,988 synthetic validation frames. These are synthetic images only; accuracy on real images is not measured yet, and slide 13 shows the live run.
+
+Tip: zoom in on the red-block tile before the talk, to confirm the big red blocks have no box.
+
+
+Part 9. Terms in plain language.
+
+Question 25. What is M-A-P?
+
+Answer. M-A-P means mean average precision. It is the standard score for an object detector, from 0 to 1, where 1 is perfect. For each object class, it checks how many boxes the detector gets right and how many it misses or invents, across all confidence levels, and then averages over the classes. "At 0.5 to 0.95" means a box only counts as right if it overlaps the true box closely, and the score is averaged over overlap levels from 50 percent up to 95 percent. So it is a strict score that rewards tight, accurate boxes. Mine is 0.957 on synthetic validation images.
+
+
+Question 26. What is an E-K-F?
+
+Answer. E-K-F means extended Kalman filter. It smooths each object's position over time. At every frame it combines two things: where the object should be, based on where it was, and the new measurement from the cameras. It trusts whichever is less noisy. Measurements jump around a little from frame to frame; the filter settles them into a steady estimate. "Extended" means it also works for quantities that do not behave in a straight-line way, like rotations.
+
+
+Question 27. What are the naive and gated fusion policies?
+
+Answer. They are two ways to combine the two cameras' estimates of the same object. Naive simply averages the two. Gated first checks whether the two views disagree by more than 50 millimetres or 30 degrees. If they do, it does not average them, because one view is probably wrong; it keeps the view with the higher confidence score. If they agree, it averages them, giving more weight to the more confident view. Naive is the baseline; gated is the system.
+
+
+Question 28. What is the fusion ablation?
+
+Answer. An ablation is an experiment where you switch parts of a system on and off to see what each part contributes. My fusion ablation has eight arms: one camera or two, naive or gated fusion, and with or without the E-K-F filter. Comparing arms that differ in only one thing shows exactly what that one part adds. On synthetic data, the second camera improves recall, the filter improves accuracy, and the gate makes no difference yet, as expected, because the synthetic noise never makes a view confidently wrong.
+
+
+Question 29. What is PDDL?
+
+Answer. PDDL means Planning Domain Definition Language. It is a standard text format that A-I planners read. The world is described as simple facts, for example "on red cube, table", meaning the red cube is on the table, or "clear bowl", meaning nothing is on top of the bowl. My system turns camera measurements into these facts, and a planner, like my previous module's Planner, uses them to work out a sequence of actions for a robot.
+
+
+Question 30. Where is the world origin?
+
+Answer. The world frame is called table origin. Its origin is the centre of the workspace, on the tabletop surface itself. The x axis runs to the right along the table, y points towards the back of the table, away from where I sit, and z points up. So z equals zero is the table surface the objects rest on.
+
+It is set during calibration. The ChArUco board is laid flat at the centre of the workspace, lined up with tape marks at its four pattern corners, and both cameras work out where they are relative to the board. The board is 7.1 millimetres thick, and that thickness is subtracted, so zero really is the tabletop and not the top of the board.
+
+If asked whether the exact origin matters: mostly not. Pose error, A-D-D-S, compares my estimate with the ground truth in the same frame, so any offset in the origin cancels out. The relations like "on" only need the objects and the table in the same frame. What does matter is that the table plane is correct, and that the cameras have not moved since calibration, which is why I re-register the cameras before each session.
+
+
+Question 31. Tough one. How is this practical for a robot, if you need to recalibrate every time you move a camera?
+
+Answer. Fair question. There are two parts to the answer.
+
+First, in a real robot cell the cameras are bolted to a rigid frame, calibrated once at installation, and only checked now and then. My cameras are on tripods on a home desk, so they drift when the desk is bumped. That is a limitation of my prototype rig, not of the method.
+
+Second, a check is much cheaper than a full calibration. Before each session I run a re-registration: one picture of the board from each camera, and the software compares it with the stored calibration. If a camera has moved by more than 3 millimetres or a quarter of a degree, it refuses to start, so a moved camera is caught instead of silently giving wrong poses. Only then is a full recalibration needed.
+
+For a future version, the system could keep itself calibrated without the board: the depth cameras can re-fit the table plane on their own, and the objects both cameras see can be used to re-estimate the relative camera pose. That is future work, not something I have built.
+
+
+Question 32. Why do you need the trays? Would a robot need them?
+
+Answer. No, the robot would not need them. The trays are only for measuring accuracy. The pipeline never looks at the markers; detection and pose estimation work on the objects themselves.
+
+I need them for evaluation, because to score a pose I must know the true pose. Each tray's socket is cut from the object's own mesh, so when the object sits in it, its position relative to the markers is known from CAD, to within 0.23 millimetres. The cameras measure the markers, and that gives the true object pose.
+
+Why trays, and not markers stuck on the objects? Three reasons. The detector was trained on renders of the plain objects, so stickers would change how they look. The bottle is curved and has no flat place for a marker. And the bowl's wall is less than one millimetre thick. A tray keeps the objects exactly as they are.
+
+One small caveat: in the scored captures the objects sit in grey trays, which the training images did not have. That is why the trays are printed in a neutral grey, never in one of the object colours, so the detector treats them as background.
+
+
+Question 33. On slide 7, what is the equation for?
+
+Answer. The equation is how I get the true pose of each object, the ground truth. It reads: T camera-object equals T camera-marker, times T marker-tray, times T tray-object.
+
+Each T is a pose, a position plus a rotation, written as a four by four matrix. T A-B means "where B is, seen from A". Chaining them works like giving directions: from the camera to the marker, from the marker to the tray, and from the tray to the object.
+
+Only the first link is measured: the camera sees the marker and works out where it is. The other two links are fixed by design. Where each marker sits on the tray is set by the printed tray. Where the object sits in the tray is set by the socket, which is cut from the object's own mesh, so it fits to within 0.23 millimetres. Multiply the three together and you get exactly where the object is, relative to the camera. One more step with the calibration puts it in the table frame, where it is compared with the system's estimate.
+
+
+Question 34. Is FoundationPose's input just the mesh and an RGB image?
+
+Answer. Not quite. It takes four things: the CAD mesh of the object, the colour image, the aligned depth image, and the camera's intrinsics, meaning its focal length and centre. It also needs to know where the object is in the image. My detector's bounding box provides that: the box is expanded a little, and the pixels inside it with valid depth are used as the object mask. The output is the object's six D-O-F pose: position and rotation relative to the camera.
+
+Depth matters a lot here. It gives the true distance and shape, which is why each network inside FoundationPose looks at both the colour crop and a 3D point crop of the object.
+
+It works in two modes. On the first frame, registration: it tries many possible rotations, refines each one, and its scorer network picks the best. That takes about 1.2 seconds. After that, tracking: it only refines the pose from the previous frame, which takes about 17 milliseconds. No retraining is needed for a new object; it only needs the mesh.
+
+A segmentation mask instead of a box would be better, and that is a possible upgrade.
+
+
+Question 35. What is Markley's method?
+
+Answer. It is a way to average rotations, from a 2007 paper by Markley and colleagues. My fusion uses it to combine the two cameras' estimates of an object's orientation.
+
+Averaging positions is easy: add them up and divide. Averaging rotations is not. If you average angles directly, they wrap around: the average of 350 degrees and 10 degrees should be 0, not 180. And with quaternions, the usual four-number form of a rotation, a rotation and its exact negative mean the same thing, so a plain average can cancel out to nonsense.
+
+Markley's method avoids both problems. Each rotation is written as a quaternion q. For each one it builds a small four by four matrix, q times q-transpose, which is the same whichever sign q has. It adds these matrices up, weighted by each view's confidence. The average rotation is then the eigenvector of that sum with the largest eigenvalue. In plain terms: it finds the single rotation that sits closest to all the input rotations at once.
+
+
+Question 36. What do you mean by "the object format can gain fields, but never lose them"?
+
+Answer. Every object my system reports is stored in one fixed format, called ObjectState. It has fields such as the object's ID, its class, its pose, a confidence score, which cameras saw it, its size, its relations like "on table", and a time stamp.
+
+Other programs depend on this format: my previous module's Planner, and later the capstone world model. So the rule is: I may add new fields, but I never remove a field or change what type it is. Adding is safe, because an older program simply ignores a field it does not know about. Removing or changing one is not, because a program that reads that field would break.
+
+It is like a shared spreadsheet: adding a new column does not upset anyone, but deleting a column breaks everyone whose formulas use it.
+
+It has already happened once: I later added uncertainty fields, how sure the system is about each position and rotation, plus a velocity. They were added on top, without removing or changing any field that was already there.
+
+
+Question 37. What is DBSCAN?
+
+Answer. DBSCAN stands for density-based spatial clustering of applications with noise. It is a clustering method: it groups points that are packed closely together, and labels scattered, isolated points as noise. You set two things: how close two points must be to count as neighbours, and how many neighbours a point needs to be part of a group. It does not need to know in advance how many groups there are, and the groups can be any shape.
+
+In my project it is the planned unsupervised part. After the known objects are detected, their points and the table surface are removed from the depth data. Whatever 3D points are left over, DBSCAN groups into clusters, and each cluster is flagged as an unknown object: something is there, but it is not one of my three classes. That lets the scene graph still say that space is occupied, without needing a CAD model.
+
+To be clear, this part is planned, not built yet. It is second in my cut list if time runs short, and the supervised detector still covers that PRS category.
+
+
+Question 38. What do you mean by "I've written down in advance what a negative result would mean"?
+
+Answer. Before capturing any real test data, I fixed the rules of the main experiment in my proposal, section 7.1: which scenes, which eight arms, which score, and what counts as a real difference. A difference between single camera and fused only counts if its 95 percent confidence interval excludes zero, and it is also bigger than the 2 to 4 millimetre noise of the depth sensor.
+
+I also wrote down what it would mean if the gated fusion does not beat simple averaging on real data. It would mean FoundationPose rarely gives a confidently wrong view on this rig, so the gate is not needed here. The second camera would still be buying recall when objects are hidden, and the filter would still be buying accuracy. That is still a useful finding, and I would report it as it is.
+
+Why write it down first? So that I cannot change the rules after seeing the results, for example by picking only the scenes that look good, or deciding afterwards what counts as success. Scientists call this pre-registration. It makes the result believable whichever way it comes out.
