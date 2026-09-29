@@ -360,7 +360,10 @@ Steps 1 and 2 alone run about 7 h back to back.
 ### Per-part notes
 
 **`mustard_bottle`.** Upright; no supports — the only faces past 60° of overhang
-are in the bottom 3.5 mm, the base's own dish. The 97 × 67 mm footprint is
+are in the bottom 3.5 mm, the base's own dish. *Corrected 2026-09-17:* this
+cleared the dish as harmless without checking it against the tray, whose floor
+copied it as a 3.43 mm dome. The printed dish sagged flatter and the bottle
+tilted on the dome. The fix is in the tray, not the bottle — §8.1. The 97 × 67 mm footprint is
 misleading: the recessed, rounded base meets the plate almost tangentially.
 Solid cross-section on a 0.4 mm grid:
 
@@ -406,18 +409,52 @@ to stop or add supports:
   bed-slinger. If used, paint them onto the rim underside only. No support can
   help the base — the gaps there are under 1.5 mm.
 
-The one route by which the base could reach ground truth: a sagged underside
-between the lightening bore (r 30 mm) and the foot contact (r 34.5–45.1 mm)
-could touch the tray floor before the foot does. The bowl-tray fit test catches
-it — the bowl would rock or sit high. If so, open the tray's `lighten` bore to
-about 68 mm so only the foot rests on the floor; that changes no number in
-`config/marker_trays.yaml`.
+A sagged underside inside the foot could touch the tray floor before the foot
+does. It did — the bowl rocked about 1 mm (2026-09-17) — and the fix that
+shipped is a flat floor inside the contact ring rather than the wider bore
+first suggested here, because the foot band itself is uneven by up to 1.16 mm
+and a bore would have left that under it. §8.1.
 
 **`bowl_tray`.** Its socket is shape-keyed — cut from the bowl's real
 out-of-round profile, not a circle — so the bowl seats at essentially one yaw.
 Rotate it until it drops in rather than forcing it. That costs the measurement
 nothing, since yaw is undefined for a rotationally symmetric class, and it is
 what buys the tight clearance (§2b).
+
+**Placing the marker cards.** Ground truth reads each card's id *and* its
+rotation: `T_cam_object = T_cam_marker · MarkerToObject`, and the offset from
+marker to object is applied in the marker's own frame. The detector's frame
+(`marker_detector.cpp`, confirmed against the printed sheet) is +x to the right
+and +y toward the top of the black square — the card's label is along its
+bottom edge. So, looking down at a tray from its front edge:
+
+- every card reads upright, label nearest you;
+- ids go where `config/marker_trays.yaml` puts them, +x right, +y away from you.
+
+| tray | front-left | front-right | back-left | back-right |
+|---|---|---|---|---|
+| `bowl` | 104 (−72, −72) | 105 (+72, −72) | 106 (−72, +72) | 107 (+72, +72) |
+| `red_cube` | 100 (−57, 0), left end | 101 (+57, 0), right end | — | — |
+| `mustard_bottle` | 102 (−80, 0), left end | 103 (+80, 0), right end | — | — |
+
+A card in the wrong corner, or turned in its recess, is not a small error. The
+bowl's markers sit 101.8 mm from the object centre, so a card a quarter-turn out
+moves that marker's object estimate by **144 mm**, a half-turn or the diagonal
+corner by **204 mm**. For the bowl and cube, turning *all* cards together is
+harmless — both objects are symmetric and sit at the tray centre — so only
+consistency matters. Set the tray on the rig with its front edge (104/105)
+toward the cameras: marker visibility was ray-cast for that orientation.
+
+`gt_from_trays` pools every marker on a tray into one average and refuses only
+on too few observations, so a misplaced card still produces a row. It shows up
+in the printed scatter and cross-camera figures — expect a few mm; tens of mm
+means a card is wrong.
+
+The bottle tray has one more constraint: its socket keys the bottle's
+orientation (the footprint mismatches itself by up to 1.4 mm under a half-turn,
+against 0.12–0.23 mm of clearance), and the bottle is not a symmetric class, so
+that tray's front edge must match the socket, not be chosen freely. `[VERIFY]`
+which end is which before gluing those two cards.
 
 **Board jig.** `assets/jig/board_jig_corner.stl` and `board_jig_fence_stop.stl`,
 already in millimetres. Seating gesture and bracket placement are in
@@ -485,3 +522,203 @@ magenta), which is cheaper, flatter and lighter than printing a slab, and the
 stand printed in **black** — small footprint, off-palette, and the only job
 black is fit for here. Keep the black area small: the rig is already 82–93%
 darker than the training distribution and a large black slab pushes it further.
+
+---
+
+## 8. Acceptance test for the three sets
+
+Two stages. The bench stage needs callipers only. The rig stage needs you for
+the physical setup and about ten minutes of shooting; every number after that is
+computed offline from the stills.
+
+### 8.1 Bench — no rig
+
+| check | target | measured |
+|---|---|---|
+| `mustard_bottle` height, base to cap | 191.41 mm | **191.0 mm** (−0.41 mm, −0.21%) — **pass** |
+| `mustard_bottle` across the body | not a calliper check — see below | 95.44 × 57.07 mm, consistent with the mesh |
+| `bowl` across the rim, any direction | 160.38–161.94 mm (rim is out of round) | **161 / 161 mm** — inside the range |
+| `bowl` height, at the highest point of the rim | 55.01 mm (rim is uneven by 1.8 mm) | **55.0 mm** (−0.01 mm) — **pass** |
+| bottle seats under its own weight, no rocking | yes | **no** — drops in, then tilts easily. Tray reprint, below |
+| bowl seats under its own weight, no rocking, at its one yaw | yes | **no** — rocks about 1 mm. Tray reprint, below |
+| every marker card flat, no lifted corner or edge | yes | **yes** |
+
+Pass on dimensions: within 0.3%, the cube's worst axis — 0.6 mm on the bottle's
+height, 0.5 mm on the bowl.
+
+**Why the bottle's width and depth are not a pass/fail check.** This table first
+gave 97.15 × 66.62 mm, which is the mesh's axis-aligned bounding box, not what
+callipers read. The bottle's cross-section is turned relative to the mesh axes
+and changes quickly with height, so jaws across its faces read the section's
+*own* width at whatever height they sit:
+
+| height above base | narrow width | long width |
+|---|---|---|
+| 6 mm | 57.01 mm | 94.68 mm |
+| 12 mm | 57.40 mm | 97.28 mm |
+| 20 mm | 56.53 mm | 97.79 mm |
+| 60 mm | 50.22 mm | 83.48 mm |
+
+The reading of 95.44 × 57.07 mm (2026-09-16) matches the section about 8 mm up,
+and 1 mm of jaw height moves the long width by more than the 0.3% pass line, so
+callipers cannot resolve print error here. The socket is the better check: it is
+cut from this same profile with 0.12–0.23 mm of clearance, and the bottle seats
+without rocking, which a base more than a few tenths out would not do.
+
+Height is well defined — cap top to base — and passes.
+
+The bowl's rim readings have the same limit in milder form: out-of-roundness
+spreads the expected reading over 1.56 mm, three times the 0.48 mm pass line, so
+"inside the range" is all a calliper can say. Its socket is the tightest of the
+three (0.082–0.118 mm) and it seats, which is the stronger check.
+
+**The bottle tilts and the bowl rocks: both trays reprinted with flat floors
+(2026-09-17).** Each socket floor was cut from the object's own underside, so it
+carried a raised dome matching the CAD dish exactly — 3.43 mm inside the
+bottle's contact ring (radius 20.8–32.5 mm), 1.66 mm inside the bowl's foot
+(37.4–44.5 mm), where the 30 mm bore removed only the middle of it. Both objects
+were printed without support, their dishes sagged flatter than the CAD, and each
+then balanced on its dome instead of standing on its ring. Against the CAD mesh
+the seat was perfect, which is why no geometry check caught it.
+
+`flat_floor_cutter()` in `author_marker_trays.py` now flattens the floor to the
+object's lowest point inside the convex hull of its contact ring. Seat height is
+still defined by that lowest point, so `config/marker_trays.yaml` is
+**byte-identical**; the prism stays inside the ring, so the socket walls and the
+measured clearances are untouched. Checked against the worst case, a dish sagged
+completely flat:
+
+| | old tray | new tray |
+|---|---|---|
+| bottle, flattened underside ∩ tray | **3507 mm³** | 15.5 mm³ |
+| bowl, flattened underside ∩ tray | **1588 mm³** | 1.7 mm³ |
+| highest floor inside the ring, above the seat plane — bottle | 3.43 mm | 0.18 mm |
+| highest floor inside the ring, above the seat plane — bowl | 1.33 mm | 0.20 mm |
+
+The residual 0.18–0.20 mm is the contact ring's own unevenness, which the ring's
+0.2 mm definition leaves in place. Both objects still lift straight out. The
+cube tray, whose base is flat, is unchanged, as are all marker sheets.
+
+**Decision 2026-09-17: no reprints — the trays in use are the domed ones,
+corrected by hand.** The flat-floor generator stays in the repo as the correct
+design for any future print, so `assets/trays/` and `assets/print/` no longer
+describe the two physical trays in use; `config/marker_trays.yaml` is identical
+for both, so ground-truth arithmetic is unaffected.
+
+- *Bottle — hollow the base back to its dish with a Dremel.* The target is the
+  CAD dish the unsupported print lost: about 40 mm across, centred on the base,
+  up to ~3.4 mm deep at the centre (1.7–3.3 mm within 10 mm of centre, falling
+  to ~0.4 mm at 20 mm). **Do not touch the contact ring outside radius ~20 mm —
+  it sets the seat height.** Going deeper than the dish inside the circle is
+  harmless; breaking into the infill is expected and hidden in the tray. Rub
+  pencil graphite on the tray's dome, seat the bottle, and grind where it
+  marks, until the bottle no longer tilts. Low speed, light passes — PLA melts
+  and gums at high RPM.
+- *Bowl — do not grind the bowl.* Its base is a 0.99 mm shell and a 1.66 mm
+  dish cannot be cut into it. The tray side is safe instead: widen the floor
+  hole from 60 mm to about **74 mm** (radius 37 mm), which removes the dome band
+  between the old hole and the foot (37.4–44.5 mm) without reaching the foot.
+  Left as is, a 1 mm rock is roughly 0.5 mm of centre uncertainty, ~6% of the
+  bowl's 16.2 mm ADD-S threshold.
+
+**Seat-height check after shaping — the one test ground truth cannot do for
+itself.** The markers never see the object, so an object sitting low in its
+socket gives confident ground truth that is wrong by exactly that amount.
+Calliper from the tray's top face to the object's highest point:
+
+| object | measured height − socket depth | expected above tray top | measured |
+|---|---|---|---|
+| `red_cube` | 50.10 − 8.0 | **42.1 mm** | `[VERIFY]` |
+| `mustard_bottle` (cap top) | 191.0 − 12.0 | **179.0 mm** | `[VERIFY]` |
+| `bowl` (highest rim point) | 55.0 − 6.0 | **49.0 mm** | `[VERIFY]` |
+
+Within ±0.3 mm passes. Low means the ring or floor was ground; high means it
+is still standing on a dome. No ground truth for the bottle or bowl until both
+seat without tilting and pass this.
+
+**The bottle only goes in one way round — mark it.** Once it drops in, put a
+pencil tick on the bottle's base and a matching tick on the tray rim, and always
+re-seat it tick to tick. Whether that way round matches the CAD +x cannot be
+told by eye — the cap sits within 1.1 mm of the axis, and above the base the
+footprint differs from its own half-turn by at most 1.4 mm — and it cannot be
+told by the pipeline either, for the same reason.
+Its cost is bounded instead: a reversed bottle tray is **1.35 mm of ADD-S**
+(7% of the 19.6 mm threshold), 64 mm of ADD. Record it as a known ceiling on the
+bottle's ground truth; the headline metric is ADD-S.
+
+### 8.2 Rig — ground truth checked against things that do not come from markers
+
+Ground truth is only as good as the markers, so the useful tests compare it with
+quantities that are known independently of them: heights from the CAD stack,
+distances from the trays' own printed sizes, and one marker against another on
+the same tray.
+
+**Set up.** Re-register first (`calibrate reregister`, §A of `RIG_BOM.md`) —
+this is a new session. If it refuses on the baseline gate the tripods moved
+rather than the desk; that means a full recalibration, which changes the shared
+field of view, so re-run the §4.2d projection and re-check the two footprints
+below against it. Lights as for capture, TV off, desk clear. Every tray front
+edge — the 104/105 side, cube and bottle labels readable — toward the
+cameras.
+
+Two shots, because all three trays side by side (596 mm) do not fit the
+480 × 360 mm shared field of view (2026-09-20 evening extrinsics):
+
+| shot | trays, left to right, touching, front edges on one straight edge | footprint |
+|---|---|---|
+| A | `red_cube` + `bowl` | 380 × 210 mm — 100 mm of width to spare |
+| B | `bowl` + `mustard_bottle` | 426 × 210 mm — 54 mm to spare, centre it carefully |
+
+Objects seated. For each shot, ~10 stills at 1920 × 1080 with nothing touched
+between them (ENTER shoots, `q` finishes; the board corner count it prints will
+read 0 and does not matter):
+
+```bash
+build/calibration/calibrate capture config/cameras.yaml config/calibration.yaml captures/gt_test_A
+build/calibration/calibrate capture config/cameras.yaml config/calibration.yaml captures/gt_test_B
+```
+
+**Solve**, against a *copy* of an existing run database so nothing real is
+written to:
+
+```bash
+cp runs/runtime/20260909_235652/metrics.sqlite captures/gt_test_A/scratch.sqlite
+build/runtime/gt_from_trays captures/gt_test_A captures/gt_test_A/scratch.sqlite --stills --factory
+```
+
+**What to compare** — expected values are from CAD and the tray outlines, so they
+share no error with the markers:
+
+| check | expected | how | measured |
+|---|---|---|---|
+| cube centre height | **27.5 mm** | 10.5 mm plate + 17.0 mm `t_tray_object` | `[VERIFY]` |
+| bowl centre height | **30.0 mm** | 8.5 + 21.504 | `[VERIFY]` |
+| bottle centre height | **98.2 mm** | 14.5 + 83.704 | `[VERIFY]` |
+| object up-axis vs world +z | < 1° | trays flat on a flat table | `[VERIFY]` |
+| cube → bowl centre distance, shot A | **199.2 mm** | Δx 85 + 105, Δy 105 − 45 | `[VERIFY]` |
+| bowl → bottle centre distance, shot B | **220.0 mm** | Δx 105 + 108, Δy 105 − 50 | `[VERIFY]` |
+| yaw agreement between trays in one shot | < 1° | same straight edge | `[VERIFY]` |
+| cross-camera disagreement, per tray | a few mm | printed by the tool | `[VERIFY]` |
+| per-marker agreement within a tray | a few mm | one solve per marker, see below | `[VERIFY]` |
+
+The expected distances carry the trays' own print error, about 0.3% or 0.6 mm.
+Reading the results:
+
+- **Tens of mm, or ~90°/180° of yaw** on one tray: a card in the wrong recess or
+  turned in it (§4, placing the cards).
+- **Heights all off by the same few mm, distances right:** the declared table
+  plane or the registration, not the markers.
+- **Distances off in proportion to their length:** scale — marker length or
+  intrinsics.
+- **Cross-camera disagreement much larger than the per-camera scatter:** a
+  per-camera bias; the scatter alone would have hidden it (CAPTURE_PROTOCOL
+  §3.1b).
+
+`gt_from_trays` pools every marker on a tray and prints no per-marker breakdown.
+Per-marker agreement is obtained without touching the tool: re-run the solve
+with `--config` pointing at a copy of `config/` whose `marker_trays.yaml` keeps
+one marker per tray, once per marker — four solves for the bowl, two each for
+the others.
+
+None of this is a scored result. It establishes that the yardstick is sound
+before the ten scored scenes are shot against it.

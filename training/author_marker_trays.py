@@ -372,6 +372,67 @@ def check_card_clearance(seated: trimesh.Trimesh, spec: dict) -> tuple[float, bo
     return worst, worst > 0.0
 
 
+def flat_floor_cutter(seated: trimesh.Trimesh, depth_m: float
+                      ) -> tuple[trimesh.Trimesh | None, float]:
+    """A prism that flattens the socket floor inside the object's contact ring.
+
+    THE BUG THIS EXISTS TO KILL
+    ---------------------------
+    The socket is cut from the object's own mesh, so its floor copies the
+    object's underside -- including a dished base. The bottle's base is a contact
+    ring at radius 20.8-32.5 mm with the underside rising 3.43 mm inside it; the
+    bowl's foot is at 37.4-44.5 mm with 1.66 mm inside. The floor under each is
+    therefore a raised dome that fits the CAD dish exactly.
+
+    A printed dish does not match the CAD dish. Printed upright without support
+    it sags, and a flatter underside lands on the top of the dome instead of on
+    its ring. Found on the first prints (2026-09-17): the bottle tilted freely
+    and the bowl rocked about 1 mm. Nothing in the geometry checks caught it,
+    because against the CAD mesh the seat is perfect.
+
+    WHY A FLAT FLOOR IS THE FIX
+    ---------------------------
+    Flattening the floor to the object's lowest point, inside the ring, makes the
+    seat insensitive to how the underside printed: a sagged dish, a supported
+    one, or the CAD one all rest on the ring. The seat HEIGHT is still defined by
+    the lowest point, so T_tray_object does not move. The prism's outline is the
+    convex hull of the ring's own points, so it stays inside the object's
+    footprint and leaves the socket walls -- the lateral location -- untouched.
+
+    Returns (prism, dome height in metres), or (None, 0.0) for a flat base such
+    as the cube's.
+    """
+    from scipy.spatial import ConvexHull, Delaunay
+
+    b = seated.bounds
+    step = 0.001
+    xs = np.arange(b[0][0], b[1][0], step)
+    ys = np.arange(b[0][1], b[1][1], step)
+    X, Y = np.meshgrid(xs, ys)
+    org = np.column_stack([X.ravel(), Y.ravel(), np.full(X.size, b[0][2] - 0.005)])
+    loc, ri, _ = seated.ray.intersects_location(
+        org, np.tile([0.0, 0.0, 1.0], (len(org), 1)), multiple_hits=False)
+    under = np.full(len(org), np.nan)
+    under[ri] = loc[:, 2] - b[0][2]                    # underside height above the base
+    hit = ~np.isnan(under)
+    xy, z = org[hit, :2], under[hit]
+
+    ring = xy[z < 0.0002]                              # within 0.2 mm of the lowest point
+    if len(ring) < 3:
+        return None, 0.0
+    inside = Delaunay(ring[ConvexHull(ring).vertices]).find_simplex(xy) >= 0
+    dome = float(z[inside].max()) if inside.any() else 0.0
+    if dome < 0.0003:                                  # flat enough that nothing sits on it
+        return None, dome
+
+    hull_xy = ring[ConvexHull(ring).vertices]
+    h = dome + 0.0003
+    floor = -depth_m
+    pts = np.vstack([np.column_stack([hull_xy, np.full(len(hull_xy), floor)]),
+                     np.column_stack([hull_xy, np.full(len(hull_xy), floor + h)])])
+    return trimesh.convex.convex_hull(pts), dome
+
+
 def build_tray(cls: str, spec: dict) -> tuple[trimesh.Trimesh, dict]:
     """Return the tray mesh and the exact transforms it realises.
 
@@ -400,7 +461,11 @@ def build_tray(cls: str, spec: dict) -> tuple[trimesh.Trimesh, dict]:
     # the top face; it is never extended downward, which is what leaves FLOOR_MM
     # of plate under the object for it to rest on.
     cutter = inflate_lateral(seated, SOCKET_CLEARANCE_MM)
-    cutter = trimesh.boolean.union([cutter, _cap_above(cutter)], engine="manifold")
+    parts = [cutter, _cap_above(cutter)]
+    floor_prism, dome_m = flat_floor_cutter(seated, depth)
+    if floor_prism is not None:
+        parts.append(floor_prism)
+    cutter = trimesh.boolean.union(parts, engine="manifold")
     tray = trimesh.boolean.difference([plate, cutter], engine="manifold")
 
     # A shell-shaped object leaves its own interior behind as a loose island.
@@ -425,7 +490,7 @@ def build_tray(cls: str, spec: dict) -> tuple[trimesh.Trimesh, dict]:
                             t_tray_marker=[mx / 1000.0, my / 1000.0, -d]))
     return tray, dict(t_tray_object=t_tray_object.tolist(), markers=markers,
                       socket_depth_m=depth, plate_m=[plate_x, plate_y, thickness],
-                      obj=obj, island_cm3=island_cm3)
+                      obj=obj, island_cm3=island_cm3, dome_mm=dome_m * 1000.0)
 
 
 def _cap_above(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
@@ -474,9 +539,9 @@ def main() -> int:
     OUT_STL.mkdir(parents=True, exist_ok=True)
     report, ok = {}, True
     print(f"{'class':<16}{'plate mm':<21}{'socket':>7}{'print g':>9}"
-          f"{'clearance mm':>16}{'watertight':>12}{'bodies':>8}{'island':>9}"
+          f"{'clearance mm':>16}{'watertight':>12}{'bodies':>8}{'island':>9}{'dome':>7}"
           f"{'bed':>6}{'vis L/R':>9}{'card gap':>9}")
-    print("-" * 117)
+    print("-" * 124)
 
     cfg_lines = [
         "# ArUco ground-truth marker trays — GENERATED by training/author_marker_trays.py.",
@@ -519,7 +584,7 @@ def main() -> int:
         print(f"{cls:<16}{px*1000:6.1f} x{py*1000:6.1f} x{pz*1000:5.1f}   "
               f"{spec['depth']:>5.1f}{mass:>9.0f}"
               f"{cl_lo:>8.2f}-{cl_hi:<7.2f}{str(wt):>12}{bodies:>8}"
-              f"{info['island_cm3']:>8.1f}{'':1}{str(fits):>6}"
+              f"{info['island_cm3']:>8.1f}{info['dome_mm']:>7.2f}{str(fits):>6}"
               f"{vis['cam_left']:>4}/{vis['cam_right']}{gap:>9.1f}")
         if not args.verify:
             tray.export(OUT_STL / f"{cls}_tray.stl")

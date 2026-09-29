@@ -93,6 +93,14 @@ def load_mm(rel: str, scale: float) -> tuple[trimesh.Trimesh, int, int]:
     return m, dropped, len(keep)
 
 
+def same_geometry(a: trimesh.Trimesh, b: trimesh.Trimesh) -> bool:
+    """Same part to within float32 export noise: faces, volume, area and bounds."""
+    return (len(a.faces) == len(b.faces)
+            and np.isclose(a.volume, b.volume, rtol=1e-6)
+            and np.isclose(a.area, b.area, rtol=1e-6)
+            and np.allclose(a.bounds, b.bounds, atol=1e-3))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--verify", action="store_true",
@@ -136,12 +144,15 @@ def main() -> int:
                 status += "  <-- MISSING"
             else:
                 on_disk = trimesh.load(dest)
-                if not np.allclose(on_disk.extents, ref, atol=TOL_MM):
+                if not same_geometry(on_disk, m):
                     ok = False
-                    status += "  <-- ON-DISK MISMATCH"
+                    status += "  <-- ON-DISK FILE IS STALE"
         else:
-            # red_cube.stl is committed; leave it alone when it already agrees.
-            if dest.exists() and np.allclose(trimesh.load(dest).extents, ref, atol=TOL_MM):
+            # Leave a file alone only when its GEOMETRY already agrees -- not just
+            # its outline. An extents-only test once reported the regenerated
+            # bottle and bowl trays as unchanged: their plates are the same size,
+            # only the socket floors had moved, so the stale files survived.
+            if dest.exists() and same_geometry(trimesh.load(dest), m):
                 status += "  (unchanged)"
             else:
                 m.export(dest)
