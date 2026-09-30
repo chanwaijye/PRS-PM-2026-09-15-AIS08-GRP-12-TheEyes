@@ -93,6 +93,11 @@ int64_t LatestRunId(const std::string& db_path);
 // is no session to enumerate, and this is the only place the answer exists.
 std::vector<uint64_t> PairIndices(const std::string& db_path, int64_t run_id);
 
+// Every ground-truth row of one run, with its pair_index, instance and source,
+// ordered by pair_index. LoadAblationFrames folds these into frames and drops
+// what the ablation does not need; tools that work per pair read them here.
+std::vector<GroundTruthRow> ReadGroundTruth(const std::string& db_path, int64_t run_id);
+
 }  // namespace the_eyes::runtime
 
 #endif  // THE_EYES_RUNTIME_METRICS_LOG_HPP

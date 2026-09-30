@@ -439,6 +439,31 @@ std::vector<fusion::AblationFrame> LoadAblationFrames(const std::string& db_path
   return frames;
 }
 
+std::vector<GroundTruthRow> ReadGroundTruth(const std::string& db_path, int64_t run_id) {
+  sqlite3* db = Open(db_path, false);
+  std::vector<GroundTruthRow> out;
+  try {
+    Stmt q(db,
+           "SELECT pair_index, cls, instance, tx, ty, tz, qw, qx, qy, qz, source "
+           "FROM ground_truth WHERE run_id=? ORDER BY pair_index, cls, instance");
+    q.Reset().Bind(run_id);
+    while (q.Row()) {
+      GroundTruthRow g;
+      g.pair_index = static_cast<uint64_t>(q.Int(0));
+      g.cls = q.Str(1);
+      g.instance = static_cast<int>(q.Int(2));
+      g.pose_w = PoseFrom(q, 3);
+      g.source = q.Str(10);
+      out.push_back(std::move(g));
+    }
+  } catch (...) {
+    sqlite3_close(db);
+    throw;
+  }
+  sqlite3_close(db);
+  return out;
+}
+
 std::vector<uint64_t> PairIndices(const std::string& db_path, int64_t run_id) {
   sqlite3* db = Open(db_path, false);
   std::vector<uint64_t> out;

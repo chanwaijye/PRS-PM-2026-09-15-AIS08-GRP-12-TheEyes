@@ -142,4 +142,57 @@ PoseAverage AveragePoses(const std::vector<Eigen::Isometry3d>& poses) {
   return out;
 }
 
+double RotationAngleDeg(const Eigen::Matrix3d& a, const Eigen::Matrix3d& b) {
+  Eigen::Quaterniond qa(a), qb(b);
+  qa.normalize();
+  qb.normalize();
+  const double dot = std::min(1.0, std::abs(qa.dot(qb)));
+  return 2.0 * std::acos(dot) * 180.0 / M_PI;
+}
+
+OutlierScreen ScreenPoseOutliers(const std::vector<Eigen::Isometry3d>& poses,
+                                 double max_rotation_deg, double max_translation_m) {
+  if (max_rotation_deg <= 0.0 || max_translation_m <= 0.0) {
+    throw std::invalid_argument("ScreenPoseOutliers: limits must be positive");
+  }
+  OutlierScreen out;
+  const size_t n = poses.size();
+  out.keep.assign(n, true);
+  if (n == 0) return out;
+
+  // Pairwise distances once; n is a few hundred at most (stills x markers).
+  std::vector<double> rot(n * n, 0.0), trans(n * n, 0.0);
+  for (size_t i = 0; i < n; ++i) {
+    for (size_t j = i + 1; j < n; ++j) {
+      const double r = RotationAngleDeg(poses[i].linear(), poses[j].linear());
+      const double t = (poses[i].translation() - poses[j].translation()).norm();
+      rot[i * n + j] = rot[j * n + i] = r;
+      trans[i * n + j] = trans[j * n + i] = t;
+    }
+  }
+
+  double best = 0.0;
+  for (size_t i = 0; i < n; ++i) {
+    double sum = 0.0;
+    for (size_t j = 0; j < n; ++j) {
+      sum += rot[i * n + j] / max_rotation_deg + trans[i * n + j] / max_translation_m;
+    }
+    // Strict < keeps the first of equal candidates, so the answer is
+    // deterministic for a given input order.
+    if (out.medoid < 0 || sum < best) {
+      best = sum;
+      out.medoid = static_cast<int>(i);
+    }
+  }
+
+  const size_t m = static_cast<size_t>(out.medoid);
+  for (size_t i = 0; i < n; ++i) {
+    if (rot[i * n + m] > max_rotation_deg || trans[i * n + m] > max_translation_m) {
+      out.keep[i] = false;
+      ++out.rejected;
+    }
+  }
+  return out;
+}
+
 }  // namespace the_eyes::runtime

@@ -140,6 +140,35 @@ from `estimates` + `ground_truth` and runs the eight-arm occlusion harness on
 them, scoring ADD-S against the CAD mesh vertices. With no ground truth rows it
 says so and produces no numbers.
 
+## Ground truth and visibility (2026-10-01)
+
+`gt_from_trays` fills `ground_truth` from 1920x1080 tray stills (its header has
+the full argument). Two additions for the capture suite:
+
+- **Outlier screen.** Each class's per-marker poses are judged against their
+  medoid before averaging; anything more than 10° or 40 mm from it is dropped
+  (`--max-dev-deg`, `--max-dev-mm`). A marker rejected from *both* views is a
+  card in the wrong recess and the class is refused; one rejected from a single
+  view is a planar flip and is reported. A class losing more than a third is
+  refused. On the 2026-09-20 stills nothing is rejected (worst honest sample
+  17 mm / 2.8° from its mean); with one bowl card declared in the wrong recess
+  the tool refuses with exit 4, where before it averaged 20 bad samples in.
+- **`<metrics.sqlite>` may be `-` with `--dry-run`.** No run needed: the
+  capture-day check that every tray decodes and agrees before anything is
+  recorded. `--factory` still writes the stills' `intrinsics.yaml`.
+
+`visibility_from_gt <session> <metrics.sqlite>` renders each ground-truth mesh
+into every view of every pair and classifies its silhouette against measured
+depth — nearer than the model by more than 20 mm is occluded, within it is
+seen, farther is `behind` (ground truth off the object, not occlusion), no depth
+is excluded. That is the proposal's definition of the occlusion tiers (7.1);
+the tool prints the median visible fraction per view and object with its tier
+band, writes a per-pair CSV and an overlay PNG per camera. On a T1 scene read
+the `behind` column: it is how well ground truth sits on the object.
+
+`scripts/capture_day.sh` sequences both on capture day and afterwards
+(`begin | scene | end | list | process`); see its header.
+
 ## Measured (2026-09-06)
 
 From actual runs on this workstation (RTX 5070 Ti, cameras at 848x480 30 fps,
@@ -205,7 +234,7 @@ it the provider cannot find cuDNN, the session falls back to CPU, and the run
 reports CPU latency while looking entirely healthy — so the path is baked into
 the binary rather than left to `LD_LIBRARY_PATH` at the call site.
 
-## Tests (`test_runtime`, 30, no hardware)
+## Tests (`test_runtime`, 88, no hardware)
 
 | suite | pins |
 |---|---|
@@ -215,6 +244,8 @@ the binary rather than left to `LD_LIBRARY_PATH` at the call site.
 | `MetricsLog` | every table written; `LoadAblationFrames` reproduces the logged estimates to 1e-12; reopen keeps the schema; a foreign schema version is refused |
 | `RuntimeConfig`, `Backends`, `StartupChecks` | strict loaders; factories; missing model names the export command; a dead pose socket names the server command; the shipped configs cross-reference; a swapped serial / view order / world frame is caught |
 | `ReplayPipeline` | record a synthetic session → fixture detector → identity pose → real extrinsics/fusion/predicates/scene → `Pipeline` → `MetricsLog`, twice: identical facts, right row counts, ablation frames rebuild |
+| `MarkerTrays` | tray config loading and its refusals; Markley averaging and reported scatter; the outlier screen keeps a cluster shaped like the real stills whole, drops a ~120° flip listed first and a card in the wrong recess; ground truth round-trips through the log with pair, instance and source |
+| `Visibility` | a face-on cube projects to exactly 45 × 45 px at the right depth; a tilted cube's depth matches an independent ray cast to 1e-6 m; occluder, tolerance, missing depth (unknown, not hidden), `behind`, erosion; OBJ face spellings, relative indices and refusals; the shipped meshes load and render |
 
 ## Design choices, stated once
 

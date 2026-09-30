@@ -146,13 +146,32 @@
 //                      With marker size and spacing both now measured, tray
 //                      flatness is what is left untested. Take a straightedge to
 //                      each tray before making this the default.
-//     --dry-run        report only, write nothing
+//     --max-dev-deg D  drop an observation more than D deg from its class
+//                      medoid before averaging (default 10)
+//     --max-dev-mm M   ... or more than M mm from it (default 40)
+//     --dry-run        report only, write nothing. With a database of `-` it
+//                      needs no run at all: the capture-day check that every
+//                      tray decodes and agrees, before anything is recorded.
+//
+// OUTLIER SCREEN. Averaging trusts every sample, and a marker that resolved to
+// its other planar solution is a sample tens of degrees off -- flips of ~120
+// deg survived the ambiguity gate on the board's markers (CAPTURE_PROTOCOL
+// 4.2f). Averaged in, it moves the mean and shows up only as a large spread a
+// human has to notice. So each class is screened against its medoid first
+// (ScreenPoseOutliers). The defaults sit well outside the scatter of the first
+// real stills (worst sample 17 mm and 2.8 deg from its class mean, 2026-09-20),
+// so they catch failures and never trim noise. Where the rejections fall is
+// the diagnosis: a flip belongs to one VIEW of a marker, a card in the wrong
+// recess is wrong from every view. The second is refused, and so is a class
+// that loses more than a third of its observations, because then there is no
+// majority worth averaging.
 #include <algorithm>
 #include <cstring>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -193,6 +212,8 @@ struct Options {
   // real trays it moved the cross-camera disagreement the wrong way for two of
   // three trays. See --joint in the usage above.
   bool joint = false;
+  double max_dev_deg = 10.0;
+  double max_dev_mm = 40.0;
   bool dry_run = false;
   bool stills = false;
   bool factory = false;
@@ -203,8 +224,9 @@ int Usage() {
   std::cerr << "usage: gt_from_trays <input> <metrics.sqlite> [--stills] [--factory]\n"
                "         [--intrinsics FILE] [--config DIR] [--pairs A:B] [--run N]\n"
                "         [--min-obs N] [--max-reproj PX] [--min-size PX]\n"
-               "         [--min-ambiguity R] [--dry-run]\n\n"
+               "         [--min-ambiguity R] [--max-dev-deg D] [--max-dev-mm M] [--dry-run]\n\n"
                "  <input> is a recorded session, or a stills directory with --stills.\n"
+               "  <metrics.sqlite> may be '-' with --dry-run: check the trays, write nothing.\n"
                "  Ground truth wants 1920x1080 stills, not the pipeline's 848x480.\n";
   return 2;
 }
@@ -213,6 +235,7 @@ int Usage() {
 struct Sample {
   std::string cls;
   std::string camera_id;
+  int marker_id = -1;     // the one marker on the per-marker path; -1 for a joint solve
   int markers_used = 1;   // 1 on the --per-marker path, else the joint solve's count
   double size_px = 0.0;
   Eigen::Isometry3d pose_w;
@@ -329,6 +352,8 @@ int main(int argc, char** argv) {
       else if (a == "--min-size") o.min_size_px = std::stod(next());
       else if (a == "--min-ambiguity") o.min_ambiguity = std::stod(next());
       else if (a == "--joint") o.joint = true;
+      else if (a == "--max-dev-deg") o.max_dev_deg = std::stod(next());
+      else if (a == "--max-dev-mm") o.max_dev_mm = std::stod(next());
       else if (a == "--dry-run") o.dry_run = true;
       else if (a == "--stills") o.stills = true;
       else if (a == "--factory") o.factory = true;
@@ -350,6 +375,15 @@ int main(int argc, char** argv) {
   if (pos.size() != 2) return Usage();
   o.session = pos[0];
   o.db = pos[1];
+  const bool no_db = o.db == "-";
+  if (no_db && !o.dry_run) {
+    std::cerr << "gt_from_trays: a database of '-' only makes sense with --dry-run\n";
+    return Usage();
+  }
+  if (o.max_dev_deg <= 0.0 || o.max_dev_mm <= 0.0) {
+    std::cerr << "gt_from_trays: --max-dev-deg and --max-dev-mm must be positive\n";
+    return Usage();
+  }
 
   try {
     const TrayConfig trays = LoadTrayConfig(o.config + "/marker_trays.yaml");
@@ -368,7 +402,9 @@ int main(int argc, char** argv) {
               << "\n"
               << "  gates     : reproj <= " << o.max_reproj_px << " px, side >= " << o.min_size_px
               << " px, ambiguity >= " << o.min_ambiguity << ", >= " << o.min_obs
-              << " observations per class\n";
+              << " observations per class\n"
+              << "  screen    : drop > " << o.max_dev_deg << " deg or > " << o.max_dev_mm
+              << " mm from the class medoid; refuse a class that loses > 1/3\n";
 
     calibration::MarkerDetector det(trays.dictionary, trays.marker_length_m);
 
@@ -411,7 +447,7 @@ int main(int argc, char** argv) {
         if (!o.joint) {
           const Tray& tray = trays.trays.at(known->second);
           const Eigen::Isometry3d T_cam_object = m.T_cam_marker * MarkerToObject(tray, m.id);
-          samples.push_back({known->second, camera_id, 1, m.apparent_size_px,
+          samples.push_back({known->second, camera_id, m.id, 1, m.apparent_size_px,
                              cam->second.T_world_cam * T_cam_object});
         } else {
           accepted[known->second].push_back(m);
@@ -440,7 +476,7 @@ int main(int argc, char** argv) {
 
         double size_sum = 0.0;
         for (const calibration::MarkerObservation& m : ms) size_sum += m.apparent_size_px;
-        samples.push_back({cls, camera_id, jp.markers_used,
+        samples.push_back({cls, camera_id, -1, jp.markers_used,
                            size_sum / static_cast<double>(ms.size()),
                            cam->second.T_world_cam * (jp.T_cam_frame * T_tray_object)});
       }
@@ -521,17 +557,20 @@ int main(int argc, char** argv) {
         }
       }
 
-      // No session to enumerate: the pairs to write come from the run itself.
-      int64_t run = o.run_id;
-      if (run < 0) run = LatestRunId(o.db);
-      if (run < 0) throw std::runtime_error("no runs in " + o.db);
-      all_pairs = PairIndices(o.db, run);
-      if (all_pairs.empty()) {
-        throw std::runtime_error("run " + std::to_string(run) + " in " + o.db +
-                                 " logged no frames, so there is nothing to attach ground "
-                                 "truth to");
+      // No session to enumerate: the pairs to write come from the run itself --
+      // unless there is no run yet, which is the capture-day check.
+      if (!no_db) {
+        int64_t run = o.run_id;
+        if (run < 0) run = LatestRunId(o.db);
+        if (run < 0) throw std::runtime_error("no runs in " + o.db);
+        all_pairs = PairIndices(o.db, run);
+        if (all_pairs.empty()) {
+          throw std::runtime_error("run " + std::to_string(run) + " in " + o.db +
+                                   " logged no frames, so there is nothing to attach ground "
+                                   "truth to");
+        }
+        o.run_id = run;
       }
-      o.run_id = run;
     } else {
       ReplayFrameSource src(o.session);
       std::cout << "  pairs     : " << src.total_pairs() << "\n"
@@ -571,6 +610,65 @@ int main(int argc, char** argv) {
                 << "x but is on no tray -- ignored\n";
     }
     std::cout << "\n";
+
+    // Screen each class against its medoid before anything is averaged (see
+    // OUTLIER SCREEN above).
+    std::set<std::string> refused_by_screen;
+    {
+      std::map<std::string, std::vector<size_t>> idx_of_cls;
+      for (size_t i = 0; i < samples.size(); ++i) idx_of_cls[samples[i].cls].push_back(i);
+      std::vector<bool> keep(samples.size(), true);
+      for (const auto& [cls, idx] : idx_of_cls) {
+        std::vector<Eigen::Isometry3d> poses;
+        for (size_t i : idx) poses.push_back(samples[i].pose_w);
+        const OutlierScreen s = ScreenPoseOutliers(poses, o.max_dev_deg, o.max_dev_mm / 1000.0);
+        for (size_t k = 0; k < idx.size(); ++k) keep[idx[k]] = s.keep[k];
+        if (s.rejected == 0) continue;
+
+        std::cout << cls << ": " << s.rejected << " of " << idx.size()
+                  << " observations are more than " << o.max_dev_deg << " deg or "
+                  << o.max_dev_mm << " mm from the class medoid -- not averaged\n";
+        // marker id -> camera -> (rejected, seen)
+        std::map<int, std::map<std::string, std::pair<int, int>>> by_marker;
+        for (size_t k = 0; k < idx.size(); ++k) {
+          auto& c = by_marker[samples[idx[k]].marker_id][samples[idx[k]].camera_id];
+          ++c.second;
+          if (!s.keep[k]) ++c.first;
+        }
+        for (const auto& [id, cams] : by_marker) {
+          const std::string what = id >= 0 ? "marker " + std::to_string(id) : "joint solve";
+          int views_mostly_rejected = 0;
+          for (const auto& [cam, c] : cams) {
+            if (c.first == 0) continue;
+            std::cout << "    " << what << " in " << cam << ": " << c.first << " of " << c.second
+                      << " rejected\n";
+            if (c.second >= 3 && 2 * c.first >= c.second) ++views_mostly_rejected;
+          }
+          if (id < 0) continue;
+          if (views_mostly_rejected >= 2) {
+            std::cout << "    REFUSED: " << what
+                      << " disagrees with its tray from BOTH views -- a card in the wrong "
+                         "recess or turned in it, not a flip (docs/PRINT_PLAN.md 8.2)\n";
+            refused_by_screen.insert(cls);
+          } else if (views_mostly_rejected == 1) {
+            std::cout << "    " << what
+                      << " is rejected consistently from one view only: a planar flip at "
+                         "that view's angle, which the ambiguity gate let through\n";
+          }
+        }
+        if (3 * s.rejected > static_cast<int>(idx.size())) {
+          std::cout << "    REFUSED: more than a third of the observations disagree, so there "
+                       "is no majority worth averaging\n";
+          refused_by_screen.insert(cls);
+        }
+      }
+      std::vector<Sample> kept;
+      for (size_t i = 0; i < samples.size(); ++i) {
+        if (keep[i]) kept.push_back(samples[i]);
+      }
+      if (kept.size() != samples.size()) std::cout << "\n";
+      samples = std::move(kept);
+    }
 
     // Group by class, and by (class, camera) so the two views can be compared.
     std::map<std::string, std::vector<Eigen::Isometry3d>> by_cls;
@@ -619,6 +717,11 @@ int main(int argc, char** argv) {
         ok = false;
         continue;
       }
+      if (refused_by_screen.count(cls)) {
+        std::cout << "    REFUSED: failed the outlier screen above\n";
+        ok = false;
+        continue;
+      }
       for (uint64_t p : all_pairs) {
         GroundTruthRow g;
         g.pair_index = p;
@@ -634,6 +737,8 @@ int main(int argc, char** argv) {
       std::cout << "  " << cls << ": " << n << " observations rejected on reprojection\n";
     for (const auto& [cls, n] : rejected_size)
       std::cout << "  " << cls << ": " << n << " observations rejected as too small\n";
+    for (const auto& [cls, n] : rejected_ambig)
+      std::cout << "  " << cls << ": " << n << " observations rejected as planar-ambiguous\n";
 
     if (by_cls.empty()) {
       std::cerr << "\nNo tray markers were found. Ground truth is unchanged.\n";
@@ -646,7 +751,11 @@ int main(int argc, char** argv) {
       return 4;
     }
     if (o.dry_run) {
-      std::cout << "\n--dry-run: " << rows.size() << " rows NOT written\n";
+      if (no_db) {
+        std::cout << "\n--dry-run, no database: every class cleared its gates\n";
+      } else {
+        std::cout << "\n--dry-run: " << rows.size() << " rows NOT written\n";
+      }
       return 0;
     }
 

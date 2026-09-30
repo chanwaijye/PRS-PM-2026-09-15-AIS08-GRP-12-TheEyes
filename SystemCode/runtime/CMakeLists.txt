@@ -16,6 +16,7 @@ set(RUNTIME_SOURCES
   src/static_scene.cpp
   src/metrics_log.cpp
   src/marker_trays.cpp
+  src/visibility.cpp
   src/runtime_config.cpp
   src/backends.cpp
   src/fixed_box_detector.cpp
@@ -63,6 +64,12 @@ add_executable(gt_from_trays tools/gt_from_trays.cpp)
 target_link_libraries(gt_from_trays PRIVATE the_eyes_runtime the_eyes_calibration yaml-cpp)
 target_compile_options(gt_from_trays PRIVATE -Wall -Wextra -Wpedantic)
 
+# Measures how much of each object's ground-truth silhouette each camera sees,
+# which is how the proposal defines the occlusion tiers (7.1).
+add_executable(visibility_from_gt tools/visibility_from_gt.cpp)
+target_link_libraries(visibility_from_gt PRIVATE the_eyes_runtime yaml-cpp)
+target_compile_options(visibility_from_gt PRIVATE -Wall -Wextra -Wpedantic)
+
 if(THE_EYES_BUILD_TESTS)
   add_executable(test_runtime
     test/test_frame_pairer.cpp
@@ -74,6 +81,7 @@ if(THE_EYES_BUILD_TESTS)
     test/test_fixed_box_detector.cpp
     test/test_replay_pipeline.cpp
     test/test_marker_trays.cpp
+    test/test_visibility.cpp
     test/test_gt_chain.cpp
     test/test_console_panels.cpp)
   # Links calibration so the ground-truth chain can be tested end to end

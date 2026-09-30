@@ -572,6 +572,14 @@ number a human has to notice. Gate on the spread, or raise `--min-ambiguity`,
 before the ground-truth run — and re-run this check on the first real
 `gt_test_A` capture, where the markers are 40 mm.
 
+**Gated — DONE 2026-10-01.** `gt_from_trays` now screens each class against its
+medoid before averaging: an observation more than 10° or 40 mm from it is
+dropped, a marker rejected from both views is refused as a misplaced card, one
+rejected from a single view is reported as a flip, and a class that loses more
+than a third is refused. The 2026-09-20 stills lose nothing to it; one bowl
+card declared in the wrong recess is refused with exit 4
+(`SystemCode/runtime/README.md`, "Ground truth and visibility").
+
 ### 4.3 Recognise it — cross-check the plane from depth
 
 A tape measure produces a number nobody can audit later. The rig can check it
@@ -645,6 +653,16 @@ result reads as a property of one camera.
 
 ## 6. The scored run
 
+**`scripts/capture_day.sh` runs this section (2026-10-01).** `begin` does the
+startup checks, re-registration and an empty-table recording; `scene` shoots
+the ground-truth stills, checks every tray decodes and agrees *before*
+recording, records with `--record-only` and writes the run notes; `end`
+re-registers into a scratch file to show the rig held; `process` does step 8
+plus visibility, and checks each scene against its declared tier. One change
+from the steps below, which predate §3.1b: ground truth comes from **1920×1080
+stills** shot with the occluder out of view, not from 30 opening pairs at
+848×480 — the 18 mm trap in §3.1b rules the pairs out.
+
 Per scene:
 
 1. Set the scene. Objects seated in trays. Nothing else on the desk that can be
@@ -698,6 +716,15 @@ recorded, already honest, and they are what actually degrades as the card
 advances. A true silhouette-coverage percentage would need the occluder
 segmented and the mesh projected at GT pose; that is optional work, and it is
 not required for the claim.
+
+**Computed — 2026-10-01.** The occluder does not need segmenting after all:
+depth separates it. `visibility_from_gt` renders each mesh at its ground-truth
+pose into every view and counts a silhouette pixel as occluded when the
+measured surface is more than 20 mm nearer than the model. That is the
+proposal's own tier definition (7.1: T4 under 25% visible from one view), so
+the tier of every scene is now measured rather than declared, and
+`capture_day.sh process` fails a scene whose measurement does not match. The
+`frame_views` counters stay as the pipeline-side view of the same severity.
 
 ---
 
@@ -771,8 +798,10 @@ Binary, per `AGENTS.md` rule 3.
   still from each camera so the tape can be checked by eye. It needs no rig and
   no capture for the numbers. Still worth folding into the §4.3 platform tool so
   one command reports the plane fit and the shared footprint together.
-- The visible-fraction figure for T3's "25–75%" band is unresolved (§8). Either
-  compute it properly or state the tier qualitatively and let the `frame_views`
-  counters carry the severity. Do not report a number nothing computed.
+- ~~The visible-fraction figure for T3's "25–75%" band is unresolved (§8).~~
+  **Computed 2026-10-01** by `visibility_from_gt` from ground-truth pose, mesh
+  and measured depth (§8). Its 20 mm tolerance and 2 px erosion are defaults,
+  not measurements: **[VERIFY]** them against the first real T1 scene, where
+  visibility should be high and `behind` small.
 - ~~Table slab thickness is a modelling choice~~ — **superseded**: measured at
   23 mm, so it is a measurement now and should be quoted as one.

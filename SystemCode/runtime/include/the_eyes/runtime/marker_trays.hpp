@@ -82,6 +82,32 @@ struct PoseAverage {
 // Returns n == 0 for an empty input; callers must check before using `mean`.
 PoseAverage AveragePoses(const std::vector<Eigen::Isometry3d>& poses);
 
+// Which of ONE object's pose samples agree with the rest.
+//
+// AveragePoses trusts every sample, and on the per-marker path one marker that
+// resolved to the wrong planar solution is a sample tens of degrees off. The
+// ambiguity gate does not stop all of them: on the board's 28 mm markers flips
+// of ~120 deg survived it (docs/CAPTURE_PROTOCOL.md 4.2f). Averaged in, such a
+// sample drags the mean while the pooled spread merely reads large, which a
+// human has to notice. So every sample is judged against the MEDOID -- the
+// sample whose summed distance to all the others is smallest, which stays
+// inside the majority cluster as long as there is one -- and a sample further
+// than either limit from it is not averaged.
+//
+// Distance for choosing the medoid is rotation/max_rotation_deg +
+// translation/max_translation_m, so neither unit dominates.
+struct OutlierScreen {
+  std::vector<bool> keep;  // parallel to the input
+  int medoid = -1;         // index of the reference sample; -1 for an empty input
+  int rejected = 0;
+};
+
+OutlierScreen ScreenPoseOutliers(const std::vector<Eigen::Isometry3d>& poses,
+                                 double max_rotation_deg, double max_translation_m);
+
+// Shortest-arc angle between two rotations, in degrees.
+double RotationAngleDeg(const Eigen::Matrix3d& a, const Eigen::Matrix3d& b);
+
 }  // namespace the_eyes::runtime
 
 #endif  // THE_EYES_RUNTIME_MARKER_TRAYS_HPP
