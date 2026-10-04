@@ -65,7 +65,7 @@ and visibility"): `scripts/capture_day.sh`, the outlier screen in
       | `t3_cube_over`, `t3_bowl_over`, `t3_cube_front` | T3 | as named | as named |
       | `t2_clutter_a/b/c` | T2 | none | — (3 targets + 8 distractors) |
 
-      All three trays fit the 480 × 360 mm shared view as bowl + cube side by side
+      All three trays fit the 460 × 370 mm shared view (2026-10-04 extrinsics) as bowl + cube side by side
       (380 × 210 mm) with the bottle tray (216 × 100 mm) in front: 380 × 310 mm
       (footprints from `PRINT_PLAN.md` §8.2).
 - [ ] `scripts/capture_day.sh end` — if it refuses, the rig moved during the day

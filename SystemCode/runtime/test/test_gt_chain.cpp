@@ -145,7 +145,14 @@ TEST(GroundTruthChain, RecoversAChosenObjectPoseThroughTheWholeChain) {
     // failure that is NOT noise: a transposed rotation or a marker-to-object
     // offset applied with the wrong sign puts the object 114 mm away -- the
     // spacing of the two cube markers -- or rotates it by 90 degrees.
-    EXPECT_LT(dt, 0.006) << "marker " << mk.id << ": translation off by " << dt * 1000 << " mm";
+    //
+    // 10 mm, not the 6 mm this started at: the camera pose is the SHIPPED
+    // extrinsics, so the noise moves with every recalibration. Measured 4.2 /
+    // 3.3 mm on the 2026-09-20 geometry and 1.3 / 2.3 mm on 2026-10-04, and the
+    // two-marker average below went 4.8 -> 6.07 mm the other way and tripped a
+    // 6 mm bound on a rig that was fine. 10 mm still sits 11x under the 114 mm
+    // this is here to catch.
+    EXPECT_LT(dt, 0.010) << "marker " << mk.id << ": translation off by " << dt * 1000 << " mm";
     EXPECT_LT(dr, 3.0) << "marker " << mk.id << ": rotation off by " << dr << " deg";
   }
 }
@@ -182,7 +189,10 @@ TEST(GroundTruthChain, BothMarkersOnATrayAgreeOnTheObject) {
 
   const PoseAverage avg = AveragePoses(recovered);
   EXPECT_EQ(avg.n, 2);
-  EXPECT_LT((avg.mean.translation() - T_world_object.translation()).norm(), 0.006);
+  // Both markers are seen by ONE camera, so they share its depth bias and the
+  // average does not cancel it -- 4.8 mm on the 2026-09-20 geometry, 6.07 mm on
+  // 2026-10-04. Same 10 mm bound, for the same reason, as the test above.
+  EXPECT_LT((avg.mean.translation() - T_world_object.translation()).norm(), 0.010);
 }
 
 TEST(GroundTruthChain, AveragingAcrossViewsBeatsAnySingleObservation) {

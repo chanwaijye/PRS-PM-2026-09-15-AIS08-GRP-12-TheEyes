@@ -327,6 +327,31 @@ their pixels: the new lighting is undiffused and is burning out part of the
 board. It still passes every gate, but it is the same glare that left only 1 of
 8 tray markers decodable in the scene shot just before this one.
 
+### Result — 2026-10-04, two weeks untouched
+
+The **current** set. Re-registration before the capture rehearsal was refused on
+**10.68 mm / 1.03°** of baseline shift, with nobody having worked on the rig
+since 09-20. A six-pair burst with nothing touched held both cameras to about
+**0.2 mm** and reproduced the same 10.6–10.9 mm shift every time: a one-off move
+that has since settled, not a slipping mount. Recalibrated with
+`calibrate run --factory` from the single registration pair
+(`captures/scored/rehearsal/reregister_begin`).
+
+| | cam_front `261722073945` | cam_over `261822074567` | gate |
+|---|---|---|---|
+| registration RMSE | **0.286 px** | **0.330 px** | < 0.50 |
+| worst single corner | 0.752 px | 1.157 px | reported, not gated |
+| world position (mm) | −415, −371, +396 | +322, −426, +398 | BOM ±369, −439, +402 |
+
+Round trip over **49 shared corners: mean 0.08 mm, p95 0.16 mm, max 0.34 mm**.
+Baseline 738.4 mm (BOM 737), relative rotation 80.17° (BOM 80). Shared field of
+view **460 × 370 mm** — 10 mm narrower on each side than the 09-20 tape, 5 mm
+deeper front and back. Both cameras returned all 49 corners, in daylight.
+
+The lesson is about the interval, not the fault: this rig drifts past the 3 mm
+gate in two idle weeks, so a session that skips re-registration is running on
+extrinsics that are probably wrong by more than the ground truth's own error.
+
 ### Re-registration, every session after this one
 
 The rig mounts cameras on floor tripods and uses a shared computer desk as the

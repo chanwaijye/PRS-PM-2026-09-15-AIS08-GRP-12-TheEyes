@@ -173,7 +173,8 @@ no rig and no capture.
 4. **Trays printed and calliper-verified.** Filament ETA ~2026-09-12
    (`docs/STATUS.md`); worst-case socket clearance target 0.23 mm.
 5. **Extrinsics still valid.** `config/extrinsics.yaml` holds real values from
-   2026-09-20 (RMSE 0.27 / 0.33 px). This is a computer desk that gets leaned on:
+   2026-10-04 (RMSE 0.29 / 0.33 px; the 09-20 set drifted 10.7 mm in two idle
+   weeks, `CALIBRATION_PROTOCOL.md`). This is a computer desk that gets leaned on:
    re-detect the board at its marked spot and confirm before every session
    (`docs/RIG_BOM.md` — a ~30 s check versus a 20 min recalibration). The marked
    spot is the **workspace centre**, taped; a table corner cannot serve, because
@@ -181,8 +182,9 @@ no rig and no capture.
    moved rather than the desk — shoot a burst of pairs before recalibrating and
    compare per-camera position spread, which is what separates a loose mount
    from a moved one (§4.2f).
-6. **Workspace re-taped to the shared field of view** — **480 × 360 mm** on the
-   current (2026-09-20 evening) extrinsics, not the 600 × 360 in `RIG_BOM.md` (§4.2d). Objects
+6. **Workspace re-taped to the shared field of view** — **460 × 370 mm** on the
+   current (2026-10-04) extrinsics (480 × 360 on the 09-20 set), not the
+   600 × 360 in `RIG_BOM.md` (§4.2d). Objects
    outside it are single-view because they are out of frame, which is not the
    effect being measured. **Recompute after every recalibration**; it changed
    shape when the rig moved.
