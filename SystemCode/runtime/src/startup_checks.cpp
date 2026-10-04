@@ -63,6 +63,9 @@ LoadedConfigs LoadAllConfigs(const std::string& config_dir, const std::string& r
     c.meshes = pose::LoadMeshRegistry(path("meshes.yaml"), require_files, repo_root);
   });
   Load(path("detector.yaml"), [&] { c.detector = detector::LoadDetectorConfig(path("detector.yaml")); });
+  // Optional: a rig that has not been tared runs on the factory depth.
+  Load(path("depth_correction.yaml"),
+       [&] { c.depth_correction = LoadDepthCorrection(path("depth_correction.yaml")); });
   return c;
 }
 

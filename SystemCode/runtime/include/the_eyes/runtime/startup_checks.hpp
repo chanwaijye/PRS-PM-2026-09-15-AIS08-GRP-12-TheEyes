@@ -14,6 +14,7 @@
 #include "the_eyes/fusion/extrinsics.hpp"
 #include "the_eyes/pose/mesh_registry.hpp"
 #include "the_eyes/pose/pose_agent.hpp"
+#include "the_eyes/runtime/depth_correction.hpp"
 #include "the_eyes/runtime/runtime_config.hpp"
 #include "the_eyes/runtime/static_scene.hpp"
 #include "the_eyes/scenegraph/predicates.hpp"
@@ -46,6 +47,7 @@ struct LoadedConfigs {
   PoseBackendConfig pose_backend;
   detector::DetectorConfig detector;
   RuntimeConfig runtime;
+  DepthCorrection depth_correction;  // identity when depth_correction.yaml is absent
 };
 
 // Throws std::runtime_error naming the file that failed. Mesh files are

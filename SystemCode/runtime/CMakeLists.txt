@@ -17,6 +17,7 @@ set(RUNTIME_SOURCES
   src/metrics_log.cpp
   src/marker_trays.cpp
   src/visibility.cpp
+  src/depth_correction.cpp
   src/runtime_config.cpp
   src/backends.cpp
   src/fixed_box_detector.cpp
@@ -70,6 +71,11 @@ add_executable(visibility_from_gt tools/visibility_from_gt.cpp)
 target_link_libraries(visibility_from_gt PRIVATE the_eyes_runtime yaml-cpp)
 target_compile_options(visibility_from_gt PRIVATE -Wall -Wextra -Wpedantic)
 
+# Fits each camera's depth scale against a recording of the bare table.
+add_executable(depth_tare tools/depth_tare.cpp)
+target_link_libraries(depth_tare PRIVATE the_eyes_runtime)
+target_compile_options(depth_tare PRIVATE -Wall -Wextra -Wpedantic)
+
 if(THE_EYES_BUILD_TESTS)
   add_executable(test_runtime
     test/test_frame_pairer.cpp
@@ -82,6 +88,7 @@ if(THE_EYES_BUILD_TESTS)
     test/test_replay_pipeline.cpp
     test/test_marker_trays.cpp
     test/test_visibility.cpp
+    test/test_depth_correction.cpp
     test/test_gt_chain.cpp
     test/test_console_panels.cpp)
   # Links calibration so the ground-truth chain can be tested end to end

@@ -77,7 +77,9 @@ PipelineResult Pipeline::Process(const FramePair& pair) {
       {
         ScopedTimer t(&ms);
         try {
-          dets = detector_.detector->Detect(ToDetectorInput(frame));
+          detector::DetectorInput in = ToDetectorInput(frame);
+          in.depth_scale_m *= depth_correction_.For(view);
+          dets = detector_.detector->Detect(in);
         } catch (const std::exception& e) {
           r.warnings.emplace_back("detector", view + ": " + e.what());
           dets.camera_id = view;
@@ -103,7 +105,9 @@ PipelineResult Pipeline::Process(const FramePair& pair) {
       {
         ScopedTimer t(&ms);
         try {
-          est = agent.Process(dets, ToPoseFrame(frame));
+          pose::Frame pf = ToPoseFrame(frame);
+          pf.depth_scale_m *= depth_correction_.For(view);
+          est = agent.Process(dets, pf);
         } catch (const std::exception& e) {
           r.warnings.emplace_back("pose", view + ": " + e.what());
         }

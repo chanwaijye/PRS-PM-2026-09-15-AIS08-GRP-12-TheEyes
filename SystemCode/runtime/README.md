@@ -174,6 +174,28 @@ Re-scoring the cube-alone rehearsal against it moved cam_front's ADD-S from
 13.7 to 7.6 mm and the gated fusion from 10.3 to 4.7 mm — the "pose error" had
 been mostly ground-truth error. Rehearsal figures, not scored results.
 
+**Depth is corrected per camera (2026-10-04).** The extrinsics come from the
+colour image of a board; the depth each camera reports is a separate
+measurement, and nothing had checked one against the other. `depth_tare
+<empty-table session> --write` compares every depth pixel on the bare table
+with where its ray meets world z = 0, fits one multiplier per camera on the
+even pairs, judges it on the odd ones, and writes `config/depth_correction.yaml`:
+
+| camera | depth error, near → far (mm) | best scale | after | verdict |
+|---|---|---|---|---|
+| cam_front | −5.7 −5.5 −5.9 −7.3 −8.8 | ×1.0102 | −0.7 +0.3 +0.4 −0.4 −1.2 | applied — table +4.18 → +0.17 mm |
+| cam_over | +0.0 +1.7 +2.3 +2.8 +6.5 | ×0.9920 | −4.1 −2.9 −2.7 −2.7 +0.3 | **not applied** — not a scale error |
+
+A scale is applied only when a quarter or less of the held-out error survives
+it; cam_over's does not, and a multiplier there would only move its error from
+the far range to the near one. The scale multiplies the frame's depth *unit* on
+the way into the detector, the pose estimator and `visibility_from_gt`, so a
+recording stays the raw sensor and the fit can be redone; the active correction
+is written into each run's notes. Replaying the same four rehearsal sessions
+with it, cam_front's ADD-S on the cube went 7.6 → 2.7 mm alone, 6.7 → 2.1 mm
+with the cube hidden from cam_over, and the gated fusion 4.7 → 3.0 mm.
+Re-fit it from the empty-table recording `capture_day.sh begin` makes each day.
+
 Two further additions for the capture suite:
 
 - **Outlier screen.** Each class's per-marker poses are judged against their
@@ -285,7 +307,7 @@ it the provider cannot find cuDNN, the session falls back to CPU, and the run
 reports CPU latency while looking entirely healthy — so the path is baked into
 the binary rather than left to `LD_LIBRARY_PATH` at the call site.
 
-## Tests (`test_runtime`, 96, no hardware)
+## Tests (`test_runtime`, 102, no hardware)
 
 | suite | pins |
 |---|---|

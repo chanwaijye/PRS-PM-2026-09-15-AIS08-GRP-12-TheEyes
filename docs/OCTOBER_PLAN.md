@@ -25,15 +25,18 @@ rehearsal (daylight, TV on — **none of it is a scored result**):
   cube fully hidden from cam_over, cube half hidden. Measured tiers 100% / 0% /
   48% visible, all as staged.
 - **Ground truth rebuilt on the table plane**: cross-camera disagreement on the
-  cube 9.6 → 0.6 mm. Against it, cube alone: cam_front 7.6 mm, cam_over 4.9 mm,
-  gated fusion 4.7 mm ADD-S (threshold 8.6 mm). Fully hidden from cam_over:
-  cam_over finds it on 0/300 pairs, fused output on 300/300 at 6.7 mm.
+  cube 9.6 → 0.6 mm.
+- **cam_front's depth corrected** (it read 1.0% short). With both, cube alone:
+  cam_front 2.7 mm, cam_over 4.9 mm, gated fusion 3.0 mm ADD-S (threshold
+  8.6 mm). Fully hidden from cam_over: cam_over finds it on 0/300 pairs, fused
+  output on 300/300 at 2.1 mm. That morning's first numbers, against the old
+  ground truth and raw depth, were 13.7 / 7.4 / 10.3 mm.
 
 **Found, not yet fixed** (all replay-side — none blocks capture):
 
 | # | Finding | Fix |
 |---|---|---|
-| 1 | Depth is biased per camera, in opposite directions: cam_front reads 1.0% short (5.7–8.9 mm), cam_over up to 7.3 mm long at 0.8 m | Per-camera depth correction fitted from the empty-table recording |
+| 1 | ~~Depth is biased per camera~~ **FIXED 2026-10-04** for cam_front (reads 1.0% short; ×1.0102 from `depth_tare`): its cube ADD-S 7.6 → 2.7 mm. cam_over's error (0 to +6.5 mm, growing with range) is not a scale and is left alone | Re-fit from each day's empty-table recording |
 | 2 | Gate + EKF (the `fused` arm) is worse than the gate alone on the cube (9.1 vs 4.7 mm): the cube's symmetric-equivalent orientations, 88° apart between views, are filtered through | Pick the symmetric equivalent nearest the track before the EKF update; needs the symmetry group in the mesh registry |
 | 3 | The grey tray is detected as a `bowl` on every pair, giving a false `(on red_cube bowl)` | Fine-tune the detector on real frames with trays in them |
 | 4 | The bowl's pose is 16–25 mm off and cam_front's depth inside it reads 2–3 cm short | Not understood; keep the bowl out of T3/T4 targets |

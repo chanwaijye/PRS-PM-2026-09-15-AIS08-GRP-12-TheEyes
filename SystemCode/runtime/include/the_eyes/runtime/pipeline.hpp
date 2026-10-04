@@ -16,6 +16,7 @@
 #include "the_eyes/fusion/fusion.hpp"
 #include "the_eyes/pose/pose_agent.hpp"
 #include "the_eyes/runtime/backends.hpp"
+#include "the_eyes/runtime/depth_correction.hpp"
 #include "the_eyes/runtime/frame_pair.hpp"
 #include "the_eyes/runtime/pipeline_result.hpp"
 #include "the_eyes/runtime/static_scene.hpp"
@@ -35,6 +36,11 @@ class Pipeline {
 
   PipelineResult Process(const FramePair& pair);
 
+  // Per-camera depth scale, applied to the depth unit of every frame handed to
+  // the detector and the pose estimator. Identity until set.
+  void set_depth_correction(DepthCorrection c) { depth_correction_ = std::move(c); }
+  const DepthCorrection& depth_correction() const { return depth_correction_; }
+
   // Cumulative per-stage latency: "detect:<cam>", "pose:<cam>", "fusion",
   // "scenegraph", "total".
   const std::map<std::string, pose::LatencyStats>& latency() const { return latency_; }
@@ -53,6 +59,7 @@ class Pipeline {
   std::vector<std::string> view_names_;
   std::map<std::string, pose::LatencyStats> latency_;
   size_t detector_warnings_seen_ = 0;
+  DepthCorrection depth_correction_;
 };
 
 }  // namespace the_eyes::runtime

@@ -242,8 +242,14 @@ std::unique_ptr<Pipeline> BuildPipeline(const LoadedConfigs& c, StartupReport* r
     agents[v] = std::make_unique<pose::PoseAgent>(c.meshes, c.pose_agent, pose.estimator);
   }
   auto fusion = std::make_unique<fusion::Fusion>(c.fusion, c.extrinsics, ExtentsFrom(c.meshes));
-  return std::make_unique<Pipeline>(std::move(det), std::move(pose), std::move(agents),
-                                    std::move(fusion), c.predicates, c.scene, c.fusion.view_names);
+  auto pipeline =
+      std::make_unique<Pipeline>(std::move(det), std::move(pose), std::move(agents),
+                                 std::move(fusion), c.predicates, c.scene, c.fusion.view_names);
+  // Into the startup report, and so into the run's notes: a pose logged with
+  // corrected depth must be distinguishable from one logged without.
+  report->Info("depth correction: " + c.depth_correction.Describe());
+  pipeline->set_depth_correction(c.depth_correction);
+  return pipeline;
 }
 
 int Run(const Options& o) {

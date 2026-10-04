@@ -53,6 +53,7 @@
 #include "the_eyes/fusion/extrinsics.hpp"
 #include "the_eyes/pose/mesh_registry.hpp"
 #include "the_eyes/runtime/backends.hpp"
+#include "the_eyes/runtime/depth_correction.hpp"
 #include "the_eyes/runtime/metrics_log.hpp"
 #include "the_eyes/runtime/replay_frame_source.hpp"
 #include "the_eyes/runtime/visibility.hpp"
@@ -149,6 +150,8 @@ int main(int argc, char** argv) {
     const fusion::ExtrinsicsSet ex = fusion::LoadExtrinsics(o.config + "/extrinsics.yaml");
     const pose::MeshRegistry meshes =
         pose::LoadMeshRegistry(o.config + "/meshes.yaml", true, repo_root);
+    // The same depth the pipeline saw: a 1% scale is 7 mm at this standoff.
+    const DepthCorrection depth_fix = LoadDepthCorrection(o.config + "/depth_correction.yaml");
 
     if (o.run_id < 0) o.run_id = LatestRunId(o.db);
     if (o.run_id < 0) throw std::runtime_error("no runs in " + o.db);
@@ -173,7 +176,8 @@ int main(int argc, char** argv) {
               << " ground-truth rows over " << gt_of_pair.size() << " pairs (source "
               << gt_rows.front().source << ")\n"
               << "  tolerance : " << o.tol_mm << " mm, silhouette eroded " << o.erode_px
-              << " px\n\n";
+              << " px\n"
+              << "  depth     : correction " << depth_fix.Describe() << "\n\n";
 
     std::map<std::string, TriMesh> mesh_of;
     auto mesh_for = [&](const std::string& cls) -> const TriMesh& {
@@ -230,7 +234,8 @@ int main(int argc, char** argv) {
           }
           cv::Mat labels;
           const VisibilityCounts vc =
-              MeasureVisibility(c.rendered, frame.depth, frame.depth_scale_m, o.tol_mm / 1000.0,
+              MeasureVisibility(c.rendered, frame.depth,
+                                frame.depth_scale_m * depth_fix.For(cam_id), o.tol_mm / 1000.0,
                                 o.erode_px, overlay_written ? nullptr : &labels);
           Series& s = series[key];
           if (s.visible.empty()) s.silhouette_px = vc.silhouette;
