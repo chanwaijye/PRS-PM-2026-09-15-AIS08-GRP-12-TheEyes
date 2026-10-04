@@ -13,12 +13,24 @@
 //   behind      measured surface FARTHER than the model by more than tol
 //   invalid     no depth at this pixel
 //
-//   visible fraction = (consistent + behind) / (silhouette - invalid)
+//   visible fraction = (silhouette - occluded) / silhouette
+//   depth fraction   = (consistent + behind)   / silhouette
 //
 // `behind` counts as visible because an occluder can only ever be in front.
 // It is reported separately because on an unoccluded scene it measures how
 // well the ground truth lands on the object: model pixels that fall on the
 // table beyond it are ground-truth or depth error, not occlusion.
+//
+// `invalid` counts as visible too, and that is a measurement, not a
+// convenience. Active stereo leaves a band with no depth beside every
+// foreground edge, on the surface BEHIND it -- so a half-hidden object's
+// visible half is exactly where its depth goes missing. On the first real
+// half-occluded cube (2026-10-04) 45% of the silhouette had no depth and was
+// plainly in view in the colour image; excluding it scored the cube 2% visible.
+// An occluder, being the foreground, keeps its depth (0.0% missing on the
+// fully hidden cube the same day). The depth fraction says how much of what is
+// visible an RGB-D estimator can actually use, and the two are reported side
+// by side because the gap between them is itself the difficulty of the scene.
 //
 // Two biases, both measured by a T1 scene rather than corrected here. The
 // tray's socket wall hides the bottom 6-12 mm of each object from an oblique
@@ -67,9 +79,11 @@ struct VisibilityCounts {
   int behind = 0;
 
   int measured() const { return silhouette - invalid; }
-  // NaN when no silhouette pixel had depth -- "unknown", never "0% visible".
+  // Share of the silhouette not hidden by anything nearer. NaN with no silhouette.
   double visible_fraction() const;
-  double behind_fraction() const;   // of measured; NaN likewise
+  // Share of the silhouette that is visible AND has depth. NaN likewise.
+  double depth_fraction() const;
+  double behind_fraction() const;   // of measured; NaN when nothing was measured
   double invalid_fraction() const;  // of the silhouette; NaN when there is none
 };
 

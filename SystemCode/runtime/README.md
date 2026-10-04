@@ -159,15 +159,35 @@ the full argument). Two additions for the capture suite:
 
 `visibility_from_gt <session> <metrics.sqlite>` renders each ground-truth mesh
 into every view of every pair and classifies its silhouette against measured
-depth — nearer than the model by more than 20 mm is occluded, within it is
-seen, farther is `behind` (ground truth off the object, not occlusion), no depth
-is excluded. That is the proposal's definition of the occlusion tiers (7.1);
-the tool prints the median visible fraction per view and object with its tier
-band, writes a per-pair CSV and an overlay PNG per camera. On a T1 scene read
-the `behind` column: it is how well ground truth sits on the object.
+depth — nearer than the model by more than 40 mm is occluded, within it is
+seen, farther is `behind` (ground truth off the object, not occlusion). That is
+the proposal's definition of the occlusion tiers (7.1); the tool prints the
+median visible fraction per view and object with its tier band, writes a
+per-pair CSV and an overlay PNG per camera. On a T1 scene read the `behind`
+column: it is how well ground truth sits on the object.
+
+Both defaults were set on the first real scenes (2026-10-04), not chosen:
+
+- **40 mm, not 20.** cam_front's depth inside the bowl reads 2–3 cm nearer than
+  the surface, so at 20 mm an unoccluded bowl scored 28% visible; at 40 mm, 98%.
+  An occluder therefore has to stand more than ~40 mm in front of what it hides.
+- **A pixel with no depth counts as visible**, and a second column, `w/depth`,
+  says how much of the silhouette is visible *and* measured. Active stereo
+  leaves a band with no depth beside every foreground edge, on the surface
+  behind it, so a half-hidden object's visible half is where its depth goes
+  missing: on the half-hidden cube 47% of the silhouette had no depth and was in
+  plain view. Excluding it scored the cube 2% visible; counting it gives 48%,
+  with 1% usable by an RGB-D estimator. The gap between the two columns is the
+  scene's real difficulty — on that scene cam_over detected the cube on 286 of
+  300 pairs and none of its poses matched ground truth.
 
 `scripts/capture_day.sh` sequences both on capture day and afterwards
-(`begin | scene | end | list | process`); see its header.
+(`begin | scene | end | list | process`); see its header. `scene --stage stills`
+then `--stage record` run the two halves without prompting, which is how a scene
+is driven when the person at the keyboard is not the person at the rig;
+`--stills-from SCENE` reuses a scene's stills for a second occluder position on
+a tray that has not been touched; `STILLS_CAMERAS` points the stills at a
+cameras file with a lower colour exposure.
 
 ## Measured (2026-09-06)
 

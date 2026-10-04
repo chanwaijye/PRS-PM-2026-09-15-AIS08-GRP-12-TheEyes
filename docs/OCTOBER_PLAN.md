@@ -79,7 +79,7 @@ and visibility"): `scripts/capture_day.sh`, the outlier screen in
       visibility per view, a **tier check**, and the ablation table. Wrong → reshoot
       today while the setup is intact
 - [ ] On T1, read visibility's `behind` column: it is how well ground truth sits
-      on the object. It also sets the [VERIFY] on the 20 mm / 2 px defaults
+      on the object (the tool's defaults were settled on the 2026-10-04 rehearsal)
 - [ ] Extras: one T1 with the TV on (§4.2b); if Thursday was weak, 10–15 varied
       layouts with stills as a fine-tune / real-mAP set, disjoint from the scored scenes
 

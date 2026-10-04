@@ -154,19 +154,39 @@ TEST(Visibility, NearerThanTheToleranceIsNotOcclusion) {
   EXPECT_DOUBLE_EQ(c.visible_fraction(), 1.0);
 }
 
-TEST(Visibility, MissingDepthIsUnknownNotOccluded) {
+TEST(Visibility, MissingDepthIsVisibleButHasNoDepth) {
   const cv::Mat r = RenderDepth(Cube(0.025), At(0.700), TestK(), kW, kH);
   cv::Mat d = ToDepthU16(r, 0.001);
   d.rowRange(218, 228).setTo(0);  // 10 of 45 rows lost
   const VisibilityCounts c = MeasureVisibility(r, d, 0.001, 0.020, 0);
   EXPECT_EQ(c.invalid, 10 * 45);
   EXPECT_EQ(c.measured(), 35 * 45);
-  EXPECT_DOUBLE_EQ(c.visible_fraction(), 1.0) << "a hole is excluded, not scored as hidden";
+  EXPECT_DOUBLE_EQ(c.visible_fraction(), 1.0) << "a depth hole is not something in front";
+  EXPECT_NEAR(c.depth_fraction(), 35.0 / 45.0, 1e-12) << "but an estimator cannot use it";
   EXPECT_NEAR(c.invalid_fraction(), 10.0 / 45.0, 1e-12);
+}
 
-  const VisibilityCounts none = MeasureVisibility(r, cv::Mat::zeros(r.size(), CV_16UC1), 0.001,
-                                                  0.020, 0);
-  EXPECT_TRUE(std::isnan(none.visible_fraction())) << "no depth at all is unknown, not 0%";
+TEST(Visibility, TheStereoShadowBesideAnOccluderIsNotCountedAsHidden) {
+  // The case measured on the rig: a card covers 20 of 45 columns, and the band
+  // of the object beside its edge (10 columns) has no depth at all.
+  const cv::Mat r = RenderDepth(Cube(0.025), At(0.700), TestK(), kW, kH);
+  cv::Mat d = ToDepthU16(r, 0.001);
+  for (int y = 0; y < kH; ++y) {
+    for (int x = 402; x < 422; ++x) if (d.at<uint16_t>(y, x)) d.at<uint16_t>(y, x) -= 50;
+    for (int x = 422; x < 432; ++x) d.at<uint16_t>(y, x) = 0;
+  }
+  const VisibilityCounts c = MeasureVisibility(r, d, 0.001, 0.020, 0);
+  EXPECT_NEAR(c.visible_fraction(), 25.0 / 45.0, 1e-12) << "everything the card does not cover";
+  EXPECT_NEAR(c.depth_fraction(), 15.0 / 45.0, 1e-12) << "less the shadow band";
+}
+
+TEST(Visibility, NoSilhouetteIsUnknown) {
+  const cv::Mat empty = cv::Mat::zeros(kH, kW, CV_32FC1);
+  const VisibilityCounts c = MeasureVisibility(empty, cv::Mat::zeros(empty.size(), CV_16UC1),
+                                               0.001, 0.020, 0);
+  EXPECT_EQ(c.silhouette, 0);
+  EXPECT_TRUE(std::isnan(c.visible_fraction())) << "an object out of frame is unknown, not 0%";
+  EXPECT_TRUE(std::isnan(c.depth_fraction()));
 }
 
 TEST(Visibility, FartherThanTheModelIsVisibleButReported) {

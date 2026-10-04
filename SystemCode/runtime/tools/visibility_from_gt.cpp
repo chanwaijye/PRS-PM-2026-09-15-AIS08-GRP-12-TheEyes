@@ -16,9 +16,14 @@
 //
 //     --run N         run_id (default: the newest in the database)
 //     --config-dir D  config directory (default: ./config)
-//     --tol-mm T      depth agreement tolerance (default 20). Depth noise is
-//                     2-4 mm at this standoff and ground truth agrees across
-//                     cameras to 3-8 mm; an occluder is centimetres in front.
+//     --tol-mm T      depth agreement tolerance (default 40). MEASURED on the
+//                     first real scene (2026-10-04, nothing occluding the
+//                     bowl): cam_front's depth inside the bowl reads 2-3 cm
+//                     nearer than the surface, so at 20 mm the bowl scored 28%
+//                     visible with nothing in front of it; at 30 mm, 96%; at
+//                     40 mm, 98%. The cube and bottle read 91-100% at 20 mm
+//                     already. The cost: an occluder must stand more than
+//                     ~40 mm in front of the surface it hides to be counted.
 //     --erode-px E    shrink each silhouette first (default 2), so a pixel or
 //                     two of ground-truth error at the rim is not scored
 //     --max-pairs N   stop after N pairs that have ground truth
@@ -63,7 +68,7 @@ struct Options {
   std::string db;
   std::string config = "config";
   int64_t run_id = -1;
-  double tol_mm = 20.0;
+  double tol_mm = 40.0;
   int erode_px = 2;
   uint64_t max_pairs = 0;
   std::string csv;
@@ -87,13 +92,13 @@ double Median(std::vector<double> v) {
 
 // One view of one object across the run.
 struct Series {
-  std::vector<double> visible, invalid, behind;
+  std::vector<double> visible, with_depth, invalid, behind;
   int silhouette_px = 0;  // from the first pair; constant for a static scene
 };
 
 // The proposal's tiers (6.4 / 7.1), read off the median over the run.
 std::string Band(double v) {
-  if (std::isnan(v)) return "no depth on the object";
+  if (std::isnan(v)) return "object not in frame";
   if (v < 0.25) return "OCCLUDED  (<25%, T4 band)";
   if (v <= 0.75) return "partial   (25-75%, T3 band)";
   return "clear";
@@ -190,7 +195,7 @@ int main(int argc, char** argv) {
     std::ofstream csv(o.csv);
     if (!csv) throw std::runtime_error("cannot write " + o.csv);
     csv << "pair_index,camera_id,cls,instance,silhouette_px,invalid_px,occluded_px,"
-           "consistent_px,behind_px,visible_fraction\n";
+           "consistent_px,behind_px,visible_fraction,depth_fraction\n";
 
     std::map<std::string, Series> series;  // "<camera>  <cls>#<instance>"
     ReplayFrameSource src(o.session);
@@ -230,11 +235,13 @@ int main(int argc, char** argv) {
           Series& s = series[key];
           if (s.visible.empty()) s.silhouette_px = vc.silhouette;
           s.visible.push_back(vc.visible_fraction());
+          s.with_depth.push_back(vc.depth_fraction());
           s.invalid.push_back(vc.invalid_fraction());
           s.behind.push_back(vc.behind_fraction());
           csv << pair->pair_index << "," << cam_id << "," << row->cls << "," << row->instance << ","
               << vc.silhouette << "," << vc.invalid << "," << vc.occluded << "," << vc.consistent
-              << "," << vc.behind << "," << std::setprecision(6) << vc.visible_fraction() << "\n";
+              << "," << vc.behind << "," << std::setprecision(6) << vc.visible_fraction() << ","
+              << vc.depth_fraction() << "\n";
 
           if (!overlay_written) {
             for (int y = 0; y < labels.rows; ++y) {
@@ -268,8 +275,8 @@ int main(int argc, char** argv) {
 
     std::cout << std::left << std::setw(30) << "view / object" << std::right << std::setw(7)
               << "pairs" << std::setw(8) << "sil px" << std::setw(9) << "visible" << std::setw(7)
-              << "min" << std::setw(7) << "max" << std::setw(9) << "no depth" << std::setw(8)
-              << "behind" << "   band (median visible)\n";
+              << "min" << std::setw(7) << "max" << std::setw(9) << "w/depth" << std::setw(9)
+              << "no depth" << std::setw(8) << "behind" << "   band (median visible)\n";
     bool behind_warning = false;
     for (const auto& [key, s] : series) {
       const double med = Median(s.visible);
@@ -283,7 +290,8 @@ int main(int argc, char** argv) {
       std::cout << std::left << std::setw(30) << key << std::right << std::setw(7)
                 << s.visible.size() << std::setw(8) << s.silhouette_px << std::fixed
                 << std::setprecision(2) << std::setw(9) << med << std::setw(7) << lo
-                << std::setw(7) << hi << std::setw(8) << std::setprecision(1)
+                << std::setw(7) << hi << std::setw(9) << Median(s.with_depth) << std::setw(8)
+                << std::setprecision(1)
                 << 100.0 * Median(s.invalid) << "%" << std::setw(7) << 100.0 * behind << "%"
                 << "   " << Band(med) << "\n";
       if (behind > 0.25) behind_warning = true;

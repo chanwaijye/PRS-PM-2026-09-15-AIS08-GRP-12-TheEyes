@@ -9,6 +9,8 @@
 #                                  --occluded none|cam_front|cam_over
 #                                  [--objects cls,cls,...] [--target cls]
 #                                  [--tv off|static|on] [--pairs 300] [--stills 10]
+#                                  [--stage stills|record] [--note TEXT]
+#                                  [--stills-from SCENE]
 #                                  [--day YYYYMMDD]
 #   scripts/capture_day.sh end     [--day YYYYMMDD]
 #   scripts/capture_day.sh list    [--day YYYYMMDD]
@@ -21,6 +23,12 @@
 #          out of view → an immediate tray check (gt_from_trays --dry-run, no
 #          database) → occluder in → `the_eyes_run live --record-only` →
 #          notes.yaml. Nothing downstream is run: recordings replay bit-exact.
+#          `--stage stills` then `--stage record` (same arguments both times)
+#          run the two halves separately and never prompt, for when the person
+#          at the keyboard is not the person at the rig.
+#          `--stills-from SCENE` copies that scene's stills instead of shooting:
+#          for a second occluder position on a tray that has NOT been touched
+#          since. The notes record it; ground truth is then the same solve.
 # end      re-registers into a scratch file, NOT config: if the rig's baseline
 #          moved during the day, the scenes shot after the move are suspect.
 # process  needs the GPU and the FoundationPose server, not the rig. Per scene:
@@ -50,6 +58,12 @@ GT=build/runtime/gt_from_trays
 VIS=build/runtime/visibility_from_gt
 ABL=build/runtime/ablation_from_log
 CAL=build/calibration/calibrate
+# The camera settings the ground-truth STILLS are shot with. Light that suits
+# the detector clips the white marker cards at the pipeline's exposure, and a
+# clipped card biases the marker's apparent size, which is its depth (measured
+# 2026-10-04: cards at 254, the two cameras 16 mm apart on the cube). Point
+# this at a copy of cameras.yaml with a lower colour exposure.
+STILLS_CAMERAS="${STILLS_CAMERAS:-config/cameras.yaml}"
 
 die() { echo "capture_day: $*" >&2; exit 1; }
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
@@ -71,7 +85,7 @@ serial_of() {
 CMD="$1"; shift
 DAY="$(date +%Y%m%d)"
 NAME="" TIER="" OCCLUDED="" OBJECTS="" TARGET="" TV="off" PAIRS=300 STILLS=10
-FORCE=0 REPLAY_ARGS=""
+FORCE=0 REPLAY_ARGS="" STAGE="all" NOTE="" NOTE_GIVEN=0 STILLS_FROM=""
 if [[ "$CMD" == "scene" ]]; then
   [[ $# -ge 1 && "$1" != --* ]] || die "scene needs a name"
   NAME="$1"; shift
@@ -86,6 +100,9 @@ while [[ $# -gt 0 ]]; do
     --tv) TV="$2"; shift 2 ;;
     --pairs) PAIRS="$2"; shift 2 ;;
     --stills) STILLS="$2"; shift 2 ;;
+    --stage) STAGE="$2"; shift 2 ;;
+    --note) NOTE="$2"; NOTE_GIVEN=1; shift 2 ;;
+    --stills-from) STILLS_FROM="$2"; shift 2 ;;
     --force) FORCE=1; shift ;;
     --replay-args) REPLAY_ARGS="$2"; shift 2 ;;
     *) die "unknown argument $1" ;;
@@ -114,7 +131,12 @@ record() {
   "$RUN" live --record-only "$name" --frames "$pairs" 2>&1 | tee "$logf" >&2
   rc=${PIPESTATUS[0]}
   [[ $rc -eq 0 ]] || return $rc
-  sed -n 's/^recording to //p' "$logf" | head -1
+  # The runner prints an absolute path; keep it absolute either way, because
+  # the caller links to it and a doubled prefix is a dangling link.
+  local s
+  s=$(sed -n 's/^recording to //p' "$logf" | head -1)
+  [[ "$s" == /* ]] || s="$REPO/$s"
+  echo "$s"
 }
 
 # ---- begin -------------------------------------------------------------------
@@ -148,7 +170,7 @@ EOF
   pause "Take the board OFF. Desk clear, TV off, lights as for capture. ENTER to record 30 pairs of the empty table:"
   local s
   s=$(record empty_table 30 "$DAYDIR/empty_table.log") || die "empty-table recording failed"
-  ln -sfn "$REPO/$s" "$DAYDIR/empty_table"
+  ln -sfn "$s" "$DAYDIR/empty_table"
   log_day "begin: empty table -> $s"
   say "Ready. Next: scripts/capture_day.sh scene <name> --tier T1 ..."
 }
@@ -165,11 +187,33 @@ cmd_scene() {
     *) die "--tier T1|T2|T3|T4 is required" ;;
   esac
   case "$TV" in off|static|on) ;; *) die "--tv off|static|on" ;; esac
+  case "$STAGE" in all|stills|record) ;; *) die "--stage stills|record" ;; esac
+  # A misspelt class would only surface as "NOT FOUND in the stills" after the
+  # scene was set, which reads as a rig problem. Check the names up front.
+  local bad
+  bad=$(python3 - "$OBJECTS" "$TARGET" <<'PYEOF'
+import sys, yaml
+known = set(yaml.safe_load(open("config/meshes.yaml"))["objects"])
+names = [n for n in sys.argv[1].split(",") + [sys.argv[2]] if n]
+print(" ".join(sorted(set(n for n in names if n not in known))) + "|" + " ".join(sorted(known)))
+PYEOF
+)
+  [[ -z "${bad%%|*}" ]] || die "unknown class: ${bad%%|*} (config/meshes.yaml has: ${bad##*|})"
   if [[ -n "$TARGET" && -n "$OBJECTS" && ",$OBJECTS," != *",$TARGET,"* ]]; then
     die "--target $TARGET is not in --objects $OBJECTS"
   fi
   local dir="$DAYDIR/$NAME"
-  [[ ! -e "$dir" ]] || die "$dir already exists -- pick a new name; a scene is never overwritten"
+  local interactive=true
+  [[ "$STAGE" == "all" ]] || interactive=false
+  if [[ "$STAGE" == "record" ]]; then
+    [[ -d "$dir/gt_stills" && ! -e "$dir/notes.yaml" ]] ||
+      die "--stage record needs $dir with stills and no notes.yaml -- run --stage stills first"
+    scene_record "$dir"
+    return
+  fi
+  if [[ -e "$dir/notes.yaml" || ( -e "$dir" && "$STAGE" == "all" ) ]]; then
+    die "$dir already exists -- pick a new name; a scene is never overwritten"
+  fi
 
   # A T3/T4 fusion gain is uninterpretable without that object's T1 floor (§9).
   if [[ "$TIER" == "T3" || "$TIER" == "T4" ]]; then
@@ -183,7 +227,7 @@ EOF
 )
     if [[ "$has_t1" != "yes" ]]; then
       echo "WARNING: no T1 scene for $TARGET in $DAYDIR yet. Record its T1 first (CAPTURE_PROTOCOL.md 9)."
-      pause "ENTER to continue anyway, Ctrl-C to stop:"
+      $interactive && pause "ENTER to continue anyway, Ctrl-C to stop:"
     fi
   fi
 
@@ -192,22 +236,42 @@ EOF
   if $dirty; then
     echo "WARNING: config/ differs from HEAD. Every scene in the suite must share one config"
     echo "(CAPTURE_PROTOCOL.md 9) and the runs table records only git_rev. Commit it first."
-    pause "ENTER to continue anyway, Ctrl-C to stop:"
+    $interactive && pause "ENTER to continue anyway, Ctrl-C to stop:"
   fi
 
   mkdir -p "$dir"
-  local started; started=$(now)
+  now > "$dir/started"
+  echo "$dirty" > "$dir/config_dirty"
   say "== scene $NAME ($TIER, occluded: $OCCLUDED) =="
   echo "Objects seated in their trays, bottle on its tick. OCCLUDER OUT OF VIEW. TV: $TV."
   echo "Take the phone photo from above now (predicate hand labels) -- save it later as $dir/photo.jpg"
-  pause "ENTER to shoot $STILLS ground-truth stills at 1920x1080:"
+  $interactive && pause "ENTER to shoot $STILLS ground-truth stills at 1920x1080:"
 
   local gt_check="" rc
   while true; do
     rm -rf "$dir/gt_stills"
-    "$CAL" capture config/cameras.yaml config/calibration.yaml "$dir/gt_stills" \
-      --auto "$STILLS" --interval 1 > "$dir/gt_stills.log" 2>&1 ||
-      { tail -20 "$dir/gt_stills.log"; die "stills capture failed"; }
+    if [[ -n "$STILLS_FROM" ]]; then
+      [[ -d "$DAYDIR/$STILLS_FROM/gt_stills" ]] || die "--stills-from: no stills in $DAYDIR/$STILLS_FROM"
+      cp -r "$DAYDIR/$STILLS_FROM/gt_stills" "$dir/gt_stills"
+      echo "$STILLS_FROM" > "$dir/stills_from"
+      echo "stills copied from $STILLS_FROM -- valid only if the tray has not been touched since"
+    else
+    # A D435i sometimes refuses to open right after the previous tool closed
+    # it ("failed to set power state", seen 2026-10-04). One retry clears it;
+    # a second failure is a real fault, and the scene directory is removed so
+    # the same name can be used again.
+    local try
+    for try in 1 2; do
+      "$CAL" capture "$STILLS_CAMERAS" config/calibration.yaml "$dir/gt_stills" \
+        --auto "$STILLS" --interval 1 > "$dir/gt_stills.log" 2>&1 && break
+      tail -5 "$dir/gt_stills.log"
+      if [[ $try -eq 2 ]]; then
+        rm -rf "$dir"
+        die "stills capture failed twice; $dir removed. Run: $RUN check --live"
+      fi
+      echo "stills capture failed -- retrying once in 5 s"; sleep 5; rm -rf "$dir/gt_stills"
+    done
+    fi
     "$GT" "$dir/gt_stills" - --stills --factory --dry-run 2>&1 | tee "$dir/gt_check.log"
     rc=${PIPESTATUS[0]}
     local missing=""
@@ -219,6 +283,11 @@ EOF
     [[ -n "$missing" ]] && echo "NOT FOUND in the stills:$missing"
     echo "Ground-truth check FAILED (exit $rc). Glare on a marker card, a card in the wrong"
     echo "recess, or a tray outside the shared view are the usual causes."
+    if ! $interactive; then
+      echo "failed($rc)${missing:+ missing:$missing}" > "$dir/gt_check.status"
+      echo "Fix the scene and run --stage stills again, or --stage record to go on regardless."
+      exit 3
+    fi
     local a; read -r -p "[r]eshoot stills / [c]ontinue anyway / [a]bort: " a
     case "$a" in
       r) continue ;;
@@ -226,20 +295,38 @@ EOF
       *) rm -rf "$dir"; die "aborted; $dir removed" ;;
     esac
   done
+  echo "$gt_check" > "$dir/gt_check.status"
+  if [[ "$STAGE" == "stills" ]]; then
+    say "Stills OK for $NAME. Place the occluder if the tier has one, then run the same command with --stage record."
+    return
+  fi
 
   if [[ "$OCCLUDED" == "none" ]]; then
     pause "No occluder for $TIER. Hands off the desk. ENTER to record $PAIRS pairs:"
   else
     pause "Place the occluder now, blocking $OCCLUDED's view of ${TARGET:-the target}. DO NOT touch the objects. ENTER to record $PAIRS pairs:"
   fi
+  scene_record "$dir"
+}
+
+# The second half of a scene: record, link the session, write the notes.
+scene_record() {
+  local dir="$1" rc gt_check started dirty stills_from
+  stills_from=$(cat "$dir/stills_from" 2>/dev/null || true)
+  gt_check=$(cat "$dir/gt_check.status" 2>/dev/null || echo unknown)
+  started=$(cat "$dir/started" 2>/dev/null || now)
+  dirty=$(cat "$dir/config_dirty" 2>/dev/null || echo false)
   local session=""
   session=$(record "scored_$NAME" "$PAIRS" "$dir/record.log")
   rc=$?
-  [[ -n "$session" ]] && ln -sfn "$REPO/$session" "$dir/session"
+  [[ -n "$session" ]] && ln -sfn "$session" "$dir/session"
 
-  local note=""
-  read -r -p "One-line note for this scene (ENTER for none): " note
+  local note="$NOTE"
+  if [[ $NOTE_GIVEN -eq 0 && "$STAGE" == "all" ]]; then
+    read -r -p "One-line note for this scene (ENTER for none): " note
+  fi
   note=${note//\\/}
+  rm -f "$dir/gt_check.status" "$dir/started" "$dir/config_dirty" "$dir/stills_from"
   cat > "$dir/notes.yaml" <<EOF
 # Written by scripts/capture_day.sh -- the run notes CAPTURE_PROTOCOL.md 6 asks for.
 scene: $NAME
@@ -252,6 +339,7 @@ tv: $TV
 pairs_requested: $PAIRS
 stills_requested: $STILLS
 gt_check: "$gt_check"
+stills_from: ${stills_from:-}
 session: "${session:-}"
 record_exit: $rc
 git_rev: $(git rev-parse HEAD)

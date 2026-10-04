@@ -722,7 +722,11 @@ not required for the claim.
 **Computed — 2026-10-01.** The occluder does not need segmenting after all:
 depth separates it. `visibility_from_gt` renders each mesh at its ground-truth
 pose into every view and counts a silhouette pixel as occluded when the
-measured surface is more than 20 mm nearer than the model. That is the
+measured surface is more than 40 mm nearer than the model (20 mm until the
+first real scene showed cam_front's depth inside the bowl reading 2–3 cm short;
+a pixel with no depth counts as visible, because the stereo shadow beside an
+occluder falls on exactly the half of the object that is still in view —
+`SystemCode/runtime/README.md`). That is the
 proposal's own tier definition (7.1: T4 under 25% visible from one view), so
 the tier of every scene is now measured rather than declared, and
 `capture_day.sh process` fails a scene whose measurement does not match. The
@@ -802,8 +806,9 @@ Binary, per `AGENTS.md` rule 3.
   one command reports the plane fit and the shared footprint together.
 - ~~The visible-fraction figure for T3's "25–75%" band is unresolved (§8).~~
   **Computed 2026-10-01** by `visibility_from_gt` from ground-truth pose, mesh
-  and measured depth (§8). Its 20 mm tolerance and 2 px erosion are defaults,
-  not measurements: **[VERIFY]** them against the first real T1 scene, where
-  visibility should be high and `behind` small.
+  and measured depth (§8). **Verified 2026-10-04** on the rehearsal scenes: an
+  unoccluded cube reads 100% from both views, a fully hidden one 0%, a
+  half-hidden one 48% — after the tolerance went 20 → 40 mm and no-depth pixels
+  were counted as visible, both on measurement (`SystemCode/runtime/README.md`).
 - ~~Table slab thickness is a modelling choice~~ — **superseded**: measured at
   23 mm, so it is a measurement now and should be quoted as one.

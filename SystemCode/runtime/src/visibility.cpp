@@ -118,9 +118,13 @@ cv::Mat RenderDepth(const TriMesh& mesh, const Eigen::Isometry3d& T_cam_object,
 }
 
 double VisibilityCounts::visible_fraction() const {
-  const int m = measured();
-  return m > 0 ? static_cast<double>(consistent + behind) / m
-               : std::numeric_limits<double>::quiet_NaN();
+  return silhouette > 0 ? static_cast<double>(silhouette - occluded) / silhouette
+                        : std::numeric_limits<double>::quiet_NaN();
+}
+
+double VisibilityCounts::depth_fraction() const {
+  return silhouette > 0 ? static_cast<double>(consistent + behind) / silhouette
+                        : std::numeric_limits<double>::quiet_NaN();
 }
 
 double VisibilityCounts::behind_fraction() const {
