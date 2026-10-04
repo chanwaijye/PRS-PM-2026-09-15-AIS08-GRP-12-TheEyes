@@ -146,12 +146,32 @@
 //                      With marker size and spacing both now measured, tray
 //                      flatness is what is left untested. Take a straightedge to
 //                      each tray before making this the default.
+//     --free           solve each marker's full 6-DoF pose from its own four
+//                      corners, as this tool did until 2026-10-04, instead of
+//                      the table-plane solve below. For comparison only.
+//     --max-plane-rms MM  table-plane solve: reject a marker (or, with --joint,
+//                      a tray) whose corners miss a rigid flat layout by more
+//                      than this, rms (default 1.0)
 //     --max-dev-deg D  drop an observation more than D deg from its class
 //                      medoid before averaging (default 10)
 //     --max-dev-mm M   ... or more than M mm from it (default 40)
 //     --dry-run        report only, write nothing. With a database of `-` it
 //                      needs no run at all: the capture-day check that every
 //                      tray decodes and agrees, before anything is recorded.
+//
+// THE TABLE-PLANE SOLVE (default). One 40 mm marker fixes its own position
+// across the image well and its depth and tilt badly, and the object's centre
+// is 57-102 mm from the marker, so a little tilt is millimetres at the object.
+// MEASURED on the rig with the free solve, 2026-10-04: the two cameras placed
+// the same cube 6.8-16.2 mm apart depending on which of its two markers each
+// could see, and its centre 20.5-23.6 mm above the table against a CAD 27.5.
+// The tray lies flat on the table, though, the table is world z = 0, and the
+// marker's height on it is CAD -- so every corner's ray is intersected with
+// that known plane and the pose is a rigid fit IN the plane: x, y, yaw. No
+// depth and no tilt are estimated, so there is no planar ambiguity either and
+// the ambiguity gate does not apply. See runtime/marker_trays.hpp. It assumes
+// what the protocol already requires: trays flat on the table, and extrinsics
+// registered to the tabletop.
 //
 // OUTLIER SCREEN. Averaging trusts every sample, and a marker that resolved to
 // its other planar solution is a sample tens of degrees off -- flips of ~120
@@ -214,6 +234,8 @@ struct Options {
   bool joint = false;
   double max_dev_deg = 10.0;
   double max_dev_mm = 40.0;
+  bool plane = true;              // the table-plane solve; --free turns it off
+  double max_plane_rms_mm = 1.0;
   bool dry_run = false;
   bool stills = false;
   bool factory = false;
@@ -224,7 +246,8 @@ int Usage() {
   std::cerr << "usage: gt_from_trays <input> <metrics.sqlite> [--stills] [--factory]\n"
                "         [--intrinsics FILE] [--config DIR] [--pairs A:B] [--run N]\n"
                "         [--min-obs N] [--max-reproj PX] [--min-size PX]\n"
-               "         [--min-ambiguity R] [--max-dev-deg D] [--max-dev-mm M] [--dry-run]\n\n"
+               "         [--min-ambiguity R] [--max-dev-deg D] [--max-dev-mm M] [--dry-run]\n"
+               "         [--free] [--max-plane-rms MM] [--joint]\n\n"
                "  <input> is a recorded session, or a stills directory with --stills.\n"
                "  <metrics.sqlite> may be '-' with --dry-run: check the trays, write nothing.\n"
                "  Ground truth wants 1920x1080 stills, not the pipeline's 848x480.\n";
@@ -352,6 +375,8 @@ int main(int argc, char** argv) {
       else if (a == "--min-size") o.min_size_px = std::stod(next());
       else if (a == "--min-ambiguity") o.min_ambiguity = std::stod(next());
       else if (a == "--joint") o.joint = true;
+      else if (a == "--free") o.plane = false;
+      else if (a == "--max-plane-rms") o.max_plane_rms_mm = std::stod(next());
       else if (a == "--max-dev-deg") o.max_dev_deg = std::stod(next());
       else if (a == "--max-dev-mm") o.max_dev_mm = std::stod(next());
       else if (a == "--dry-run") o.dry_run = true;
@@ -399,17 +424,32 @@ int main(int argc, char** argv) {
               << "  solve     : "
               << (o.joint ? "one pose per TRAY from all its corners (joint)"
                           : "one pose per MARKER, averaged")
+              << (o.plane ? ", on the TABLE PLANE (x, y, yaw; height from CAD)"
+                          : ", FREE 6-DoF from the marker's own corners")
               << "\n"
               << "  gates     : reproj <= " << o.max_reproj_px << " px, side >= " << o.min_size_px
-              << " px, ambiguity >= " << o.min_ambiguity << ", >= " << o.min_obs
-              << " observations per class\n"
+              << " px, "
+              << (o.plane ? "plane misfit <= " + std::to_string(o.max_plane_rms_mm).substr(0, 4) + " mm"
+                          : "ambiguity >= " + std::to_string(o.min_ambiguity).substr(0, 4))
+              << ", >= " << o.min_obs << " observations per class\n"
               << "  screen    : drop > " << o.max_dev_deg << " deg or > " << o.max_dev_mm
               << " mm from the class medoid; refuse a class that loses > 1/3\n";
 
     calibration::MarkerDetector det(trays.dictionary, trays.marker_length_m);
 
     std::vector<Sample> samples;
-    std::map<std::string, int> rejected_reproj, rejected_size, rejected_ambig, unknown_id;
+    std::map<std::string, int> rejected_reproj, rejected_size, rejected_ambig, rejected_plane,
+        unknown_id;
+    if (o.plane) {
+      for (const auto& [cls, tray] : trays.trays) {
+        if (!(tray.plate_thickness_m > 0.0)) {
+          throw std::runtime_error("tray '" + cls + "' has no plate_m in marker_trays.yaml, and the "
+                                   "table-plane solve needs the plate thickness. Regenerate the "
+                                   "file, or pass --free.");
+        }
+      }
+    }
+    const std::array<Eigen::Vector2d, 4> marker_xy = MarkerCornersXY(trays.marker_length_m);
     // Smallest marker seen at all, accepted or not: it explains an empty result
     // far better than a bare "0 observations".
     std::map<std::string, double> smallest_seen;
@@ -441,19 +481,71 @@ int main(int argc, char** argv) {
         if (m.reprojection_px > o.max_reproj_px) { ++rejected_reproj[known->second]; continue; }
         // A marker whose two planar solutions fit equally well was a coin flip,
         // and the loser is wrong by several degrees while reprojecting
-        // perfectly. Reprojection cannot catch this; only the ratio can.
-        if (m.ambiguity < o.min_ambiguity) { ++rejected_ambig[known->second]; continue; }
+        // perfectly. Reprojection cannot catch this; only the ratio can. The
+        // table-plane solve estimates no tilt, so it has no second solution
+        // and the gate does not apply to it.
+        if (!o.plane && m.ambiguity < o.min_ambiguity) {
+          ++rejected_ambig[known->second];
+          continue;
+        }
 
-        if (!o.joint) {
-          const Tray& tray = trays.trays.at(known->second);
+        if (o.joint) {
+          accepted[known->second].push_back(m);
+          continue;
+        }
+        const Tray& tray = trays.trays.at(known->second);
+        if (!o.plane) {
           const Eigen::Isometry3d T_cam_object = m.T_cam_marker * MarkerToObject(tray, m.id);
           samples.push_back({known->second, camera_id, m.id, 1, m.apparent_size_px,
                              cam->second.T_world_cam * T_cam_object});
-        } else {
-          accepted[known->second].push_back(m);
+          continue;
         }
+        // Table plane: the marker's four corners, each dropped onto the plane
+        // the marker lies in, then a rigid fit of the marker's square to them.
+        double marker_z = 0.0;
+        for (const TrayMarker& tm : tray.markers) {
+          if (tm.id == m.id) marker_z = tray.plate_thickness_m + tm.t_tray_marker.z();
+        }
+        std::vector<Eigen::Vector2d> model(marker_xy.begin(), marker_xy.end()), world;
+        for (const Eigen::Vector2d& c : m.corners) {
+          world.push_back(PixelOnWorldPlane(c, K, cam->second.T_world_cam, marker_z).head<2>());
+        }
+        const PlanarFit fit = FitPlanarRigid(model, world);
+        if (fit.rms_m * 1000.0 > o.max_plane_rms_mm) { ++rejected_plane[known->second]; continue; }
+        samples.push_back({known->second, camera_id, m.id, 1, m.apparent_size_px,
+                           PoseOnPlane(fit, marker_z) * MarkerToObject(tray, m.id)});
       }
       if (!o.joint) return;
+
+      if (o.plane) {
+        // One rigid fit per tray per frame over every corner of every accepted
+        // marker, each placed by the tray's own layout.
+        for (const auto& [cls, ms] : accepted) {
+          const Tray& tray = trays.trays.at(cls);
+          std::vector<Eigen::Vector2d> model, world;
+          double size_sum = 0.0;
+          for (const calibration::MarkerObservation& m : ms) {
+            for (const TrayMarker& tm : tray.markers) {
+              if (tm.id != m.id) continue;
+              const double z = tray.plate_thickness_m + tm.t_tray_marker.z();
+              for (int c = 0; c < 4; ++c) {
+                model.push_back(tm.t_tray_marker.head<2>() + marker_xy[c]);
+                world.push_back(
+                    PixelOnWorldPlane(m.corners[c], K, cam->second.T_world_cam, z).head<2>());
+              }
+            }
+            size_sum += m.apparent_size_px;
+          }
+          const PlanarFit fit = FitPlanarRigid(model, world);
+          if (fit.rms_m * 1000.0 > o.max_plane_rms_mm) { ++rejected_plane[cls]; continue; }
+          Eigen::Isometry3d T_tray_object = Eigen::Isometry3d::Identity();
+          T_tray_object.translation() = tray.t_tray_object;
+          samples.push_back({cls, camera_id, -1, static_cast<int>(ms.size()),
+                             size_sum / static_cast<double>(ms.size()),
+                             PoseOnPlane(fit, tray.plate_thickness_m) * T_tray_object});
+        }
+        return;
+      }
 
       // One pose per tray per frame, from every corner of every accepted marker
       // on it. With one marker this is exactly the old single-marker solve; with
@@ -739,6 +831,9 @@ int main(int argc, char** argv) {
       std::cout << "  " << cls << ": " << n << " observations rejected as too small\n";
     for (const auto& [cls, n] : rejected_ambig)
       std::cout << "  " << cls << ": " << n << " observations rejected as planar-ambiguous\n";
+    for (const auto& [cls, n] : rejected_plane)
+      std::cout << "  " << cls << ": " << n << " observations rejected for not lying flat on the "
+                << "table plane (misfit > " << o.max_plane_rms_mm << " mm)\n";
 
     if (by_cls.empty()) {
       std::cerr << "\nNo tray markers were found. Ground truth is unchanged.\n";

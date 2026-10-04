@@ -55,6 +55,12 @@ TrayConfig LoadTrayConfig(const std::string& yaml_path) {
     t.cls = kv.first.as<std::string>();
     const YAML::Node& n = kv.second;
     t.t_tray_object = Vec3(n["t_tray_object"], t.cls + ".t_tray_object");
+    if (n["plate_m"]) {
+      t.plate_thickness_m = Vec3(n["plate_m"], t.cls + ".plate_m").z();
+      if (!(t.plate_thickness_m > 0.0)) {
+        throw std::runtime_error("marker_trays.yaml: " + t.cls + ".plate_m thickness must be > 0");
+      }
+    }
 
     const YAML::Node markers = n["markers"];
     if (!markers || !markers.IsSequence() || markers.size() == 0) {
@@ -148,6 +154,68 @@ double RotationAngleDeg(const Eigen::Matrix3d& a, const Eigen::Matrix3d& b) {
   qb.normalize();
   const double dot = std::min(1.0, std::abs(qa.dot(qb)));
   return 2.0 * std::acos(dot) * 180.0 / M_PI;
+}
+
+Eigen::Vector3d PixelOnWorldPlane(const Eigen::Vector2d& px, const Eigen::Matrix3d& K,
+                                  const Eigen::Isometry3d& T_world_cam, double plane_z) {
+  const Eigen::Vector3d dir = T_world_cam.linear() * (K.inverse() * Eigen::Vector3d(px.x(), px.y(), 1.0));
+  const Eigen::Vector3d origin = T_world_cam.translation();
+  if (std::abs(dir.z()) < 1e-12) {
+    throw std::runtime_error("PixelOnWorldPlane: ray is parallel to the plane");
+  }
+  const double s = (plane_z - origin.z()) / dir.z();
+  if (!(s > 0.0)) {
+    throw std::runtime_error("PixelOnWorldPlane: the plane is behind the camera along this ray");
+  }
+  return origin + s * dir;
+}
+
+PlanarFit FitPlanarRigid(const std::vector<Eigen::Vector2d>& model_xy,
+                         const std::vector<Eigen::Vector2d>& world_xy) {
+  if (model_xy.size() != world_xy.size() || model_xy.size() < 2) {
+    throw std::invalid_argument("FitPlanarRigid: need >= 2 points and equal counts");
+  }
+  const double n = static_cast<double>(model_xy.size());
+  Eigen::Vector2d cm = Eigen::Vector2d::Zero(), cw = Eigen::Vector2d::Zero();
+  for (size_t i = 0; i < model_xy.size(); ++i) {
+    cm += model_xy[i];
+    cw += world_xy[i];
+  }
+  cm /= n;
+  cw /= n;
+
+  // Procrustes in 2-D without scale: the rotation that best carries the
+  // centred model onto the centred points is atan2(sum of cross, sum of dot).
+  double dot = 0.0, cross = 0.0;
+  for (size_t i = 0; i < model_xy.size(); ++i) {
+    const Eigen::Vector2d m = model_xy[i] - cm, w = world_xy[i] - cw;
+    dot += m.x() * w.x() + m.y() * w.y();
+    cross += m.x() * w.y() - m.y() * w.x();
+  }
+  PlanarFit out;
+  out.n = static_cast<int>(model_xy.size());
+  out.yaw_rad = std::atan2(cross, dot);
+  const Eigen::Rotation2Dd R(out.yaw_rad);
+  out.t = cw - R * cm;
+  double sq = 0.0;
+  for (size_t i = 0; i < model_xy.size(); ++i) {
+    sq += (R * model_xy[i] + out.t - world_xy[i]).squaredNorm();
+  }
+  out.rms_m = std::sqrt(sq / n);
+  return out;
+}
+
+std::array<Eigen::Vector2d, 4> MarkerCornersXY(double length_m) {
+  const double h = length_m / 2.0;
+  return {Eigen::Vector2d(-h, h), Eigen::Vector2d(h, h), Eigen::Vector2d(h, -h),
+          Eigen::Vector2d(-h, -h)};
+}
+
+Eigen::Isometry3d PoseOnPlane(const PlanarFit& fit, double z) {
+  Eigen::Isometry3d T = Eigen::Isometry3d::Identity();
+  T.linear() = Eigen::AngleAxisd(fit.yaw_rad, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+  T.translation() = Eigen::Vector3d(fit.t.x(), fit.t.y(), z);
+  return T;
 }
 
 OutlierScreen ScreenPoseOutliers(const std::vector<Eigen::Isometry3d>& poses,

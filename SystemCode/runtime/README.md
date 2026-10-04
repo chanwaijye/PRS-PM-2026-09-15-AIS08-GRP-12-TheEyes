@@ -143,7 +143,38 @@ says so and produces no numbers.
 ## Ground truth and visibility (2026-10-01)
 
 `gt_from_trays` fills `ground_truth` from 1920x1080 tray stills (its header has
-the full argument). Two additions for the capture suite:
+the full argument).
+
+**It solves on the table plane (default since 2026-10-04).** A free pose from
+one 40 mm marker is good across the image and poor in depth and tilt, and the
+object's centre is 57–102 mm from the marker. Measured on the rig with the free
+solve: the two cameras placed the same cube 6.8–16.2 mm apart depending on
+which marker each could see, and its centre 20.5–23.6 mm above the table
+against a CAD 27.5 — an error the size of the cube's 8.6 mm ADD-S threshold.
+The tray lies flat on the table and the marker's height on it is CAD, so each
+corner's ray is intersected with that known plane and the pose is a rigid fit
+*in* the plane: x, y, yaw, nothing else. Same stills, both solves:
+
+| stills | cross-camera, free | cross-camera, table plane |
+|---|---|---|
+| cube, 16:27, just after re-registration | 9.57 mm | **0.61 mm** |
+| cube, 16:28 | 10.19 mm | **0.60 mm** |
+| cube, 15:49, cameras drifted since calibration | 7.21 mm | 2.66 mm |
+| bowl / bottle / cube, 15:33, likewise | 4.76 / 4.12 / 3.38 mm | 2.89 / 2.25 / 2.45 mm |
+
+Cross-camera disagreement is now a direct reading of whether the extrinsics
+still describe the rig: 0.6 mm when they do, 2–3 mm after a camera has moved a
+couple of pixels. On synthetic renders of the rig the same corners give 3.43 mm
+mean error free and 0.27 mm on the plane. `--free` keeps the old solve for
+comparison; a marker whose corners miss a flat rigid square by more than 1 mm
+rms (`--max-plane-rms`) is rejected, which is how a tray resting on a cable
+shows up. The planar-ambiguity gate does not apply: no tilt is estimated.
+
+Re-scoring the cube-alone rehearsal against it moved cam_front's ADD-S from
+13.7 to 7.6 mm and the gated fusion from 10.3 to 4.7 mm — the "pose error" had
+been mostly ground-truth error. Rehearsal figures, not scored results.
+
+Two further additions for the capture suite:
 
 - **Outlier screen.** Each class's per-marker poses are judged against their
   medoid before averaging; anything more than 10° or 40 mm from it is dropped
@@ -254,7 +285,7 @@ it the provider cannot find cuDNN, the session falls back to CPU, and the run
 reports CPU latency while looking entirely healthy — so the path is baked into
 the binary rather than left to `LD_LIBRARY_PATH` at the call site.
 
-## Tests (`test_runtime`, 88, no hardware)
+## Tests (`test_runtime`, 96, no hardware)
 
 | suite | pins |
 |---|---|

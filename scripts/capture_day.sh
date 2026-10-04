@@ -64,6 +64,10 @@ CAL=build/calibration/calibrate
 # 2026-10-04: cards at 254, the two cameras 16 mm apart on the cube). Point
 # this at a copy of cameras.yaml with a lower colour exposure.
 STILLS_CAMERAS="${STILLS_CAMERAS:-config/cameras.yaml}"
+# How far a camera's background may shift (px at 1920x1080) since the day's
+# re-registration before the scene is refused. Measured 2026-10-04: untouched
+# cameras repeat to 0.0-0.5 px, and the two moves that day were 2.3 and 4.5 px.
+MAX_SHIFT_PX="${MAX_SHIFT_PX:-1.5}"
 
 die() { echo "capture_day: $*" >&2; exit 1; }
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
@@ -122,6 +126,38 @@ register_pair() {
   "$CAL" reregister config/calibration.yaml config/extrinsics.yaml "$out" \
     "cam_front:$(serial_of cam_front):$dir/cam_front/zz_register.png" \
     "cam_over:$(serial_of cam_over):$dir/cam_over/zz_register.png"
+}
+
+# Has a camera moved? Compares the static background of each camera's still in
+# $2 with its still in $1 (ORB matches, RANSAC similarity, median inlier shift).
+# Extrinsics are only valid while the cameras stay where the board saw them, and
+# nothing downstream notices when they do not: on 2026-10-04 clearing the desk
+# moved cam_front 4.5 px and every pose after it was scored against stale
+# geometry. Prints "<worst px>|<per-camera text>"; a camera with too few
+# matches reads "?" and does not count.
+camera_shift() {
+  python3 - "$1" "$2" <<'PYEOF_SHIFT'
+import glob, os, sys
+import cv2, numpy as np
+ref, cur = sys.argv[1:3]
+worst, parts = 0.0, []
+for cam in sorted(d for d in os.listdir(cur) if os.path.isdir(os.path.join(cur, d))):
+    a = sorted(glob.glob(f"{ref}/{cam}/*.png")); b = sorted(glob.glob(f"{cur}/{cam}/*.png"))
+    if not a or not b:
+        parts.append(f"{cam} ?"); continue
+    orb = cv2.ORB_create(6000)
+    ka, da = orb.detectAndCompute(cv2.imread(a[0], 0), None)
+    kb, db = orb.detectAndCompute(cv2.imread(b[0], 0), None)
+    m = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True).match(da, db)
+    pa = np.float32([ka[x.queryIdx].pt for x in m]); pb = np.float32([kb[x.trainIdx].pt for x in m])
+    M, inl = cv2.estimateAffinePartial2D(pa, pb, method=cv2.RANSAC, ransacReprojThreshold=2.0)
+    inl = inl.ravel().astype(bool) if inl is not None else np.zeros(len(m), bool)
+    if inl.sum() < 40:
+        parts.append(f"{cam} ? ({int(inl.sum())} matches)"); continue
+    d = float(np.median(np.linalg.norm(pb[inl] - pa[inl], axis=1)))
+    worst = max(worst, d); parts.append(f"{cam} {d:.1f} px")
+print(f"{worst:.2f}|" + ", ".join(parts))
+PYEOF_SHIFT
 }
 
 # Records $2 pairs as session name $1. The runner's output goes to the terminal
@@ -296,6 +332,26 @@ EOF
     esac
   done
   echo "$gt_check" > "$dir/gt_check.status"
+
+  local shift_txt="not checked (no $DAYDIR/reregister_begin)"
+  if [[ -d "$DAYDIR/reregister_begin" ]]; then
+    local cur="$dir/gt_stills" r
+    if [[ -n "$STILLS_FROM" ]]; then  # copied stills say nothing about the cameras NOW
+      rm -rf "$dir/camcheck"
+      "$CAL" capture "$STILLS_CAMERAS" config/calibration.yaml "$dir/camcheck" --auto 1 --interval 0.5 \
+        > "$dir/camcheck.log" 2>&1 && cur="$dir/camcheck"
+    fi
+    r=$(camera_shift "$DAYDIR/reregister_begin" "$cur")
+    shift_txt="${r#*|}"
+    echo "camera check since re-registration: $shift_txt"
+    if awk "BEGIN{exit !(${r%%|*} > $MAX_SHIFT_PX)}"; then
+      echo "A CAMERA HAS MOVED more than $MAX_SHIFT_PX px since re-registration. The extrinsics no longer"
+      echo "describe the rig: put the board back and run 'begin' again before recording anything."
+      echo "moved: $shift_txt" > "$dir/gt_check.status"
+      if $interactive; then pause "ENTER to record anyway, Ctrl-C to stop:"; else exit 3; fi
+    fi
+  fi
+  echo "$shift_txt" > "$dir/camera_shift"
   if [[ "$STAGE" == "stills" ]]; then
     say "Stills OK for $NAME. Place the occluder if the tier has one, then run the same command with --stage record."
     return
@@ -311,8 +367,9 @@ EOF
 
 # The second half of a scene: record, link the session, write the notes.
 scene_record() {
-  local dir="$1" rc gt_check started dirty stills_from
+  local dir="$1" rc gt_check started dirty stills_from shift_txt
   stills_from=$(cat "$dir/stills_from" 2>/dev/null || true)
+  shift_txt=$(cat "$dir/camera_shift" 2>/dev/null || echo "not checked")
   gt_check=$(cat "$dir/gt_check.status" 2>/dev/null || echo unknown)
   started=$(cat "$dir/started" 2>/dev/null || now)
   dirty=$(cat "$dir/config_dirty" 2>/dev/null || echo false)
@@ -326,7 +383,7 @@ scene_record() {
     read -r -p "One-line note for this scene (ENTER for none): " note
   fi
   note=${note//\\/}
-  rm -f "$dir/gt_check.status" "$dir/started" "$dir/config_dirty" "$dir/stills_from"
+  rm -f "$dir/gt_check.status" "$dir/started" "$dir/config_dirty" "$dir/stills_from" "$dir/camera_shift"
   cat > "$dir/notes.yaml" <<EOF
 # Written by scripts/capture_day.sh -- the run notes CAPTURE_PROTOCOL.md 6 asks for.
 scene: $NAME
@@ -340,6 +397,7 @@ pairs_requested: $PAIRS
 stills_requested: $STILLS
 gt_check: "$gt_check"
 stills_from: ${stills_from:-}
+camera_shift: "$shift_txt"
 session: "${session:-}"
 record_exit: $rc
 git_rev: $(git rev-parse HEAD)

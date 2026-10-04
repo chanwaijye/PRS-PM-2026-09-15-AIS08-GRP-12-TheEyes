@@ -58,6 +58,10 @@ TEST(MarkerTrays, LoadsTheShippedConfig) {
   // Every id resolves to exactly one class.
   EXPECT_EQ(cfg.cls_of_marker.size(), 8u);
   EXPECT_EQ(cfg.cls_of_marker.at(100), "red_cube");
+  // The table-plane solve stands on these three numbers.
+  EXPECT_NEAR(cfg.trays.at("red_cube").plate_thickness_m, 0.0105, 1e-9);
+  EXPECT_NEAR(cfg.trays.at("mustard_bottle").plate_thickness_m, 0.0145, 1e-9);
+  EXPECT_NEAR(cfg.trays.at("bowl").plate_thickness_m, 0.0085, 1e-9);
   EXPECT_EQ(cfg.cls_of_marker.at(107), "bowl");
 }
 
@@ -232,6 +236,92 @@ TEST(MarkerTrays, ScreenOfNothingIsEmpty) {
   EXPECT_EQ(s.rejected, 0);
   EXPECT_TRUE(s.keep.empty());
   EXPECT_THROW(ScreenPoseOutliers({}, 0.0, 0.040), std::invalid_argument);
+}
+
+namespace {
+
+// A camera at `c` looking at `target`, image y pointing down.
+Eigen::Isometry3d LookAt(const Eigen::Vector3d& c, const Eigen::Vector3d& target) {
+  const Eigen::Vector3d z = (target - c).normalized();
+  const Eigen::Vector3d x = z.cross(Eigen::Vector3d::UnitZ()).normalized();
+  const Eigen::Vector3d y = z.cross(x);
+  Eigen::Isometry3d T = Eigen::Isometry3d::Identity();
+  T.linear().col(0) = x;
+  T.linear().col(1) = y;
+  T.linear().col(2) = z;
+  T.translation() = c;
+  return T;
+}
+
+Eigen::Matrix3d PlaneTestK() {
+  Eigen::Matrix3d K;
+  K << 1365.0, 0, 970.0, 0, 1365.0, 546.0, 0, 0, 1;
+  return K;
+}
+
+Eigen::Vector2d Project(const Eigen::Vector3d& pw, const Eigen::Matrix3d& K,
+                        const Eigen::Isometry3d& T_world_cam) {
+  const Eigen::Vector3d pc = T_world_cam.inverse() * pw;
+  return (K * pc).hnormalized();
+}
+
+}  // namespace
+
+TEST(MarkerTrays, PixelOnWorldPlaneInvertsProjection) {
+  const Eigen::Isometry3d T = LookAt({-0.41, -0.37, 0.40}, {0, 0, 0});
+  const Eigen::Matrix3d K = PlaneTestK();
+  for (const Eigen::Vector3d& p : {Eigen::Vector3d(0.03, -0.02, 0.0101),
+                                   Eigen::Vector3d(-0.20, 0.15, 0.0141),
+                                   Eigen::Vector3d(0.22, -0.18, 0.0)}) {
+    const Eigen::Vector3d back = PixelOnWorldPlane(Project(p, K, T), K, T, p.z());
+    EXPECT_TRUE(back.isApprox(p, 1e-9)) << back.transpose() << " vs " << p.transpose();
+  }
+  // A pixel above the horizon never meets the table.
+  EXPECT_THROW(PixelOnWorldPlane({970.0, -4000.0}, K, T, 0.0), std::runtime_error);
+}
+
+TEST(MarkerTrays, AWrongPlaneHeightMovesThePointAlongTheView) {
+  // The solve's one physical assumption, priced: at ~36 deg of elevation a
+  // millimetre of height error is about 1.4 mm on the table, directed away
+  // from the camera. This is why the plate thickness has to be right.
+  const Eigen::Isometry3d T = LookAt({-0.41, -0.37, 0.40}, {0, 0, 0});
+  const Eigen::Matrix3d K = PlaneTestK();
+  const Eigen::Vector3d p(0.0, 0.0, 0.010);
+  const Eigen::Vector3d wrong = PixelOnWorldPlane(Project(p, K, T), K, T, 0.009);
+  const double shift = (wrong - p).head<2>().norm();
+  EXPECT_GT(shift, 0.0012);
+  EXPECT_LT(shift, 0.0016);
+}
+
+TEST(MarkerTrays, PlanarFitRecoversYawAndTranslationExactly) {
+  const auto m = MarkerCornersXY(0.040);
+  EXPECT_TRUE(m[0].isApprox(Eigen::Vector2d(-0.020, 0.020)));  // top-left first
+  EXPECT_TRUE(m[2].isApprox(Eigen::Vector2d(0.020, -0.020)));
+  const Eigen::Rotation2Dd R(33.0 * M_PI / 180.0);
+  const Eigen::Vector2d t(-0.048, 0.025);
+  std::vector<Eigen::Vector2d> model(m.begin(), m.end()), world;
+  for (const auto& p : model) world.push_back(R * p + t);
+  const PlanarFit f = FitPlanarRigid(model, world);
+  EXPECT_NEAR(f.yaw_rad, 33.0 * M_PI / 180.0, 1e-12);
+  EXPECT_TRUE(f.t.isApprox(t, 1e-12));
+  EXPECT_NEAR(f.rms_m, 0.0, 1e-12);
+  EXPECT_EQ(f.n, 4);
+
+  const Eigen::Isometry3d T = PoseOnPlane(f, 0.0101);
+  EXPECT_NEAR(T.translation().z(), 0.0101, 1e-12);
+  EXPECT_NEAR(RotationAngleDeg(T.linear(), Pose(0, 0, 0, 0, 0, 33).linear()), 0.0, 1e-9);
+}
+
+TEST(MarkerTrays, PlanarFitReportsALayoutThatDoesNotFit) {
+  // One corner 2 mm out: the fit cannot absorb it rigidly, and says so.
+  const auto m = MarkerCornersXY(0.040);
+  std::vector<Eigen::Vector2d> model(m.begin(), m.end()), world(m.begin(), m.end());
+  world[1] += Eigen::Vector2d(0.002, 0.0);
+  const PlanarFit f = FitPlanarRigid(model, world);
+  EXPECT_GT(f.rms_m, 0.0005);
+  EXPECT_LT(f.rms_m, 0.0020);
+  EXPECT_THROW(FitPlanarRigid({model[0]}, {world[0]}), std::invalid_argument);
+  EXPECT_THROW(FitPlanarRigid(model, {world[0], world[1]}), std::invalid_argument);
 }
 
 TEST(MarkerTrays, RotationAngleIsShortestArc) {

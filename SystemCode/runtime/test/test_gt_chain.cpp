@@ -195,6 +195,108 @@ TEST(GroundTruthChain, BothMarkersOnATrayAgreeOnTheObject) {
   EXPECT_LT((avg.mean.translation() - T_world_object.translation()).norm(), 0.010);
 }
 
+TEST(GroundTruthChain, TablePlaneSolveBeatsTheFreeSolveOnTheSameCorners) {
+  // The cube tray flat on the table, both of its markers rendered into each of
+  // the rig's two real views. The SAME detected corners then go through both
+  // solves. The free one has to guess depth and tilt from a 40 mm square; the
+  // table-plane one is told the height and solves only x, y and yaw.
+  const TrayConfig trays = LoadTrayConfig(std::string(THE_EYES_CONFIG_DIR) + "/marker_trays.yaml");
+  const fusion::ExtrinsicsSet ex =
+      fusion::LoadExtrinsics(std::string(THE_EYES_CONFIG_DIR) + "/extrinsics.yaml");
+  const Eigen::Matrix3d K = TestK();
+  const Tray& tray = trays.trays.at("red_cube");
+  const auto marker_xy = MarkerCornersXY(trays.marker_length_m);
+
+  Eigen::Isometry3d T_world_tray = Eigen::Isometry3d::Identity();
+  T_world_tray.linear() =
+      Eigen::AngleAxisd(25.0 * M_PI / 180.0, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+  T_world_tray.translation() = Eigen::Vector3d(-0.05, 0.03, tray.plate_thickness_m);
+  const Eigen::Isometry3d T_world_object = T_world_tray * Translation(tray.t_tray_object);
+
+  calibration::MarkerDetector det(trays.dictionary, trays.marker_length_m);
+  double free_sum = 0.0, plane_sum = 0.0, plane_max = 0.0, plane_rms_max = 0.0;
+  int n = 0;
+  for (const char* cam_id : {"cam_front", "cam_over"}) {
+    const Eigen::Isometry3d T_world_cam = ex.cameras.at(cam_id).T_world_cam;
+    cv::Mat frame;
+    for (const TrayMarker& mk : tray.markers) {
+      const Eigen::Isometry3d T_cam_marker =
+          T_world_cam.inverse() * T_world_tray * Translation(mk.t_tray_marker);
+      if (frame.empty()) frame = RenderMarker(mk.id, trays.marker_length_m, T_cam_marker, K);
+      else RenderMarkerInto(frame, mk.id, trays.marker_length_m, T_cam_marker, K);
+    }
+    const auto obs = det.Detect(frame, K);
+    ASSERT_EQ(obs.size(), tray.markers.size()) << cam_id;
+    for (const auto& m : obs) {
+      const Eigen::Isometry3d free_pose = T_world_cam * m.T_cam_marker * MarkerToObject(tray, m.id);
+      double marker_z = 0.0;
+      for (const TrayMarker& mk : tray.markers) {
+        if (mk.id == m.id) marker_z = tray.plate_thickness_m + mk.t_tray_marker.z();
+      }
+      std::vector<Eigen::Vector2d> model(marker_xy.begin(), marker_xy.end()), world;
+      for (const auto& c : m.corners) {
+        world.push_back(PixelOnWorldPlane(c, K, T_world_cam, marker_z).head<2>());
+      }
+      const PlanarFit fit = FitPlanarRigid(model, world);
+      const Eigen::Isometry3d plane_pose = PoseOnPlane(fit, marker_z) * MarkerToObject(tray, m.id);
+
+      const double e_free = (free_pose.translation() - T_world_object.translation()).norm();
+      const double e_plane = (plane_pose.translation() - T_world_object.translation()).norm();
+      free_sum += e_free;
+      plane_sum += e_plane;
+      plane_max = std::max(plane_max, e_plane);
+      plane_rms_max = std::max(plane_rms_max, fit.rms_m);
+      ++n;
+      // Height is not estimated at all, so it is exact.
+      EXPECT_NEAR(plane_pose.translation().z(), T_world_object.translation().z(), 1e-12);
+    }
+  }
+  ASSERT_EQ(n, 4);
+  RecordProperty("free_mean_mm", std::to_string(free_sum / n * 1000));
+  RecordProperty("plane_mean_mm", std::to_string(plane_sum / n * 1000));
+  // Loose on purpose: the camera poses are the SHIPPED extrinsics, so these
+  // move with every recalibration (see the 10 mm note above).
+  EXPECT_LT(plane_max, 0.0015) << "worst table-plane error " << plane_max * 1000 << " mm";
+  EXPECT_LT(plane_sum, 0.5 * free_sum)
+      << "table-plane mean " << plane_sum / n * 1000 << " mm vs free mean "
+      << free_sum / n * 1000 << " mm";
+  EXPECT_LT(plane_rms_max, 0.0005) << "a flat marker must fit the plane";
+}
+
+TEST(GroundTruthChain, ATrayThatIsNotFlatShowsUpAsPlaneMisfit) {
+  // The assumption can be wrong -- a tray resting on a cable -- and the solve
+  // has to say so rather than return a confident pose. A marker tipped 6 deg
+  // no longer projects onto the plane as a square, and the rigid fit's residual
+  // is what reports it.
+  const TrayConfig trays = LoadTrayConfig(std::string(THE_EYES_CONFIG_DIR) + "/marker_trays.yaml");
+  const fusion::ExtrinsicsSet ex =
+      fusion::LoadExtrinsics(std::string(THE_EYES_CONFIG_DIR) + "/extrinsics.yaml");
+  const Eigen::Matrix3d K = TestK();
+  const Eigen::Isometry3d T_world_cam = ex.cameras.at("cam_front").T_world_cam;
+  const auto marker_xy = MarkerCornersXY(trays.marker_length_m);
+  calibration::MarkerDetector det(trays.dictionary, trays.marker_length_m);
+
+  auto misfit = [&](double tilt_deg) {
+    Eigen::Isometry3d T_world_marker = Eigen::Isometry3d::Identity();
+    T_world_marker.linear() =
+        Eigen::AngleAxisd(tilt_deg * M_PI / 180.0, Eigen::Vector3d::UnitX()).toRotationMatrix();
+    T_world_marker.translation() = Eigen::Vector3d(0.0, 0.0, 0.0101);
+    const cv::Mat frame =
+        RenderMarker(100, trays.marker_length_m, T_world_cam.inverse() * T_world_marker, K);
+    const auto obs = det.Detect(frame, K);
+    EXPECT_EQ(obs.size(), 1u);
+    std::vector<Eigen::Vector2d> model(marker_xy.begin(), marker_xy.end()), world;
+    for (const auto& c : obs.at(0).corners) {
+      world.push_back(PixelOnWorldPlane(c, K, T_world_cam, 0.0101).head<2>());
+    }
+    return FitPlanarRigid(model, world).rms_m;
+  };
+  const double flat = misfit(0.0), tipped = misfit(6.0);
+  EXPECT_LT(flat, 0.0005);
+  EXPECT_GT(tipped, 3.0 * flat) << "flat " << flat * 1000 << " mm, tipped " << tipped * 1000 << " mm";
+  EXPECT_GT(tipped, 0.0008);
+}
+
 TEST(GroundTruthChain, AveragingAcrossViewsBeatsAnySingleObservation) {
   // The tool does not trust one observation; it pools markers, cameras and
   // frames. This asserts that pooling actually helps -- if it did not, the

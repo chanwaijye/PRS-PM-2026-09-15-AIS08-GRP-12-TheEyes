@@ -1,117 +1,91 @@
 # October plan — finish the rig work before 11 Oct
 
-Written 2026-10-01. Away in Taiwan for work **Sun 11 – Sat 24 Oct**; the rig
-stays home, because moving it breaks the calibration and the GPU box and pose
-server do not travel. Final submission is **Sat 31 Oct** (`README.md`).
+Written 2026-10-01, **rewritten 2026-10-04** after the first rehearsal on the
+rig. Away in Taiwan for work **Sun 11 – Sat 24 Oct**; the rig stays home. Final
+submission is **Sat 31 Oct** (`README.md`).
 
 **How the plan works.** The rig only has to produce raw recordings, 1920×1080
 ground-truth stills and photos. Replay is bit-exact, so the detector,
-FoundationPose, fusion, the ground-truth solve and all eight ablation arms rerun
-from disk. **Sat 3 Oct is the day that matters**; the weekday evenings after it
-process the data while the rig is still there to reshoot what failed. Assumes
-weekday evenings plus full days on 3, 4 and 10 Oct.
-
-**Biggest unknown:** the detector has never been run on the correct-colour
-printed objects — every real detector number so far is the brown test cube, and
-the 29 Sep live run had no ground truth. It does not block capture (recordings
-do not depend on the detector), but it decides whether extra fine-tuning data is
-needed, so it is checked first.
-
-Tools built for this on 2026-10-01 (`SystemCode/runtime/README.md`, "Ground truth
-and visibility"): `scripts/capture_day.sh`, the outlier screen in
-`gt_from_trays`, and `visibility_from_gt`.
+FoundationPose, fusion, the ground-truth solve and every ablation arm rerun from
+disk. What must be right *at capture time* is short: the rig registered and not
+moved, the scene clean, trays flat on the table, the tier as declared.
 
 ---
 
-## Thu 1 Oct (evening) — go/no-go
+## Where things stand — Sun 4 Oct, 17:30
 
-- [ ] Re-register. If refused: burst → recalibrate → `training/shared_region.py --overlay` → re-tape
-- [ ] Three printed objects in the shared region:
-      `build/runtime/the_eyes_run live --record-only detcheck --frames 150`,
-      then `~/venvs/the-eyes-r1/bin/python training/exposure_report.py captures/runtime/<session>`
-- [ ] Replay it through the ONNX detector (`the_eyes_run replay <session> --pose mock --show`)
-      and re-run the §3.1a three-condition comparison (`CAPTURE_PROTOCOL.md`).
-      **Decision:** finds all three → proceed; weak → add a fine-tune set on Sunday
-- [ ] Tape: board centre → desk front edge; `t.y = 0.375 − f` closes the
-      `scene.yaml` `pose_w.t.y` **[VERIFY]** (`CAPTURE_PROTOCOL.md` §4.2)
+Nothing was shot 1–3 Oct. On 4 Oct the afternoon went on prerequisites and a
+rehearsal (daylight, TV on — **none of it is a scored result**):
 
-## Fri 2 Oct (evening) — trays, yardstick, props
+- **Rig recalibrated** (it had drifted 10.7 mm in two idle weeks) and
+  re-registered once more after clearing the desk moved a camera.
+- **Detector works on the printed objects with no fine-tuning**: cam_front finds
+  all three on 150/150 pairs.
+- **Capture flow works end to end**, driven remotely scene by scene: cube alone,
+  cube fully hidden from cam_over, cube half hidden. Measured tiers 100% / 0% /
+  48% visible, all as staged.
+- **Ground truth rebuilt on the table plane**: cross-camera disagreement on the
+  cube 9.6 → 0.6 mm. Against it, cube alone: cam_front 7.6 mm, cam_over 4.9 mm,
+  gated fusion 4.7 mm ADD-S (threshold 8.6 mm). Fully hidden from cam_over:
+  cam_over finds it on 0/300 pairs, fused output on 300/300 at 6.7 mm.
 
-- [ ] Bottle base dish / bowl tray hole to 74 mm if not done; seat heights
-      42.1 / 179.0 / 49.0 mm ±0.3 (`PRINT_PLAN.md` §8.1); pencil-tick the bottle
-- [ ] `PRINT_PLAN.md` §8.2 shots A and B. No scratch database is needed any more:
-      `build/runtime/gt_from_trays captures/gt_test_A - --stills --factory --dry-run`.
-      Compare against the CAD heights and distances there. **No scored capture until it passes**
-- [ ] Occluder: stiff green or magenta card on a small black stand; 8 distractors
-      in the palette neutrals; board jig, or tape
-- [ ] Commit the configs you will capture with — nothing changes between scenes (§9)
+**Found, not yet fixed** (all replay-side — none blocks capture):
 
-## Sat 3 Oct — scored capture (night or blackout; TV off)
+| # | Finding | Fix |
+|---|---|---|
+| 1 | Depth is biased per camera, in opposite directions: cam_front reads 1.0% short (5.7–8.9 mm), cam_over up to 7.3 mm long at 0.8 m | Per-camera depth correction fitted from the empty-table recording |
+| 2 | Gate + EKF (the `fused` arm) is worse than the gate alone on the cube (9.1 vs 4.7 mm): the cube's symmetric-equivalent orientations, 88° apart between views, are filtered through | Pick the symmetric equivalent nearest the track before the EKF update; needs the symmetry group in the mesh registry |
+| 3 | The grey tray is detected as a `bowl` on every pair, giving a false `(on red_cube bowl)` | Fine-tune the detector on real frames with trays in them |
+| 4 | The bowl's pose is 16–25 mm off and cam_front's depth inside it reads 2–3 cm short | Not understood; keep the bowl out of T3/T4 targets |
+| 5 | Half-hidden cube: cam_over detects it on 286/300 pairs and every pose is wrong — the visible half has no depth | A finding to report; the gate keeps it out of the fused pose |
+| 6 | Clutter is detected: TV content, a red ring on a cable, the card's wooden stand | TV off, desk clear, stand wrapped |
 
-- [ ] `scripts/capture_day.sh begin` — checks, re-registration, 30 empty-table pairs.
-      Commit `config/extrinsics.yaml` if it says it changed
-- [ ] One `scripts/capture_day.sh scene ...` per scene. It asks for the phone photo,
-      shoots the stills, **refuses to go on until every tray decodes and agrees**,
-      then records. Order: T1 ×2 → **T4 ×2** → T3 ×3 → T2 ×3, so whatever the day
-      does not reach is the least important. A default staging, if nothing better
-      suggests itself (T3/T4 targets need their T1 first):
+---
 
-      | scene | tier | occluded | target |
-      |---|---|---|---|
-      | `t1_cube` | T1 | none | red_cube |
-      | `t1_bowl` | T1 | none | bowl |
-      | `t4_cube_over` | T4 | cam_over | red_cube |
-      | `t4_bowl_front` | T4 | cam_front | bowl — the scene occluding the other way (§5) |
-      | `t3_cube_over`, `t3_bowl_over`, `t3_cube_front` | T3 | as named | as named |
-      | `t2_clutter_a/b/c` | T2 | none | — (3 targets + 8 distractors) |
+## Sun 4 Oct, after dark (~19:30) — scored cube scenes
 
-      All three trays fit the 460 × 370 mm shared view (2026-10-04 extrinsics) as bowl + cube side by side
-      (380 × 210 mm) with the bottle tray (216 × 100 mm) in front: 380 × 310 mm
-      (footprints from `PRINT_PLAN.md` §8.2).
-- [ ] `scripts/capture_day.sh end` — if it refuses, the rig moved during the day
-- [ ] `scripts/capture_day.sh list`, then copy `captures/` to an external drive
-      tonight. It is gitignored; git holds no copy
+Driven from the keyboard with `capture_day.sh scene --stage stills|record`; the
+person at the rig only moves things. **TV off. Nobody touches tripods or camera
+cables.**
 
-## Sun 4 Oct — verify end to end, then extras
+- [ ] `capture_day.sh begin` — re-register (board on), empty-table recording
+- [ ] `t1_cube` — cube alone, tray flat on the bare table
+- [ ] `t4_cube_over`, then `t3_cube_over` (card slid aside; `--stills-from`, tray untouched)
+- [ ] `t4_cube_front`, then `t3_cube_front` — the other camera
+- [ ] `capture_day.sh end` — the rig held; then copy `captures/` to an external drive
 
-- [ ] Pose server up, then `scripts/capture_day.sh process --day 20261003` on at
-      least one T1 and one T4. It prints the ground-truth agreement, the measured
-      visibility per view, a **tier check**, and the ablation table. Wrong → reshoot
-      today while the setup is intact
-- [ ] On T1, read visibility's `behind` column: it is how well ground truth sits
-      on the object (the tool's defaults were settled on the 2026-10-04 rehearsal)
-- [ ] Extras: one T1 with the TV on (§4.2b); if Thursday was weak, 10–15 varied
-      layouts with stills as a fine-tune / real-mAP set, disjoint from the scored scenes
+## Mon 5 – Tue 6 Oct (evenings) — the rest of the suite
 
-## Mon 5 – Fri 9 Oct (evenings) — process everything while the rig is still there
+- [ ] `t1_bottle`, `t3_bottle_over` (a card tall enough for a 191 mm bottle)
+- [ ] T2 ×3: all three trays (460 × 370 mm shared view: bowl + cube side by side,
+      380 × 210 mm, bottle tray 216 × 100 mm in front) plus 8 distractors in the
+      palette neutrals. Needs the bottle to seat (`PRINT_PLAN.md` §8.1)
+- [ ] 10–15 varied layouts with stills, disjoint from the scored scenes — the
+      fine-tuning and real-mAP set that finding 3 needs
+- [ ] Offline, no rig: findings 1 and 2, then replay everything
 
-- [ ] `scripts/capture_day.sh process --day 20261003` for all scenes: the headline
-      number exists before you fly. Every FAILED tier check is a reshoot for Saturday
-- [ ] Every object in frame (§10 4b); cam_over's unoccluded count within 2× of
-      cam_front's on T1 (§10 4)
-- [ ] `training/pose/registration_quality.py` on real captures (closes the
-      6-iteration [VERIFY] in `STATUS.md`)
-- [ ] Remote access to the desktop: Tailscale or SSH; GRUB default = Ubuntu (the
-      box dual-boots); BIOS restore-on-power-loss; suspend and automatic reboots
-      off. Test from a phone hotspot. This is what lets a fine-tuned detector be
-      replayed from Taiwan
-- [ ] Back up `captures/`, `runs/` and the ONNX model to the drive and to cloud
+## Wed 7 – Fri 9 Oct (evenings) — process while the rig is still there
+
+- [ ] `capture_day.sh process` on every day's scenes with the depth correction in;
+      every FAILED tier check or refused ground truth is a reshoot for Saturday
+- [ ] `training/pose/registration_quality.py` on real captures (`STATUS.md` [VERIFY])
+- [ ] Remote access to the desktop: Tailscale or SSH; GRUB default = Ubuntu;
+      BIOS restore-on-power-loss; suspend and automatic reboots off; tested from
+      a phone hotspot
+- [ ] Back up `captures/`, `runs/` and the ONNX model to a drive and to cloud
 
 ## Sat 10 Oct — reshoots and backup demo footage
 
-- [ ] Reshoot every scene that failed a check this week (new scene names; a
-      scene is never overwritten)
-- [ ] Demo run (§7): `the_eyes_run live --record demo --show=console` plus a
-      screen recording and phone video of the rig — backup footage so the video
-      does not depend on 25–31 Oct
-- [ ] Final backup; cover the rig; nobody touches the desk
+- [ ] Reshoot what the week's checks rejected (new scene names)
+- [ ] Demo run (`CAPTURE_PROTOCOL.md` §7): `the_eyes_run live --record demo --show=console`,
+      a screen recording, phone video of the rig
+- [ ] Final backup; cover the rig
 
 ## 11–24 Oct — Taiwan (offline, or remote to the desktop)
 
-Real-capture mAP (boxes from ground-truth poses — not built), predicate accuracy
-against the photos, bootstrap CIs by scene (proposal §7.1 — not built), the §4.3
-table-plane check from the empty-table session (not built), fine-tune and replay
-if needed, report draft, figures, video script.
+Detector fine-tune and replay; real-capture mAP from ground-truth boxes;
+predicate accuracy against the photos; bootstrap CIs by scene (proposal §7.1);
+report draft, figures, video script.
 
 ## 25–31 Oct
 

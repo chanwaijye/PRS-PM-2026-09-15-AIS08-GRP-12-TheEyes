@@ -16,6 +16,7 @@
 #ifndef THE_EYES_RUNTIME_MARKER_TRAYS_HPP
 #define THE_EYES_RUNTIME_MARKER_TRAYS_HPP
 
+#include <array>
 #include <map>
 #include <string>
 #include <vector>
@@ -36,6 +37,10 @@ struct Tray {
   std::string cls;                                          // key into config/meshes.yaml
   Eigen::Vector3d t_tray_object = Eigen::Vector3d::Zero();  // object AABB centre in tray frame
   std::vector<TrayMarker> markers;
+  // Thickness of the plate, i.e. the height of the tray frame's origin (the top
+  // surface) above whatever the tray rests on. `plate_m[2]` in the YAML; 0 when
+  // the file does not give it, which the table-plane solve refuses.
+  double plate_thickness_m = 0.0;
 };
 
 struct TrayConfig {
@@ -107,6 +112,53 @@ OutlierScreen ScreenPoseOutliers(const std::vector<Eigen::Isometry3d>& poses,
 
 // Shortest-arc angle between two rotations, in degrees.
 double RotationAngleDeg(const Eigen::Matrix3d& a, const Eigen::Matrix3d& b);
+
+// ---------------------------------------------------------------------------
+// The table-plane solve.
+//
+// A pose from one 40 mm marker is well determined across the image and badly
+// determined along the ray and in tilt: the four corners barely change when the
+// marker tips or recedes. MEASURED on the rig, 2026-10-04, with the free
+// single-marker solve: the two cameras placed the same cube 6.8, 9.6, 10.2 and
+// 16.2 mm apart depending on which marker each happened to see, and put its
+// centre at 20.5-23.6 mm above the table when the tray's own geometry says
+// 27.5. That is ground truth with an error the size of the ADD-S threshold it
+// is used to judge (8.6 mm for the cube).
+//
+// But the tray is not free. It lies flat on the table, the table is world
+// z = 0, and the marker's height above it is CAD. So each corner's pixel ray
+// can be intersected with a KNOWN horizontal plane, which turns the four
+// corners into four points in the world, and the marker's pose into a 2-D
+// rigid fit -- x, y and yaw -- with no depth, no tilt and no planar ambiguity
+// left to estimate. The only inputs are the camera's calibrated pose and the
+// plate thickness.
+// ---------------------------------------------------------------------------
+
+// Where the ray through pixel `px` meets the horizontal world plane z = plane_z.
+// Throws if the ray does not come down onto the plane in front of the camera.
+Eigen::Vector3d PixelOnWorldPlane(const Eigen::Vector2d& px, const Eigen::Matrix3d& K,
+                                  const Eigen::Isometry3d& T_world_cam, double plane_z);
+
+// Least-squares rigid fit in the plane, rotation about z plus translation and
+// no scale:  world_xy[i] ~= R(yaw) * model_xy[i] + t.
+struct PlanarFit {
+  double yaw_rad = 0.0;
+  Eigen::Vector2d t = Eigen::Vector2d::Zero();
+  double rms_m = 0.0;  // misfit of the points to a rigid layout: a tray that is
+                       // not flat, a wrong layout, or a bad corner shows up here
+  int n = 0;
+};
+// Throws on fewer than 2 points or mismatched sizes.
+PlanarFit FitPlanarRigid(const std::vector<Eigen::Vector2d>& model_xy,
+                         const std::vector<Eigen::Vector2d>& world_xy);
+
+// The four corners of a marker of side `length_m` in its own frame, in the
+// detector's order (calibration/marker_detector.cpp): top-left, top-right,
+// bottom-right, bottom-left, with +x right and +y up.
+std::array<Eigen::Vector2d, 4> MarkerCornersXY(double length_m);
+
+// An upright pose on a horizontal plane: yaw about world z, at (t, z).
+Eigen::Isometry3d PoseOnPlane(const PlanarFit& fit, double z);
 
 }  // namespace the_eyes::runtime
 

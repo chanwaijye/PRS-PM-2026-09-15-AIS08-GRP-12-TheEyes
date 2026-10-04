@@ -655,6 +655,13 @@ result reads as a property of one camera.
 
 ## 6. The scored run
 
+**Ground truth is solved on the table plane (2026-10-04)** — x, y and yaw from
+marker corners dropped onto the plane the tray lies in, height from CAD; the
+free single-marker solve this document was written around disagreed between
+cameras by 7–16 mm on the cube (`SystemCode/runtime/README.md`). It needs what
+§1 already demands plus one thing: **the tray must sit flat on the bare table**,
+not on a cable or the tape.
+
 **`scripts/capture_day.sh` runs this section (2026-10-01).** `begin` does the
 startup checks, re-registration and an empty-table recording; `scene` shoots
 the ground-truth stills, checks every tray decodes and agrees *before*
@@ -738,7 +745,13 @@ the tier of every scene is now measured rather than declared, and
 
 - Touching an object mid-recording. Ground truth is gone from that frame on.
 - Leaning on the desk. Extrinsics are camera→table-origin; any relative movement
-  invalidates them and **nothing downstream detects it**.
+  invalidates them and **nothing downstream detects it**. *Two things do now
+  (2026-10-04):* `capture_day.sh scene` compares each camera's background with
+  its re-registration image and refuses a scene after more than 1.5 px of shift
+  (untouched cameras repeat to 0.0–0.5 px; clearing the desk that day moved
+  cam_front 4.5 px), and the table-plane ground truth's cross-camera figure
+  reads 0.6 mm on a valid rig against 2–3 mm on a drifted one. Both are checks,
+  not licence: after ANY work on the desk, put the board back and re-register.
 - Occluding both views *before* ground truth is frozen.
 - Moving the occluder during a take — the tier is then neither T3 nor T4.
 - Placing an object outside the shared region (§4.2d — 480 × 360 mm on the
