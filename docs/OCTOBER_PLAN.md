@@ -21,6 +21,10 @@ rehearsal (daylight, TV on — **none of it is a scored result**):
   re-registered once more after clearing the desk moved a camera.
 - **Detector works on the printed objects with no fine-tuning**: cam_front finds
   all three on 150/150 pairs.
+- **All three objects re-scored with the fixes** on the afternoon's
+  three-object recording (TV on, so phantoms present): fused ADD-S cube 4.0 mm
+  (threshold 8.7), bottle 4.3 mm (19.6), bowl 5.7 mm (16.2); pooled 4.7 mm with
+  99.1% inside, against 10.9 mm and 77.8% for the naive baseline.
 - **Capture flow works end to end**, driven remotely scene by scene: cube alone,
   cube fully hidden from cam_over, cube half hidden. Measured tiers 100% / 0% /
   48% visible, all as staged.
@@ -41,13 +45,19 @@ rehearsal (daylight, TV on — **none of it is a scored result**):
 | 1 | ~~Depth is biased per camera~~ **FIXED 2026-10-04** for cam_front (reads 1.0% short; ×1.0102 from `depth_tare`): its cube ADD-S 7.6 → 2.7 mm. cam_over's error (0 to +6.5 mm, growing with range) is not a scale and is left alone | Re-fit from each day's empty-table recording |
 | 2 | ~~Gate + EKF (the `fused` arm) is worse than the gate alone on the cube~~ **FIXED 2026-10-04**: the mesh registry names each symmetry group and fusion compares orientations with it removed. Cube alone, gate + EKF: 8.5 → 1.9 mm, 58% → 100% inside the threshold | — |
 | 3 | The grey tray is detected as a `bowl` on every pair, giving a false `(on red_cube bowl)` | Fine-tune the detector on real frames with trays in them |
-| 4 | The bowl's pose is 16–25 mm off and cam_front's depth inside it reads 2–3 cm short | Not understood; keep the bowl out of T3/T4 targets |
+| 4 | The bowl's centre is 12–15 mm off, toward the camera (cam_front's depth inside it reads 2–3 cm short). **Re-measured with all the fixes:** by ADD-S it is 5.3–6.3 mm against a 16.2 mm threshold, inside on 150/150 pairs in both views — rotational symmetry and a thin shell hide a centre error from that metric | Usable as a target by ADD-S; its centre error will show in predicates that depend on position. Cause not established |
 | 5 | Half-hidden cube: cam_over detects it on 286/300 pairs and every pose is wrong — the visible half has no depth | A finding to report; the gate keeps it out of the fused pose |
 | 6 | Clutter is detected: TV content, a red ring on a cable, the card's wooden stand | TV off, desk clear, stand wrapped |
 
 ---
 
-## Sun 4 Oct, after dark (~19:30) — scored cube scenes
+## Scored cube scenes — NOT YET SHOT
+
+Planned for the night of Sun 4 Oct and **aborted at 22:00: the room lighting
+failed.** They go on the first evening the lighting works (Mon 5 Oct onward),
+and need about half an hour. If the lighting cannot be fixed, the fallback is
+Sat 10 Oct in daylight with the curtains drawn, every scene in one sitting so
+the light is the same throughout.
 
 Driven from the keyboard with `capture_day.sh scene --stage stills|record`; the
 person at the rig only moves things. **TV off. Nobody touches tripods or camera
