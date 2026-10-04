@@ -12,7 +12,7 @@ moved, the scene clean, trays flat on the table, the tier as declared.
 
 ---
 
-## Where things stand — Sun 4 Oct, 17:30
+## Where things stand — Sun 4 Oct, end of day
 
 Nothing was shot 1–3 Oct. On 4 Oct the afternoon went on prerequisites and a
 rehearsal (daylight, TV on — **none of it is a scored result**):
@@ -51,49 +51,87 @@ rehearsal (daylight, TV on — **none of it is a scored result**):
 
 ---
 
-## Scored cube scenes — NOT YET SHOT
+## What is left to capture — about 3 to 3.5 hours at the rig
 
-Planned for the night of Sun 4 Oct and **aborted at 22:00: the room lighting
-failed.** They go on the first evening the lighting works (Mon 5 Oct onward),
-and need about half an hour. If the lighting cannot be fixed, the fallback is
-Sat 10 Oct in daylight with the curtains drawn, every scene in one sitting so
-the light is the same throughout.
+No scored scene exists yet. The cube scenes planned for the night of Sun 4 Oct
+were **aborted at 22:00: the room lighting failed.**
 
-Driven from the keyboard with `capture_day.sh scene --stage stills|record`; the
-person at the rig only moves things. **TV off. Nobody touches tripods or camera
-cables.**
+The times below are from the 4 Oct rehearsal's pace, not from a guess: driven
+from the keyboard with `capture_day.sh scene --stage stills|record`, a scene
+took about 5 minutes, nearly all of it moving things on the desk (the stills
+and the 300-pair recording are about a minute of machine time).
 
-- [ ] `capture_day.sh begin` — re-register (board on), empty-table recording
+| Capture | Scenes | Time |
+|---|---|---|
+| **Cube set** — alone; hidden and half hidden from each camera | 5 | 35–40 min |
+| **Bottle** — alone; half hidden | 2 | 15 min |
+| **Clutter (T2)** — three trays + 8 distractors, ~10 min each to arrange | 3 | 30–35 min |
+| **Training layouts** for the detector, including empty trays (finding 3) | 10–12 | 35–40 min |
+| **Demo footage** for the video | — | 30 min |
+| Start and end of each session (board on, re-register, empty table; final check) | per session | 12 min |
+
+The first three rows are the proposal's ten scored scenes (T1 ×2, T2 ×3, T3 ×3,
+T4 ×2). On top: about an hour of preparation and an hour of slack for reshoots.
+
+**Preparation, before any scored scene:**
+
+- [ ] **Fix the lighting** — the one item with no estimate. If it cannot be
+      fixed, the fallback is Sat 10 Oct in daylight with the curtains drawn,
+      every scored scene in one sitting so the light is the same throughout
+- [ ] Wrap the occluder's wooden stand (it is detected as a cube) — 5 min
+- [ ] Bottle seats flat in its tray; seat height 179.0 mm ±0.3 (`PRINT_PLAN.md` §8.1) — 20–40 min if not done
+- [ ] Eight distractors in the palette neutrals — 15–30 min
+
+**Every session:** TV off, mouse and keyboard off the desk, nobody touches the
+tripods or the two camera cables, and `capture_day.sh begin` first. Afterwards
+`capture_day.sh end`, then copy `captures/` to an external drive — it is
+gitignored and exists only on this machine.
+
+## First working evening (Mon 5 Oct if the lighting is fixed) — the cube set, ~45 min
+
+After this the main claim has data behind it.
+
+- [ ] `capture_day.sh begin` — re-register, empty-table recording, re-fit `depth_tare`
 - [ ] `t1_cube` — cube alone, tray flat on the bare table
 - [ ] `t4_cube_over`, then `t3_cube_over` (card slid aside; `--stills-from`, tray untouched)
 - [ ] `t4_cube_front`, then `t3_cube_front` — the other camera
-- [ ] `capture_day.sh end` — the rig held; then copy `captures/` to an external drive
+- [ ] `capture_day.sh end`; back up
 
-## Mon 5 – Tue 6 Oct (evenings) — the rest of the suite
+**If only fifteen minutes are available:** `t1_cube` and `t4_cube_over`. Those
+two scenes are the minimum that supports the claim.
+
+## Second evening — bottle and clutter, ~1 h 15
 
 - [ ] `t1_bottle`, `t3_bottle_over` (a card tall enough for a 191 mm bottle)
-- [ ] T2 ×3: all three trays (460 × 370 mm shared view: bowl + cube side by side,
-      380 × 210 mm, bottle tray 216 × 100 mm in front) plus 8 distractors in the
-      palette neutrals. Needs the bottle to seat (`PRINT_PLAN.md` §8.1)
-- [ ] 10–15 varied layouts with stills, disjoint from the scored scenes — the
-      fine-tuning and real-mAP set that finding 3 needs
-- [ ] Offline, no rig: findings 1 and 2, then replay everything
+- [ ] `t2_clutter_a/b/c`: all three trays (460 × 370 mm shared view: bowl + cube
+      side by side, 380 × 210 mm, bottle tray 216 × 100 mm in front) plus the
+      eight distractors, rearranged each time
 
-## Wed 7 – Fri 9 Oct (evenings) — process while the rig is still there
+## Third evening — training layouts, ~50 min
 
-- [ ] `capture_day.sh process` on every day's scenes with the depth correction in;
-      every FAILED tier check or refused ground truth is a reshoot for Saturday
+- [ ] 10–12 varied layouts with stills, ~90 pairs each, disjoint from the scored
+      scenes: five or six with the objects moved and turned, two with **empty
+      trays**, two with the card standing in view. Labels come later from the
+      ground-truth poses
+
+Three of the five weekday evenings (5–9 Oct) are used, so two can be lost.
+
+## Any evening, no rig needed — process while the rig is still there
+
+- [ ] `capture_day.sh process` on each day's scenes; every FAILED tier check or
+      refused ground truth is a reshoot for Saturday
 - [ ] `training/pose/registration_quality.py` on real captures (`STATUS.md` [VERIFY])
 - [ ] Remote access to the desktop: Tailscale or SSH; GRUB default = Ubuntu;
       BIOS restore-on-power-loss; suspend and automatic reboots off; tested from
       a phone hotspot
 - [ ] Back up `captures/`, `runs/` and the ONNX model to a drive and to cloud
 
-## Sat 10 Oct — reshoots and backup demo footage
+## Sat 10 Oct — reshoots, demo footage, slack
 
 - [ ] Reshoot what the week's checks rejected (new scene names)
 - [ ] Demo run (`CAPTURE_PROTOCOL.md` §7): `the_eyes_run live --record demo --show=console`,
-      a screen recording, phone video of the rig
+      a screen recording, phone video of the rig — ~30 min
+- [ ] Anything an evening did not reach
 - [ ] Final backup; cover the rig
 
 ## 11–24 Oct — Taiwan (offline, or remote to the desktop)
