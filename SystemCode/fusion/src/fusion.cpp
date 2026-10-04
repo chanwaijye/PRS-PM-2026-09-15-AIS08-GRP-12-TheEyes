@@ -7,6 +7,7 @@
 
 #include "the_eyes/fusion/quaternion_average.hpp"
 #include "the_eyes/fusion/so3.hpp"
+#include "the_eyes/fusion/symmetry.hpp"
 
 namespace the_eyes::fusion {
 namespace {
@@ -18,9 +19,16 @@ struct WorldEstimate {
   Eigen::Isometry3d pose_w = Eigen::Isometry3d::Identity();
   double score = 0.0;
   bool symmetric = false;
+  // The class's declared symmetry group, kNone when there is none on record.
+  SymmetryGroup group = SymmetryGroup::kNone;
   Eigen::Vector3d extent = Eigen::Vector3d::Zero();
   uint32_t view_bit = 0;
 };
+
+SymmetryGroup GroupOf(const FusionConfig& cfg, const std::string& cls) {
+  const auto it = cfg.symmetry.find(cls);
+  return it == cfg.symmetry.end() ? SymmetryGroup::kNone : it->second;
+}
 
 // Deterministic ordering: fusion output must not depend on the order the pose
 // estimators happened to publish in.
@@ -85,21 +93,33 @@ Eigen::Quaterniond FuseOrientation(const std::vector<const WorldEstimate*>& grou
   // Symmetric objects: averaging is not merely inaccurate, it is wrong. Two
   // views of a symmetric object legitimately report orientations differing by a
   // symmetry-group element, and the Markley mean of those lands on a rotation
-  // that neither view saw and that no symmetry element explains. Take the
-  // highest-scoring view's orientation instead.
-  //
-  // The principled upgrade is to canonicalise each quaternion into a
-  // fundamental domain of the object's symmetry group before averaging, which
-  // needs the group itself -- INTERFACES.md §7 currently carries only a
-  // `symmetric` bool, so that is blocked on a mesh-registry field.
+  // that neither view saw and that no symmetry element explains.
+  const WorldEstimate* best = *std::max_element(
+      group.begin(), group.end(),
+      [](const WorldEstimate* a, const WorldEstimate* b) { return a->score < b->score; });
+  const Eigen::Quaterniond best_q = Eigen::Quaterniond(best->pose_w.rotation()).normalized();
+  if (group.size() == 1) return best_q;
+
+  // When the class's group is declared the difference can be REMOVED rather
+  // than avoided: map every view's orientation to the member of its symmetry
+  // class nearest the best-scoring view's, and average those. The views then
+  // contribute to the orientation the way they already do to the translation.
+  const SymmetryGroup sym = best->group;
+  if (sym != SymmetryGroup::kNone) {
+    std::vector<Eigen::Quaterniond> quats;
+    std::vector<double> weights;
+    for (const WorldEstimate* e : group) {
+      quats.push_back(NearestEquivalent(Eigen::Quaterniond(e->pose_w.rotation()), best_q, sym));
+      weights.push_back(std::max(e->score, 1e-9));
+    }
+    return WeightedQuaternionAverage(quats, weights);
+  }
+
+  // Flagged symmetric with no group on record: nothing says which orientations
+  // are the same, so take the highest-scoring view's and combine nothing.
   const bool symmetric =
       std::any_of(group.begin(), group.end(), [](const WorldEstimate* e) { return e->symmetric; });
-  if (symmetric || group.size() == 1) {
-    const WorldEstimate* best = *std::max_element(
-        group.begin(), group.end(),
-        [](const WorldEstimate* a, const WorldEstimate* b) { return a->score < b->score; });
-    return Eigen::Quaterniond(best->pose_w.rotation()).normalized();
-  }
+  if (symmetric) return best_q;
 
   std::vector<Eigen::Quaterniond> quats;
   std::vector<double> weights;
@@ -136,13 +156,18 @@ std::vector<const WorldEstimate*> ApplyDisagreementGate(
     // instead, and when they conflict keep the higher-scoring one -- recording
     // that we guessed, rather than reporting a consensus that does not exist.
     const double dt = (group[0]->pose_w.translation() - group[1]->pose_w.translation()).norm();
-    const double dr = so3::AngularDistance(Eigen::Quaterniond(group[0]->pose_w.rotation()),
-                                           Eigen::Quaterniond(group[1]->pose_w.rotation()));
+    // Measured with the class's symmetry removed when it is declared: 88 deg
+    // between two views of a cube is agreement, 40 deg is not, and only the
+    // group can tell them apart.
+    const SymmetryGroup sym = group[0]->group;
+    const double dr = AngularDistanceModulo(Eigen::Quaterniond(group[0]->pose_w.rotation()),
+                                            Eigen::Quaterniond(group[1]->pose_w.rotation()), sym);
     const bool translation_conflict = dt > gate.max_translation_m;
-    // Orientation disagreement on a symmetric object is expected, not evidence
-    // of a bad view, so it must not trip the gate.
-    const bool symmetric = group[0]->symmetric || group[1]->symmetric;
-    const bool rotation_conflict = !symmetric && dr > gate.max_rotation_rad;
+    // Flagged symmetric with NO group on record: orientation disagreement is
+    // expected and cannot be interpreted, so it must not trip the gate.
+    const bool uninterpretable =
+        sym == SymmetryGroup::kNone && (group[0]->symmetric || group[1]->symmetric);
+    const bool rotation_conflict = !uninterpretable && dr > gate.max_rotation_rad;
     if (!translation_conflict && !rotation_conflict) {
       survivors = group;
       return survivors;
@@ -162,9 +187,10 @@ std::vector<const WorldEstimate*> ApplyDisagreementGate(
 
   for (const WorldEstimate* e : group) {
     const double dt = (e->pose_w.translation() - consensus_t).norm();
-    const double dr =
-        so3::AngularDistance(Eigen::Quaterniond(e->pose_w.rotation()), consensus_r);
-    const bool rotation_conflict = !e->symmetric && dr > gate.max_rotation_rad;
+    const double dr = AngularDistanceModulo(Eigen::Quaterniond(e->pose_w.rotation()),
+                                            consensus_r, e->group);
+    const bool uninterpretable = e->group == SymmetryGroup::kNone && e->symmetric;
+    const bool rotation_conflict = !uninterpretable && dr > gate.max_rotation_rad;
     if (dt > gate.max_translation_m || rotation_conflict) {
       *rejected_bits |= e->view_bit;
     } else {
@@ -219,6 +245,7 @@ std::vector<FusedObservation> FuseFrame(const std::vector<PoseEstimate>& estimat
     w.pose_w = ToWorld(est, it->second);
     w.score = est.score;
     w.symmetric = est.symmetric;
+    w.group = GroupOf(cfg, est.cls);
     w.view_bit = bit;
     w.extent = est.extent;
     if (w.extent.isZero()) {
@@ -368,7 +395,21 @@ SceneState Fusion::Process(const std::vector<PoseEstimate>& estimates, uint64_t 
       ++diagnostics_.tracks_created;
     } else {
       Track& t = tracks_[static_cast<size_t>(best)];
-      t.ekf->Update(obs.pose_w, obs.confidence);
+      // The filter's orientation innovation is the rotation from its state to
+      // the measurement, and it has to be a small one for the linearisation to
+      // mean anything. A symmetric object's fused orientation can legitimately
+      // jump by a group element between frames -- whenever the best-scoring
+      // view changes -- so the measurement is first moved to the equivalent
+      // orientation nearest the track. Same pose, no jump. kNaive is defined as
+      // having no symmetry handling, and that includes this.
+      Eigen::Isometry3d measured = obs.pose_w;
+      const SymmetryGroup sym = GroupOf(cfg_, obs.cls);
+      if (cfg_.mode != FusionMode::kNaive && sym != SymmetryGroup::kNone) {
+        measured.linear() = NearestEquivalent(Eigen::Quaterniond(obs.pose_w.rotation()),
+                                              t.ekf->orientation(), sym)
+                                .toRotationMatrix();
+      }
+      t.ekf->Update(measured, obs.confidence);
       t.last_seen_ns = stamp_ns;
       if (!obs.extent.isZero()) t.extent = obs.extent;
       track_used[static_cast<size_t>(best)] = true;

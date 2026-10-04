@@ -27,6 +27,10 @@ namespace the_eyes::runtime {
 // Fallback extents by class, from the mesh registry.
 fusion::ExtentRegistry ExtentsFrom(const pose::MeshRegistry& registry);
 
+// Declared symmetry group by class, from the mesh registry, in the form
+// FusionConfig::symmetry takes. Classes with no declared group are left out.
+std::map<std::string, SymmetryGroup> SymmetriesFrom(const pose::MeshRegistry& registry);
+
 class Pipeline {
  public:
   Pipeline(DetectorHandle detector, PoseHandle pose,

@@ -58,6 +58,10 @@ objects:
   red_cube:
     mesh: assets/meshes/red_cube.obj
     symmetric: true            # a cube has a discrete symmetry group
+    symmetry_group: cubic      # ...and this names it: the 24 rotations about
+                               # its centre. FoundationPose returned the cube
+                               # 88 and 178 deg apart from the two views
+                               # (2026-10-04), which are the same pose.
     diameter_m: 0.086603       # 0.05 * sqrt(3), exact
     extent: [0.025000, 0.025000, 0.025000]
 
@@ -66,5 +70,6 @@ objects:
     symmetric: true            # rotationally symmetric about its z axis, which
                                # passes through the origin only because the mesh
                                # is re-centred — see the contract above
+    symmetry_group: axial_z
     diameter_m: 0.161952
     extent: [0.080732, 0.080582, 0.027505]

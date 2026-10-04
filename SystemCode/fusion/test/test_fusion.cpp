@@ -10,6 +10,7 @@
 
 #include "the_eyes/fusion/config.hpp"
 #include "the_eyes/fusion/so3.hpp"
+#include "the_eyes/fusion/symmetry.hpp"
 
 namespace the_eyes::fusion {
 namespace {
@@ -456,6 +457,104 @@ TEST(Fusion, AsymmetricObjectOrientationIsAveraged) {
   const Eigen::Quaterniond result(fused[0].pose_w.rotation());
   EXPECT_NEAR(so3::AngularDistance(result, Eigen::Quaterniond(a.rotation())) * 180.0 / kPi,
               10.0, 0.5);
+}
+
+// ---------------------------------------------------------------------------
+// Symmetry with the group DECLARED: the difference is removed, not tolerated
+// ---------------------------------------------------------------------------
+
+FusionConfig CubeCfg() {
+  FusionConfig cfg;
+  cfg.symmetry["red_cube"] = SymmetryGroup::kCubic;
+  return cfg;
+}
+
+TEST(Fusion, DeclaredSymmetryLetsEquivalentViewsBeAveraged) {
+  const ExtrinsicsSet ex = Rig();
+  // The rig's own case: the cube 88 deg apart between views, i.e. a quarter
+  // turn plus 2 deg of real disagreement.
+  const Eigen::Isometry3d a = Pose({0.10, 0.0, 0.03}, 0.0);
+  const Eigen::Isometry3d b = Pose({0.10, 0.0, 0.03}, 88.0);
+
+  FusionDiagnostics diag;
+  const auto fused = FuseFrame({Observe(ex, "cam_front", "red_cube", a, 0.9, true),
+                                Observe(ex, "cam_over", "red_cube", b, 0.9, true)},
+                               ex, CubeCfg(), {}, &diag);
+  ASSERT_EQ(fused.size(), 1u);
+  EXPECT_EQ(diag.two_view_conflicts, 0);
+  const Eigen::Quaterniond result(fused[0].pose_w.rotation());
+  // Equal scores: the fuse sits midway between a and b's equivalent, 1 deg
+  // from each -- a real average, where the undeclared path would return `a`.
+  EXPECT_NEAR(so3::AngularDistance(result, Eigen::Quaterniond(a.rotation())) * 180.0 / kPi, 1.0,
+              0.05);
+  EXPECT_NEAR(AngularDistanceModulo(result, Eigen::Quaterniond(b.rotation()),
+                                    SymmetryGroup::kCubic) * 180.0 / kPi,
+              1.0, 0.05);
+}
+
+TEST(Fusion, DeclaredSymmetryLetsTheGateSeeRealOrientationDisagreement) {
+  const ExtrinsicsSet ex = Rig();
+  // 130 deg apart is a quarter turn plus 40 deg: past the 30 deg gate once the
+  // quarter turn is recognised for what it is. With `symmetric` alone the gate
+  // has to wave it through.
+  const Eigen::Isometry3d a = Pose({0.10, 0.0, 0.03}, 0.0);
+  const Eigen::Isometry3d b = Pose({0.10, 0.0, 0.03}, 130.0);
+  const std::vector<PoseEstimate> views = {Observe(ex, "cam_front", "red_cube", a, 0.95, true),
+                                           Observe(ex, "cam_over", "red_cube", b, 0.60, true)};
+
+  FusionDiagnostics declared, undeclared;
+  const auto with_group = FuseFrame(views, ex, CubeCfg(), {}, &declared);
+  const auto without = FuseFrame(views, ex, Cfg(), {}, &undeclared);
+  EXPECT_EQ(undeclared.two_view_conflicts, 0);
+  EXPECT_EQ(declared.two_view_conflicts, 1);
+  ASSERT_EQ(with_group.size(), 1u);
+  EXPECT_EQ(with_group[0].visible_views, kViewCamFront) << "the lower-scoring view is dropped";
+  EXPECT_EQ(with_group[0].rejected_views, kViewCamOver);
+  ASSERT_EQ(without.size(), 1u);
+}
+
+// What the filter does when the best-scoring view of a symmetric object
+// changes: the failure measured on the rig on 2026-10-04, replayed. cam_over
+// scores higher and reports the cube a quarter turn from cam_front; on every
+// seventh frame cam_over misses the cube, so the fused orientation falls back
+// to cam_front's and jumps 90 deg.
+double WorstOrientationErrorDeg(const FusionConfig& cfg) {
+  const ExtrinsicsSet ex = Rig();
+  Fusion fusion(cfg, ex);
+  const Eigen::Isometry3d truth = Pose({0.10, 0.0, 0.03}, 0.0);
+  const Eigen::Isometry3d quarter = Pose({0.10, 0.0, 0.03}, 90.0);
+  double worst = 0.0;
+  for (int i = 0; i < 120; ++i) {
+    std::vector<PoseEstimate> views = {Observe(ex, "cam_front", "red_cube", truth, 0.61, true)};
+    if (i % 7 != 0) views.push_back(Observe(ex, "cam_over", "red_cube", quarter, 0.70, true));
+    const SceneState scene = fusion.Process(views, static_cast<uint64_t>(i + 1) * 33'000'000ULL);
+    EXPECT_EQ(scene.objects.size(), 1u);
+    if (scene.objects.empty()) continue;
+    // Distance to the cube's TRUE pose, symmetry removed: 0 for any of the 24
+    // equivalent orientations, up to 45 deg for a cube that is not there.
+    worst = std::max(worst, AngularDistanceModulo(
+                                Eigen::Quaterniond(scene.objects[0].pose_w.rotation()),
+                                Eigen::Quaterniond(truth.rotation()), SymmetryGroup::kCubic));
+  }
+  return worst * 180.0 / kPi;
+}
+
+TEST(Fusion, TheFilterDoesNotSmoothThroughASymmetryJump) {
+  // Declared: every measurement is moved to the equivalent nearest the track
+  // before the update, so the filter never sees the jump.
+  EXPECT_LT(WorstOrientationErrorDeg(CubeCfg()), 0.5);
+  // Undeclared, the same input drives the filter through orientations that are
+  // not the cube -- the bug, pinned so it cannot come back unnoticed.
+  EXPECT_GT(WorstOrientationErrorDeg(Cfg()), 10.0);
+}
+
+TEST(Fusion, NaiveKeepsNoSymmetryHandlingEvenWhenTheGroupIsDeclared) {
+  // The baseline is defined as symmetry-unaware (FusionMode), so declaring the
+  // group must not quietly improve it: that would shrink the policy delta the
+  // ablation exists to measure.
+  FusionConfig naive = CubeCfg();
+  naive.mode = FusionMode::kNaive;
+  EXPECT_GT(WorstOrientationErrorDeg(naive), 10.0);
 }
 
 // ---------------------------------------------------------------------------

@@ -72,6 +72,24 @@ MeshRegistry LoadMeshRegistry(const std::string& yaml_path, bool require_mesh_fi
     }
     entry.symmetric = node["symmetric"].as<bool>();
 
+    // Optional. Naming the group is what lets fusion treat two equivalent
+    // orientations as the same pose instead of merely tolerating that they
+    // differ.
+    if (node["symmetry_group"]) {
+      const std::string g = node["symmetry_group"].as<std::string>();
+      if (g == "none") entry.symmetry_group = SymmetryGroup::kNone;
+      else if (g == "cubic") entry.symmetry_group = SymmetryGroup::kCubic;
+      else if (g == "axial_z") entry.symmetry_group = SymmetryGroup::kAxialZ;
+      else {
+        throw std::runtime_error("meshes.yaml: '" + cls + ".symmetry_group' is '" + g +
+                                 "'; expected none, cubic or axial_z");
+      }
+      if (entry.symmetry_group != SymmetryGroup::kNone && !entry.symmetric) {
+        throw std::runtime_error("meshes.yaml: '" + cls + "' declares symmetry_group '" + g +
+                                 "' but symmetric: false -- the two contradict each other");
+      }
+    }
+
     if (!node["diameter_m"] || !node["diameter_m"].IsScalar()) {
       throw std::runtime_error("meshes.yaml: '" + cls +
                                ".diameter_m' is required (ADD-S normalises by it)");

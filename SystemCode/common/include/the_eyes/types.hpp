@@ -94,10 +94,25 @@ struct SceneState {
 
 // INTERFACES.md §7 — mesh registry entry. diameter_m is required: the ADD-S
 // threshold is a fraction of object diameter, so evaluation cannot run without.
+// Which rotations of an object, about its own origin, leave it looking the
+// same. `symmetric` alone says only THAT two views may legitimately report
+// different orientations; fusion needs to know WHICH orientations are the same
+// before it can average them, gate on them, or filter them over time.
+// ADDITIVE extension to INTERFACES.md §7, 2026-10-04.
+enum class SymmetryGroup {
+  kNone,    // every orientation is distinct, or the group is not declared
+  kCubic,   // the 24 rotations of a cube about its centre
+  kAxialZ,  // any rotation about the object's own z axis
+};
+
 struct MeshEntry {
   std::string cls;
   std::string mesh_path;              // must be watertight
   bool symmetric = false;
+  // kNone on a `symmetric: true` entry means "symmetric in some undeclared
+  // way", which is what every entry was before this field existed; fusion then
+  // falls back to taking one view's orientation rather than combining them.
+  SymmetryGroup symmetry_group = SymmetryGroup::kNone;
   double diameter_m = 0.0;
   // World-axis-aligned half-extents of the mesh AABB. ADDITIVE extension to
   // INTERFACES.md §7, for the same reason PoseEstimate gained one: fusion must

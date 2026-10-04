@@ -239,3 +239,22 @@ an OBJ on the critical path. Additive change.
 
 `diameter_m` is required — the ADD-S threshold is a fraction of object diameter,
 so evaluation cannot run without it.
+
+`symmetry_group` (optional; `none` | `cubic` | `axial_z`) was added on
+2026-10-04. `symmetric` says only that two views may report different
+orientations of the same pose; fusion needs to know *which* orientations are the
+same before it can average them, gate on them or filter them over time. It may
+only be set on an entry with `symmetric: true`. Absent means no group is
+declared and fusion keeps its older handling for that class. Additive change:
+`PoseEstimate::symmetric` and the logged `estimates.symmetric` column are
+unchanged, and the group reaches fusion through `FusionConfig::symmetry`, filled
+from this file by whoever builds the config.
+
+```yaml
+  red_cube:
+    symmetric: true
+    symmetry_group: cubic      # the 24 rotations of a cube about its centre
+  bowl:
+    symmetric: true
+    symmetry_group: axial_z    # any turn about the object's own z axis
+```

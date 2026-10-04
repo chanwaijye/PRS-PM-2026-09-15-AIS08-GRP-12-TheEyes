@@ -13,6 +13,7 @@
 #include <stdexcept>
 
 #include "the_eyes/runtime/backends.hpp"
+#include "the_eyes/runtime/pipeline.hpp"
 #include "the_eyes/runtime/fixed_box_detector.hpp"
 #if THE_EYES_WITH_REALSENSE
 #include "the_eyes/camera/device_registry.hpp"
@@ -62,6 +63,8 @@ LoadedConfigs LoadAllConfigs(const std::string& config_dir, const std::string& r
     const bool require_files = c.pose_backend.backend == "foundationpose";
     c.meshes = pose::LoadMeshRegistry(path("meshes.yaml"), require_files, repo_root);
   });
+  // The objects' symmetry groups live in meshes.yaml and fusion needs them.
+  c.fusion.symmetry = SymmetriesFrom(c.meshes);
   Load(path("detector.yaml"), [&] { c.detector = detector::LoadDetectorConfig(path("detector.yaml")); });
   // Optional: a rig that has not been tared runs on the factory depth.
   Load(path("depth_correction.yaml"),

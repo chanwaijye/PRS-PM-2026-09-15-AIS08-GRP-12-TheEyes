@@ -20,6 +20,15 @@ fusion::ExtentRegistry ExtentsFrom(const pose::MeshRegistry& registry) {
   return out;
 }
 
+std::map<std::string, SymmetryGroup> SymmetriesFrom(const pose::MeshRegistry& registry) {
+  std::map<std::string, SymmetryGroup> out;
+  for (const std::string& cls : registry.classes()) {
+    const MeshEntry* e = registry.Find(cls);
+    if (e != nullptr && e->symmetry_group != SymmetryGroup::kNone) out[cls] = e->symmetry_group;
+  }
+  return out;
+}
+
 Pipeline::Pipeline(DetectorHandle detector, PoseHandle pose,
                    std::map<std::string, std::unique_ptr<pose::PoseAgent>> agents,
                    std::unique_ptr<fusion::Fusion> fusion, scenegraph::PredicateConfig predicates,

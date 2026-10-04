@@ -4,6 +4,7 @@ add_library(the_eyes_fusion
   src/extrinsics.cpp
   src/config.cpp
   src/ekf.cpp
+  src/symmetry.cpp
   src/fusion.cpp
   src/metrics.cpp)
 
@@ -22,6 +23,7 @@ if(THE_EYES_BUILD_TESTS)
     test/test_extrinsics.cpp
     test/test_config.cpp
     test/test_ekf.cpp
+    test/test_symmetry.cpp
     test/test_fusion.cpp
     test/test_ablation.cpp)
   target_link_libraries(test_fusion

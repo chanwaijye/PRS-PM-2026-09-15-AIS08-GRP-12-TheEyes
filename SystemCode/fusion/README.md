@@ -45,13 +45,39 @@ reporting `q` and `-q` describe the same rotation, and componentwise averaging
 cancels them to zero. `QuaternionAverage.IsInvariantToInputSign` asserts both
 halves of that.
 
-**Symmetric objects take, they do not average.** Two views of a symmetric object
-legitimately report orientations differing by a symmetry-group element; the mean
-of those is a rotation neither view saw. The highest-scoring view's orientation
-is used instead, and symmetry-driven orientation disagreement does not trip the
-gate. The principled version canonicalises each quaternion into a fundamental
-domain of the symmetry group first — blocked on `INTERFACES.md` §7 carrying
-only a `symmetric` bool rather than the group.
+**Symmetric objects are compared with their symmetry removed (2026-10-04).** Two
+views of a symmetric object legitimately report orientations differing by a
+symmetry-group element; the mean of those is a rotation neither view saw. The
+mesh registry now names the group (`symmetry_group: cubic | axial_z`,
+`INTERFACES.md` §7), and `symmetry.hpp` maps any orientation to the member of
+its symmetry class nearest a reference — a search over the cube's 24 rotations,
+a closed-form twist about z for the bowl. It is used in three places:
+
+- **the cross-view fuse** maps every view onto the best-scoring one and then
+  averages, where it used to take the best view and discard the rest;
+- **the gate** measures orientation disagreement with the symmetry removed, so
+  88° between two views of a cube is agreement and 40° is a conflict — before,
+  a symmetric object's orientation could never trip it;
+- **the EKF update** moves each measurement to the equivalent nearest the
+  track, so the filter never sees a jump that is not a change of pose.
+
+The third is the one a real run forced. On the rig the two cameras reported the
+printed cube 88° and 178° apart; the fused orientation was the best-scoring
+view's, so it jumped whenever cam_over missed the cube (43 of 300 pairs), and
+the filter smoothed through orientations that are not the cube:
+
+| cube alone, 300 pairs | ADD-S | inside 10% of diameter |
+|---|---|---|
+| gate + EKF, before | 8.54 mm | 58.3% |
+| gate + EKF, after | **1.90 mm** | **100%** |
+| gate alone, after (before: 3.04 mm) | 2.74 mm | 99.7% |
+| cam_front / cam_over alone | 2.68 / 4.91 mm | 100% / 77.3% |
+| naive, either filter setting | 22.5–23.2 mm | < 15% |
+
+Rehearsal figures (2026-10-04, daylight), not scored results. A class flagged
+`symmetric` with no group declared keeps the old behaviour — one view's
+orientation taken, never gated — and `kNaive` has no symmetry handling at all,
+by definition, which is why its cube figure does not move.
 
 **Two cameras have no majority.** With three or more views the gate measures each
 against the consensus and drops outliers. With exactly two, the consensus sits
@@ -152,7 +178,7 @@ so in its own output.
 | Criterion (`AGENTS.md` §5) | Status |
 |---|---|
 | Synthetic recovery: fused error below single-view | Met — `FusedErrorIsBelowSingleViewErrorUnderGaussianNoise`, asserts < 0.85× |
-| Symmetric objects not naively orientation-averaged | Met — three tests |
+| Symmetric objects not naively orientation-averaged | Met — three tests for the undeclared case, plus `test_symmetry.cpp` and four `Fusion.*` tests for a declared group, one of which replays the rig's failure |
 | Disagreement gate rejects an injected outlier | Met — three- and two-view branches |
 | Single-view objects pass through with correct `visible_views` | Met |
 | Refuses to start on extrinsics failing the quality gate | Met — throws in the constructor |

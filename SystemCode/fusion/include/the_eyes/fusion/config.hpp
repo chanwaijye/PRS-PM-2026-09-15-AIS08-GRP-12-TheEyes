@@ -6,8 +6,11 @@
 #ifndef THE_EYES_FUSION_CONFIG_HPP
 #define THE_EYES_FUSION_CONFIG_HPP
 
+#include <map>
 #include <string>
 #include <vector>
+
+#include "the_eyes/types.hpp"
 
 namespace the_eyes::fusion {
 
@@ -94,6 +97,14 @@ struct FusionConfig {
   TrackingConfig tracking;
   // Index i is bit i of ObjectState::visible_views. Must match predicates.yaml.
   std::vector<std::string> view_names = {"cam_front", "cam_over"};
+
+  // Symmetry group by class (see symmetry.hpp). NOT read from fusion.yaml: it
+  // is a property of the objects, declared once in meshes.yaml, and whoever
+  // builds the config copies it in. A class that is absent has no declared
+  // group, and an estimate flagged `symmetric` then gets the older, weaker
+  // handling -- one view's orientation taken, never combined, gated or made
+  // continuous for the filter.
+  std::map<std::string, SymmetryGroup> symmetry;
 };
 
 FusionConfig LoadFusionConfig(const std::string& yaml_path);

@@ -90,9 +90,10 @@ int main(int argc, char** argv) {
     }
 
     const std::string repo_root = std::filesystem::absolute(config_dir).parent_path().string();
-    const fusion::FusionConfig cfg = fusion::LoadFusionConfig(config_dir + "/fusion.yaml");
+    fusion::FusionConfig cfg = fusion::LoadFusionConfig(config_dir + "/fusion.yaml");
     const fusion::ExtrinsicsSet ex = fusion::LoadExtrinsics(config_dir + "/extrinsics.yaml");
     const pose::MeshRegistry meshes = pose::LoadMeshRegistry(config_dir + "/meshes.yaml", true, repo_root);
+    cfg.symmetry = SymmetriesFrom(meshes);
     fusion::ModelRegistry models;
     for (const std::string& cls : meshes.classes()) {
       const MeshEntry* e = meshes.Find(cls);
