@@ -18,6 +18,7 @@ namespace the_eyes::scenegraph {
 struct PddlResult {
   std::string init_block;              // "(:init\n  (on a b)\n  ...\n)"
   std::vector<std::string> facts;      // the same facts, unwrapped, sorted
+  std::vector<std::string> unsupported;  // ids the support check left out, sorted
   std::vector<std::string> warnings;   // dropped objects, renamed ids
 };
 

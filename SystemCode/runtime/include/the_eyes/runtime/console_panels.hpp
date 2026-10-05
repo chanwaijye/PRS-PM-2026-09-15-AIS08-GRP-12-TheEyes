@@ -136,6 +136,11 @@ void DrawGraphPanel(cv::Mat& panel, const SceneState& scene,
                     const std::vector<std::string>& static_ids,
                     const std::vector<std::string>& facts);
 
+// `scene` without the objects the scene graph's support check left out. Panel C
+// draws the scene graph, and an object that is in no fact is not in it; the
+// world panel keeps the full scene, because that is what fusion tracked.
+SceneState ReportedScene(const SceneState& scene, const std::vector<std::string>& unsupported_ids);
+
 // PANEL D -- the literal (:init ...) block.
 //
 // Rendered verbatim, never reformatted: this panel exists to answer "what does

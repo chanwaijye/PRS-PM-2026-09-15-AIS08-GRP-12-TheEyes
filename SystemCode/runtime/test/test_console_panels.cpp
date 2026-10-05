@@ -213,6 +213,22 @@ TEST(ConsolePanels, FitKeepsTheCamerasOutOfTheElevationStrip) {
   EXPECT_GE(back_py, 0) << "the table's back edge is off the top of the plan";
 }
 
+TEST(ConsolePanels, TheGraphPanelGetsOnlyWhatTheSceneGraphReported) {
+  // t3_cube_over: fusion tracked a second cube at the occluder's range and the
+  // support check left it out. It is no node of the graph; the scene it came
+  // from is untouched, because the world panel still draws what fusion tracked.
+  SceneState s;
+  s.objects = {Obj("red_cube_01", "red_cube", -0.054, 0.013, 0.029),
+               Obj("red_cube_02", "red_cube", 0.027, -0.104, 0.120),
+               Obj("table_01", "table", 0.0, 0.155, -0.0115)};
+  const SceneState reported = ReportedScene(s, {"red_cube_02"});
+  EXPECT_EQ(GraphNodeOrder(reported, {"table_01"}),
+            (std::vector<std::string>{"red_cube_01", "table_01"}));
+  EXPECT_EQ(s.objects.size(), 3u);
+  // Nothing left out, nothing changed.
+  EXPECT_EQ(GraphNodeOrder(ReportedScene(s, {}), {"table_01"}), GraphNodeOrder(s, {"table_01"}));
+}
+
 // Console::Compose opens no window, which is what makes this testable at all.
 TEST(ConsolePanels, ComposeIsHeadlessDeterministicAndCorrectlySized) {
   FramePair pair;

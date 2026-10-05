@@ -17,8 +17,11 @@ the scenes' saved extrinsics; no rig, no GPU.
 
 A track is REAL when its class is in the scene's ground truth and its median
 position is within --real-within (default 50 mm) of it; otherwise it is an
-object that is not there. "Rests on something" is the scene graph's own word:
-an (on <id> ...) fact on that pair.
+object that is not there. "Rests on something" is the scene graph's own word.
+For a run made with the support check on (predicates.yaml support:, 2026-10-05)
+it is the logged objects.supported, i.e. whether the scene graph reported the
+object at all; for an older run it is an (on <id> ...) or (in <id> ...) fact on
+that pair -- the same thing the check would have decided, read from the facts.
 """
 import argparse
 import glob
@@ -49,14 +52,26 @@ def audit_scene(day, scene, run, real_within_m, totals):
     print(f"\n{scene} (run {run}, {pairs} pairs) -- really there: "
           + ", ".join(sorted({t[0] for t in truth})))
 
+    has_column = "supported" in [r[1] for r in db.execute("pragma table_info(objects)")]
+    checked = has_column and db.execute(
+        "select count(supported) from objects where run_id=?", (run,)).fetchone()[0] > 0
     on = {}
-    for fact, pair in db.execute(
-            "select fact, pair_index from facts where run_id=? and fact like '(on %'", (run,)):
-        on.setdefault(fact.split()[1], set()).add(pair)
+    if checked:
+        for oid, pair in db.execute(
+                "select object_id, pair_index from objects where run_id=? and supported=1", (run,)):
+            on.setdefault(oid, set()).add(pair)
+    else:
+        for fact, pair in db.execute(
+                "select fact, pair_index from facts where run_id=? "
+                "and (fact like '(on %' or fact like '(in %')", (run,)):
+            on.setdefault(fact.split()[1], set()).add(pair)
+    verb = "in the scene graph on" if checked else "rests on something on"
+    print(f"  support check: {'ON for this run' if checked else 'not run (read from the facts)'}")
 
     tracks = db.execute(
         "select object_id, cls, count(*) from objects where run_id=? and is_static=0 "
         "group by object_id order by object_id", (run,)).fetchall()
+    not_there = set()
     for oid, cls, n in tracks:
         xyz = np.array(db.execute(
             "select tx, ty, tz from objects where run_id=? and object_id=?", (run, oid)).fetchall())
@@ -66,12 +81,25 @@ def audit_scene(day, scene, run, real_within_m, totals):
         real = dist is not None and dist < real_within_m
         supported = len(on.get(oid, ()))
         key = "real" if real else "not_there"
+        if not real:
+            not_there.add(oid)
         totals[key][0] += n
         totals[key][1] += supported
         where = f"{dist * 1000:6.1f} mm from the truth" if dist is not None else "no such object in the scene"
         print(f"  {oid:20s} {'REAL' if real else 'not there':9s} on {n:3d} pairs, "
               f"centre z {med[2] * 1000:7.1f} mm (table top 0), {where:28s} "
-              f"rests on something on {supported}/{n}")
+              f"{verb} {supported}/{n}")
+
+    # The same thing counted in facts: how much of what the planner would be
+    # told is about an object that is not on the table.
+    n_facts = n_false = 0
+    for (fact,) in db.execute("select fact from facts where run_id=?", (run,)):
+        n_facts += 1
+        if not_there.intersection(fact.strip("()").split()[1:]):
+            n_false += 1
+    totals["facts"][0] += n_facts
+    totals["facts"][1] += n_false
+    print(f"  facts: {n_facts}, of which {n_false} name an object that is not there")
 
     ext_path = os.path.join(REPO, "captures/scored", day, scene, "extrinsics_at_recording.yaml")
     if not os.path.exists(ext_path):
@@ -119,12 +147,13 @@ def main():
         for p in glob.glob(os.path.join(REPO, "runs/scored", args.day, "*", "metrics.sqlite")))
     if not scenes:
         sys.exit(f"no processed scenes under runs/scored/{args.day}")
-    totals = {"real": [0, 0], "not_there": [0, 0]}
+    totals = {"real": [0, 0], "not_there": [0, 0], "facts": [0, 0]}
     for scene in scenes:
         audit_scene(args.day, scene, args.run, args.real_within / 1000.0, totals)
     print(f"\nTOTAL over {len(scenes)} scene(s), in object-pairs:")
-    print(f"  really there : {totals['real'][0]:5d}, resting on something on {totals['real'][1]}")
-    print(f"  not there    : {totals['not_there'][0]:5d}, resting on something on {totals['not_there'][1]}")
+    print(f"  really there : {totals['real'][0]:5d}, resting on something / reported on {totals['real'][1]}")
+    print(f"  not there    : {totals['not_there'][0]:5d}, resting on something / reported on {totals['not_there'][1]}")
+    print(f"  facts        : {totals['facts'][0]:5d}, of which {totals['facts'][1]} name an object that is not there")
 
 
 if __name__ == "__main__":

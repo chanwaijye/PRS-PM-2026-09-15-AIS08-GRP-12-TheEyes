@@ -12,6 +12,7 @@
 // One process, no ROS: cameras -> RGB-D YOLOv8 -> FoundationPose -> fusion ->
 // scene graph -> PDDL, with every pair logged to SQLite. INTERFACES.md §1/§6
 // name ROS2 topics; the payloads here are the same structs, in-process.
+#include <algorithm>
 #include <csignal>
 #include <cstdlib>
 #include <filesystem>
@@ -210,6 +211,7 @@ std::string StatusLine(const PipelineResult& r, double fps, uint64_t processed) 
      << std::setw(4) << r.timings.scenegraph_ms << "  total " << std::setw(6)
      << std::setprecision(1) << r.timings.total_ms << " ms  " << std::setw(5) << fps
      << " fps  obj " << r.scene.objects.size() << "  facts " << r.pddl.facts.size();
+  if (!r.unsupported_ids.empty()) os << "  unsupported " << r.unsupported_ids.size();
   if (!r.warnings.empty()) os << "  warn " << r.warnings.size();
   return os.str();
 }
@@ -499,6 +501,10 @@ int Run(const Options& o) {
                     << obj.pose_w.translation().x() << ", " << obj.pose_w.translation().y() << ", "
                     << obj.pose_w.translation().z() << ")";
           if (has_uncertainty(obj)) std::cout << "  sigma=" << obj.position_sigma_m * 1000.0 << " mm";
+          if (std::find(result.unsupported_ids.begin(), result.unsupported_ids.end(), obj.id) !=
+              result.unsupported_ids.end()) {
+            std::cout << "  RESTS ON NOTHING -- not in the scene graph";
+          }
           std::cout << "\n";
         }
         std::cout << result.pddl.init_block << "\n";

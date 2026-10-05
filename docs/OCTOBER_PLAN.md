@@ -124,11 +124,12 @@ Read with the session's conditions, all recorded in each scene's `notes.yaml`:
 
 **What these six scenes do not show, and must be said with them:**
 
-- The tray is detected as a `bowl` on every pair of every scene, so every scene
-  graph carries a false `(on red_cube_01 bowl_01)` (finding 3).
-- In both half-hidden scenes the pipeline's own output holds a **second cube
-  track** for most of the run. ADD-S does not see it; predicate accuracy will.
-  Examined below — two different causes.
+- The tray is detected as a `bowl` on every pair of every scene (finding 3), and
+  as first processed every scene graph carried a false `(on red_cube_01 bowl_01)`.
+- In both half-hidden scenes fusion holds a **second cube track** for most of
+  the run. ADD-S does not see it; predicate accuracy does.
+- Both are examined below, with what was done: the detector and fusion still
+  produce them, and the scene graph no longer reports them.
 - A cube is one object and a symmetric one; the naive baseline's 22 mm is the
   symmetry, not occlusion.
 
@@ -139,7 +140,7 @@ Raising the colour gain from 64 to 96 or 128 under the room light washes the
 picture out and loses the cube in both views. So: gain stays at 64, and a
 session should not start until cam_over's frame mean is above about 40.
 
-### The objects that are not there (examined 5 Oct, nothing changed yet)
+### The objects that are not there (examined 5 Oct; support check built the same night)
 
 The scene graph of every scored scene holds more than the one object on the
 table. Per cause, from the `objects`, `detections` and `estimates` tables
@@ -171,14 +172,36 @@ each view's range error):
 Counted over the six cube scenes and `t1_bottle`: the real object is in the
 scene graph on 2,100 object-pairs and something that is not there on 2,771.
 **All 2,100 real ones rest on something (`on` the table); 1 of the 2,771 others
-does.** They float, or sit under the table. So the cheap fix is in the
-scene-graph bridge, not the detector: an object that rests on nothing is not
-reported as an object. That changes what the scene-graph bridge reports and is
-not made yet; it needs deciding, and checking on the clutter scenes, which were
-not part of the count that suggested it.
+does.** They float, or sit under the table. So the fix is in the scene-graph
+bridge, not the detector: **an object that rests on nothing is not reported**
+(`support:` in `config/predicates.yaml`; the rule is in `INTERFACES.md` §6 and
+`SystemCode/scenegraph/README.md`). Built and reprocessed the same night:
 
-What is done about it before then: **the card gets a plain, non-red face**
-(and its wooden stand wrapped) for every scene still to shoot.
+| seven scenes, 300 pairs each | before | with the support check |
+|---|---|---|
+| the real object, in the scene graph | 2,100 of 2,100 object-pairs | 2,100 of 2,100 |
+| objects that are not there, in the scene graph | 2,771 | **1** |
+| facts naming an object that is not there | 5,543 of 10,690 | **3 of 5,150** |
+| ADD-S tables, six cube scenes | — | identical |
+
+`t3_cube_over` now reads, on every pair, `(clear red_cube_01)`,
+`(occluded_from red_cube_01 cam_over)`, `(on red_cube_01 table_01)` and nothing
+else. The objects are still in the log (`objects.supported` = 0): that fusion
+tracked them is a finding, and the false `(on red_cube_01 bowl_01)` went with
+the bowl.
+
+**What this does not yet show.** The seven scenes are the ones that suggested
+the rule and each holds one real object. The only multi-object recording is the
+4 Oct rehearsal (TV on, not scored): read off its facts, all 450 real
+object-pairs stay and 101 of 115 false ones go — the 14 left are a false cube
+that landed at table height, which this rule cannot catch. The clutter scenes
+are the test. `ObjectState` is unchanged; whether PM4 needs a per-object flag in
+it is an open question, not a decision made.
+
+Still worth doing at the rig: **the card gets a plain, non-red face** (and its
+wooden stand wrapped) for every scene still to shoot — a false cube on the card
+is removed from the scene graph, but it is still a wasted pose estimate and a
+second track in fusion.
 
 ## The bottle, attempted the same night — one scene now usable
 

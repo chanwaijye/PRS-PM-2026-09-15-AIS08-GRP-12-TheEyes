@@ -109,6 +109,31 @@ TEST(StartupChecks, DetectsAMismatchedSerialAndViewOrder) {
   EXPECT_EQ(r.failures.size(), 3u) << r.Format();
 }
 
+TEST(StartupChecks, TheSupportCheckNeedsSomethingInTheSceneToStandOn) {
+  // Shipped: on, and scene.yaml's table is the ground it names.
+  LoadedConfigs c = LoadAllConfigs(THE_EYES_CONFIG_DIR, THE_EYES_REPO_ROOT);
+  ASSERT_TRUE(c.predicates.require_support);
+  StartupReport shipped;
+  CheckConfigCrossRefs(c, &shipped);
+  EXPECT_TRUE(shipped.ok()) << shipped.Format();
+  EXPECT_NE(shipped.Format().find("support check: on"), std::string::npos) << shipped.Format();
+
+  // A ground class nothing in the scene has: every object would be dropped on
+  // every pair, and the run would look like an empty table.
+  c.predicates.ground_classes = {"shelf"};
+  StartupReport r;
+  CheckConfigCrossRefs(c, &r);
+  ASSERT_EQ(r.failures.size(), 1u) << r.Format();
+  EXPECT_NE(r.failures[0].find("every object would be dropped"), std::string::npos) << r.failures[0];
+
+  // Off, it has nothing to check.
+  c.predicates.require_support = false;
+  StartupReport off;
+  CheckConfigCrossRefs(c, &off);
+  EXPECT_TRUE(off.ok()) << off.Format();
+  EXPECT_NE(off.Format().find("support check: off"), std::string::npos);
+}
+
 TEST(StartupChecks, PoseSocketFailureNamesTheServerCommand) {
   LoadedConfigs c = LoadAllConfigs(THE_EYES_CONFIG_DIR, THE_EYES_REPO_ROOT);
   c.pose_backend.backend = "foundationpose";

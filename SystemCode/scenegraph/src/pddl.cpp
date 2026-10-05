@@ -60,6 +60,7 @@ PddlResult EmitInit(const SceneState& scene, const PredicateConfig& cfg) {
 
   const PredicateResult pred = Extract(renamed, cfg);
   result.facts = pred.facts;
+  result.unsupported = pred.unsupported;
   result.warnings.insert(result.warnings.end(), pred.warnings.begin(),
                          pred.warnings.end());
   std::sort(result.warnings.begin(), result.warnings.end());

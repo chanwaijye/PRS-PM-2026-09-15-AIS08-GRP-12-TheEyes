@@ -1,5 +1,7 @@
 #include "the_eyes/runtime/startup_checks.hpp"
 
+#include <algorithm>
+
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -111,6 +113,30 @@ void CheckConfigCrossRefs(const LoadedConfigs& c, StartupReport* r) {
       r->Fail("scene.yaml static object '" + s.id + "' has class '" + s.cls +
               "' which is also a detected class -- fused ids would collide");
     }
+  }
+  if (c.predicates.require_support) {
+    // The support check drops whatever does not rest, directly or through
+    // other objects, on a ground class. With no such object in the scene that
+    // is everything, on every pair -- an empty scene graph that looks like an
+    // empty table.
+    bool has_ground = false;
+    for (const StaticObject& s : c.scene.objects) {
+      has_ground = has_ground ||
+                   std::find(c.predicates.ground_classes.begin(), c.predicates.ground_classes.end(),
+                             s.cls) != c.predicates.ground_classes.end();
+    }
+    std::string classes;
+    for (const std::string& g : c.predicates.ground_classes) classes += (classes.empty() ? "" : ", ") + g;
+    if (!has_ground) {
+      r->Fail("predicates.yaml support.require_support is on with ground classes [" + classes +
+              "], but scene.yaml has no static object of any of them -- every object would be "
+              "dropped as unsupported");
+    } else {
+      r->Info("support check: on -- an object that rests on nothing (ground: " + classes +
+              ") is left out of the scene graph");
+    }
+  } else {
+    r->Info("support check: off");
   }
   for (const std::string& cls : c.detector.model.class_names) {
     if (!c.meshes.Contains(cls)) {

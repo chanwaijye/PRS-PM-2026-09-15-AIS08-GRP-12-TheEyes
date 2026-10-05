@@ -160,7 +160,10 @@ PipelineResult Pipeline::Process(const FramePair& pair) {
       ScopedTimer t(&ms);
       statics_.Inject(r.scene, view_names_);
       for (const StaticObject& s : statics_.objects) r.static_ids.push_back(s.id);
-      scenegraph::Annotate(r.scene, predicates_);
+      // Annotate reports the unsupported objects under fusion's own ids;
+      // EmitInit's copy is after PDDL renaming, and ids are the join key.
+      r.unsupported_ids = scenegraph::Annotate(r.scene, predicates_).unsupported;
+      r.support_checked = predicates_.require_support;
       r.pddl = scenegraph::EmitInit(r.scene, predicates_);
     }
     r.timings.scenegraph_ms = ms;

@@ -210,6 +210,32 @@ The asymmetry is deliberate: containment is exclusive in extraction, so a false
 `in` suppresses every true `on` fact for the contained object, while a false
 negative forgoes only the `in` fact itself.
 
+**An object that rests on nothing is not reported** (added 2026-10-05;
+`support:` in `config/predicates.yaml`, shipped on). The fact set covers only
+*grounded* objects: an object whose class is in `support.ground_classes` (the
+table), or one that is `on` or `in` a grounded object, through any number of
+steps. An ungrounded object appears in no fact at all — not as `?a`, not as
+`?b`, and with no `(clear ...)` or `(occluded_from ...)` of its own.
+
+- The vocabulary above is unchanged, and so is §5: no `ObjectState` field is
+  added, removed or re-typed. The object is still in `SceneState.objects`, as
+  fusion tracked it, with empty `relations`.
+- Empty `relations` does **not** identify it — a table with something on it has
+  none either. A consumer that needs to know takes the list the extraction
+  returns (`PredicateResult::unsupported`, `PddlResult::unsupported`); the
+  runner logs it per object and per pair as `objects.supported` (1 reported,
+  0 left out, NULL when the check did not run).
+- Grounding is decided on the pairwise rules, before containment is made
+  exclusive, so an ungrounded container cannot take what is inside it out of
+  the scene graph: the contents fall back to whatever else they rest on.
+- It asserts a **static scene**. Something held in a gripper rests on nothing
+  by this rule; a consumer with a hand in the scene declares it a ground class
+  or turns the check off.
+
+The reason it is a scene-graph rule and not a detector threshold or a fusion
+gate is in `SystemCode/scenegraph/README.md`: the objects it removes carried
+higher pose scores than the correct estimate beside them.
+
 *Shipped implementation note (2026-09-06):* `the_eyes_run` emits the
 `(:init ...)` block on stdout whenever the fact set changes and logs every
 fact, `ObjectState` and per-view `PoseEstimate` to SQLite

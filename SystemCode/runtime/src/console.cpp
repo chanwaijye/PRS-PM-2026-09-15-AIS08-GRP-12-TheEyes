@@ -103,7 +103,8 @@ cv::Mat Console::Compose(const std::vector<std::string>& view_names,
                    SingleViewArms(result, extrinsics, arms.fusion, arms.extents, view_names),
                    result.scene.objects.size() - result.static_ids.size(), view);
   }
-  DrawGraphPanel(graph, result.scene, result.static_ids, result.pddl.facts);
+  DrawGraphPanel(graph, ReportedScene(result.scene, result.unsupported_ids), result.static_ids,
+                 result.pddl.facts);
   DrawPddlPanel(pddl, result.pddl.init_block, result.pddl.warnings);
 
   cv::Mat status = canvas(cv::Rect(0, lower_y + kLowerH, width, kStatusH));

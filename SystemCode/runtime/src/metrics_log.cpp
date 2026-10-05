@@ -1,5 +1,7 @@
 #include "the_eyes/runtime/metrics_log.hpp"
 
+#include <algorithm>
+
 #include <stdexcept>
 
 #include <sqlite3.h>
@@ -62,6 +64,7 @@ CREATE TABLE IF NOT EXISTS objects(
   ex REAL, ey REAL, ez REAL,
   position_sigma_m REAL, orientation_sigma_rad REAL, vx REAL, vy REAL, vz REAL,
   stamp_ns INTEGER NOT NULL, is_static INTEGER NOT NULL DEFAULT 0,
+  supported INTEGER,
   PRIMARY KEY(run_id, pair_index, object_id));
 CREATE TABLE IF NOT EXISTS facts(
   run_id INTEGER NOT NULL, pair_index INTEGER NOT NULL, fact TEXT NOT NULL);
@@ -221,6 +224,12 @@ MetricsLog::MetricsLog(const std::string& db_path) : path_(db_path), impl_(std::
   if (!HasColumn(db, "frame_views", "brightness_gain")) {
     Exec(db, "ALTER TABLE frame_views ADD COLUMN brightness_gain REAL;");
   }
+  // objects.supported, same day, same terms: 1 when the scene graph reported
+  // the object, 0 when its support check left it out, NULL when the check did
+  // not run (or the row predates it).
+  if (!HasColumn(db, "objects", "supported")) {
+    Exec(db, "ALTER TABLE objects ADD COLUMN supported INTEGER;");
+  }
 
   {
     Stmt v(db, "SELECT version FROM schema_version LIMIT 1");
@@ -261,7 +270,8 @@ MetricsLog::MetricsLog(const std::string& db_path) : path_(db_path), impl_(std::
   impl_->object = Stmt(db,
       "INSERT INTO objects(run_id, pair_index, object_id, cls, visible_views, confidence, "
       "tx, ty, tz, qw, qx, qy, qz, ex, ey, ez, position_sigma_m, orientation_sigma_rad, "
-      "vx, vy, vz, stamp_ns, is_static) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+      "vx, vy, vz, stamp_ns, is_static, supported) "
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
   impl_->fact = Stmt(db, "INSERT INTO facts(run_id, pair_index, fact) VALUES (?,?,?)");
   impl_->warning = Stmt(db,
       "INSERT INTO warnings(run_id, pair_index, stage, message) VALUES (?,?,?,?)");
@@ -358,8 +368,15 @@ void MetricsLog::WriteFrame(int64_t run_id, const PipelineResult& r) {
           .Bind(o.visible_views).Bind(o.confidence)
           .Bind(o.pose_w).Bind(o.extent)
           .Bind(o.position_sigma_m).Bind(o.orientation_sigma_rad)
-          .Bind(o.velocity_w).Bind(o.stamp_ns).Bind(is_static ? 1 : 0)
-          .Run();
+          .Bind(o.velocity_w).Bind(o.stamp_ns).Bind(is_static ? 1 : 0);
+      if (r.support_checked) {
+        const bool unsupported = std::find(r.unsupported_ids.begin(), r.unsupported_ids.end(),
+                                           o.id) != r.unsupported_ids.end();
+        s.object.Bind(unsupported ? 0 : 1);
+      } else {
+        s.object.BindNull();
+      }
+      s.object.Run();
     }
 
     for (const std::string& f : r.pddl.facts) {

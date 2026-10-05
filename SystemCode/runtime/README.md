@@ -102,6 +102,12 @@ the startup report warns that nothing from the run is a detection result.
 5. **Fuse** both views' estimates in one `Fusion::Process` call.
 6. **Static scene** from `config/scene.yaml` (the table) is injected —
    without it no object can be `on` anything — then `Annotate` + `EmitInit`.
+   With the scene graph's support check on (`predicates.yaml`, shipped on), an
+   object that rests on nothing is left out of the facts and named in
+   `PipelineResult::unsupported_ids`; it stays in `scene`, and the status line
+   counts it. In the console the scene-graph panel draws only what was
+   reported; the world panel still draws everything fusion tracked. `check` refuses to start if the check is on and `scene.yaml` has
+   nothing of a ground class to stand on.
 7. **Log** one transaction to `metrics.sqlite`; print a status line every N
    pairs and the `(:init ...)` block whenever the fact set changes.
 
@@ -136,7 +142,9 @@ NULL in logs written before 2026-10-05, which gain the column on reopening),
 `detections`, `estimates` (full camera-frame `PoseEstimate`: t + unit
 quaternion, score, symmetric, extent, track id), `objects` (`ObjectState`
 after annotation, including sigmas and velocity, `is_static` for injected
-objects), `facts`, `warnings`, `ground_truth` (empty until the ArUco-tray tool
+objects, and `supported` — 1 when the scene graph reported the object, 0 when
+its support check left it out, NULL when the check did not run or the log
+predates it), `facts`, `warnings`, `ground_truth` (empty until the ArUco-tray tool
 fills it).
 
 `ablation_from_log <metrics.sqlite> [--run N]` rebuilds `fusion::AblationFrame`s
@@ -371,15 +379,15 @@ it the provider cannot find cuDNN, the session falls back to CPU, and the run
 reports CPU latency while looking entirely healthy — so the path is baked into
 the binary rather than left to `LD_LIBRARY_PATH` at the call site.
 
-## Tests (`test_runtime`, 110, no hardware)
+## Tests (`test_runtime`, 113, no hardware)
 
 | suite | pins |
 |---|---|
 | `FramePairer` | nearest pairing with the −11 ms offset; a gap in one stream drops only unpairable frames and keeps stamps monotonic; late frames are stale; ring overflow counts; stall timeout; grabber failure propagates with the camera name; two jittered producer threads against a slow consumer never emit a pair outside max skew |
 | `RecorderReplay` | 5 random pairs round-trip bit-exact (rgb, depth incl. 0 and 65535, K, scale, serial, stamps, frame numbers); start/limit; refuses to overwrite; rejects a future `format_version`; a full queue drops and counts without blocking and the survivors replay in order |
 | `StaticScene` | the shipped `scene.yaml` injects `table_01` with all view bits and no uncertainty; a cube resting on it reads `(on red_cube_01 table_01)`; bad configs and id collisions throw |
-| `MetricsLog` | every table written; `LoadAblationFrames` reproduces the logged estimates to 1e-12; reopen keeps the schema; a foreign schema version is refused; the brightness gain is logged per view, and a log from before that column gains it, keeps its rows and still rebuilds |
-| `RuntimeConfig`, `Backends`, `StartupChecks` | strict loaders; factories; missing model names the export command; a dead pose socket names the server command; the shipped configs cross-reference; a swapped serial / view order / world frame is caught |
+| `MetricsLog` | every table written; `LoadAblationFrames` reproduces the logged estimates to 1e-12; reopen keeps the schema; a foreign schema version is refused; the brightness gain is logged per view and `supported` per object (1 / 0 / NULL when the check did not run); a log from before those columns gains them, keeps its rows and still rebuilds |
+| `RuntimeConfig`, `Backends`, `StartupChecks` | strict loaders; factories; missing model names the export command; a dead pose socket names the server command; the shipped configs cross-reference; a swapped serial / view order / world frame is caught; the support check with no ground class in `scene.yaml` is refused |
 | `ReplayPipeline` | record a synthetic session → fixture detector → identity pose → real extrinsics/fusion/predicates/scene → `Pipeline` → `MetricsLog`, twice: identical facts, right row counts, ablation frames rebuild |
 | `MarkerTrays` | tray config loading and its refusals; Markley averaging and reported scatter; the outlier screen keeps a cluster shaped like the real stills whole, drops a ~120° flip listed first and a card in the wrong recess; ground truth round-trips through the log with pair, instance and source |
 | `PipelineBrightness` | through the real `Pipeline` with a spy detector and a spy estimator: the dark view reaches the detector at the floor and the bright one untouched, the result carries each view's gain, the pose estimator and the caller's frame keep the raw picture; `apply_to_pose` shares it; off changes nothing |

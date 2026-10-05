@@ -67,6 +67,73 @@ std::vector<const ObjectState*> SortedValidObjects(const SceneState& scene,
   return deduped;
 }
 
+bool IsGroundClass(const ObjectState& o, const PredicateConfig& cfg) {
+  return std::find(cfg.ground_classes.begin(), cfg.ground_classes.end(), o.cls) !=
+         cfg.ground_classes.end();
+}
+
+// The support check: the subset of `objs` that is grounded, in the same
+// (id-sorted) order. The rest go to result->unsupported.
+//
+// Grounded is the least fixed point of: a ground class is grounded; an object
+// `on` or `in` a grounded object is grounded. It is computed on the PAIRWISE
+// rules, before Extract makes containment exclusive. Doing it afterwards would
+// let a phantom container take a real object with it: the object would have
+// lost its `on` facts to the container, and then its only support to the
+// check.
+std::vector<const ObjectState*> KeepGrounded(const std::vector<const ObjectState*>& objs,
+                                             const PredicateConfig& cfg,
+                                             PredicateResult* result) {
+  const size_t n = objs.size();
+  std::vector<bool> grounded(n, false);
+  bool any_ground = false;
+  for (size_t i = 0; i < n; ++i) {
+    grounded[i] = IsGroundClass(*objs[i], cfg);
+    any_ground = any_ground || grounded[i];
+  }
+  if (!any_ground && n > 0) {
+    // Not a property of the scene but of the configuration: with nothing to
+    // stand on, every object is about to be dropped, and that should not look
+    // like an empty table.
+    result->warnings.push_back(
+        "support check: no object of a ground class in the scene, so nothing in it is "
+        "supported (scene.yaml and predicates.yaml support.ground_classes disagree?)");
+  }
+
+  // rests[i][j]: object i rests on, or is inside, object j.
+  std::vector<std::vector<bool>> rests(n, std::vector<bool>(n, false));
+  for (size_t i = 0; i < n; ++i) {
+    for (size_t j = 0; j < n; ++j) {
+      if (i == j) continue;
+      rests[i][j] = IsIn(*objs[i], *objs[j], cfg) || IsOn(*objs[i], *objs[j], cfg);
+    }
+  }
+  for (bool changed = true; changed;) {
+    changed = false;
+    for (size_t i = 0; i < n; ++i) {
+      if (grounded[i]) continue;
+      for (size_t j = 0; j < n; ++j) {
+        if (grounded[j] && rests[i][j]) {
+          grounded[i] = true;
+          changed = true;
+          break;
+        }
+      }
+    }
+  }
+
+  std::vector<const ObjectState*> kept;
+  kept.reserve(n);
+  for (size_t i = 0; i < n; ++i) {
+    if (grounded[i]) {
+      kept.push_back(objs[i]);
+    } else {
+      result->unsupported.push_back(objs[i]->id);
+    }
+  }
+  return kept;
+}
+
 }  // namespace
 
 double Aabb::volume() const {
@@ -152,6 +219,39 @@ PredicateConfig LoadPredicateConfig(const std::string& yaml_path) {
   }
   cfg.view_names.clear();
   for (const YAML::Node& n : names) cfg.view_names.push_back(n.as<std::string>());
+
+  // Optional, so a predicates.yaml saved with a run from before the check
+  // existed still loads and still means what it meant: no check. Strict when
+  // present -- half a section is not a way to ask for the default.
+  if (root["support"]) {
+    const YAML::Node support = RequireSection(root, "support");
+    const YAML::Node require = support["require_support"];
+    if (!require || !require.IsScalar()) {
+      throw std::runtime_error("predicates.yaml: missing 'support.require_support'");
+    }
+    try {
+      cfg.require_support = require.as<bool>();
+    } catch (const YAML::Exception&) {
+      throw std::runtime_error("predicates.yaml: 'support.require_support' must be true or false");
+    }
+    const YAML::Node ground = support["ground_classes"];
+    if (!ground || !ground.IsSequence()) {
+      throw std::runtime_error("predicates.yaml: missing 'support.ground_classes' (a sequence)");
+    }
+    cfg.ground_classes.clear();
+    for (const YAML::Node& n : ground) {
+      const std::string cls = n.as<std::string>();
+      if (cls.empty()) {
+        throw std::runtime_error("predicates.yaml: empty class name in 'support.ground_classes'");
+      }
+      cfg.ground_classes.push_back(cls);
+    }
+    if (cfg.require_support && cfg.ground_classes.empty()) {
+      throw std::runtime_error(
+          "predicates.yaml: 'support.require_support' is true but 'support.ground_classes' is "
+          "empty -- with nothing to stand on, every object would be dropped");
+    }
+  }
   return cfg;
 }
 
@@ -217,7 +317,10 @@ bool IsOn(const ObjectState& a, const ObjectState& b, const PredicateConfig& cfg
 
 PredicateResult Extract(const SceneState& scene, const PredicateConfig& cfg) {
   PredicateResult result;
-  const std::vector<const ObjectState*> objs = SortedValidObjects(scene, &result.warnings);
+  std::vector<const ObjectState*> objs = SortedValidObjects(scene, &result.warnings);
+  // From here on an unsupported object does not exist: it can be neither the
+  // subject of a fact nor the thing another object is on.
+  if (cfg.require_support) objs = KeepGrounded(objs, cfg, &result);
 
   // Containment is resolved first because it is exclusive: an object inside a
   // container is not on ANYTHING else, not merely not on the container. A ball
@@ -265,11 +368,12 @@ PredicateResult Extract(const SceneState& scene, const PredicateConfig& cfg) {
   }
 
   std::sort(result.facts.begin(), result.facts.end());
+  std::sort(result.unsupported.begin(), result.unsupported.end());
   std::sort(result.warnings.begin(), result.warnings.end());
   return result;
 }
 
-void Annotate(SceneState& scene, const PredicateConfig& cfg) {
+PredicateResult Annotate(SceneState& scene, const PredicateConfig& cfg) {
   const PredicateResult result = Extract(scene, cfg);
   for (ObjectState& o : scene.objects) {
     o.relations.clear();
@@ -285,6 +389,7 @@ void Annotate(SceneState& scene, const PredicateConfig& cfg) {
       }
     }
   }
+  return result;
 }
 
 }  // namespace the_eyes::scenegraph

@@ -131,6 +131,17 @@ std::vector<FactEdge> ParseBinaryFacts(const std::vector<std::string>& facts) {
   return out;
 }
 
+SceneState ReportedScene(const SceneState& scene, const std::vector<std::string>& unsupported_ids) {
+  SceneState out = scene;
+  out.objects.erase(std::remove_if(out.objects.begin(), out.objects.end(),
+                                   [&](const ObjectState& o) {
+                                     return std::find(unsupported_ids.begin(), unsupported_ids.end(),
+                                                      o.id) != unsupported_ids.end();
+                                   }),
+                    out.objects.end());
+  return out;
+}
+
 std::vector<std::string> GraphNodeOrder(const SceneState& scene,
                                         const std::vector<std::string>& static_ids) {
   std::vector<std::string> movable, fixed;

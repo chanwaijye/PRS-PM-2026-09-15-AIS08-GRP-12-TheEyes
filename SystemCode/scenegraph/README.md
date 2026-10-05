@@ -56,6 +56,78 @@ Tolerances come from `config/predicates.yaml` and are never hard-coded — a
 missing or out-of-range value throws rather than falling back to a default,
 because a wrong tolerance yields a plausible-looking wrong scene graph.
 
+## The support check (2026-10-05)
+
+With `support.require_support` on (shipped on), an object is reported only if
+it is **grounded**: its class is in `support.ground_classes` (the table), or it
+is `on` or `in` an object that is grounded, through any number of steps.
+Anything else — floating, sunk through the table, or resting only on something
+that itself rests on nothing — is left out of every fact, as the subject and as
+the thing another object is on, and named in `PredicateResult::unsupported`.
+`Annotate` leaves it in the `SceneState` with empty `relations`: the scene is
+fusion's account of what it tracked.
+
+**Why it is this module's job.** Nothing upstream can tell these objects from
+real ones. From the first scored recordings (2026-10-05; 300 pairs a scene):
+
+| what fusion tracked | scene | pose score | where it was |
+|---|---|---|---|
+| the cube, correctly, from the clear view | `t3_cube_over` | 0.64 | on the table, 1.8 mm from the truth |
+| the same cube from the half-hidden view, at the occluder's range | `t3_cube_over` | 0.86 | 171 mm away, 120 mm up |
+| a cube fitted to the red print on the occluder card | `t3_cube_front` | 0.90 | 178 mm away, 114 mm up |
+| the grey tray, detected as a `bowl` | every cube scene | 0.87–0.97 | 18–62 mm *below* the table top |
+
+The wrong ones outscore the right one, so neither a detector threshold nor the
+fusion gate's score ordering separates them. What they share is geometric and
+relational: none of them rests on anything. That is a fact about the scene, not
+about any one estimate, and this is the first stage that reasons about the
+scene.
+
+Three things about how it is done:
+
+- **Grounding is a least fixed point**, so support runs through a stack and
+  through a container, and resting on something unsupported is not support.
+- **It is decided on the pairwise rules, before containment is made exclusive.**
+  Otherwise a phantom container takes a real object with it: the object has
+  lost its `on` facts to the container, and then loses its only support to the
+  check. As built, the container goes and the object reads as on the table
+  (`SupportCheck.AnUnsupportedContainerDoesNotTakeItsContentsWithIt`).
+- **Unsupported objects are a list, not warnings.** A warning is an event; a
+  tray taken for a bowl is there on every frame, and the runner prints every
+  warning. The one warning this adds is for a scene with no ground-class object
+  at all, which is a configuration error — and `the_eyes_run check` refuses to
+  start on it.
+
+**Measured.** The six scored cube scenes and `t1_bottle` of 2026-10-05,
+reprocessed with the check on (`scripts/scene_graph_audit.py 20261005`; an
+object-pair is one tracked object on one frame pair):
+
+| | without the check | with it |
+|---|---|---|
+| the real object, in the scene graph | 2,100 of 2,100 object-pairs | 2,100 of 2,100 |
+| objects that are not there, in the scene graph | 2,771 of 2,771 | **1 of 2,771** |
+| facts emitted | 10,690 | 5,150 |
+| facts naming an object that is not there | 5,543 | **3** |
+
+`t3_cube_over` — one cube on the table, half hidden from cam_over — went from
+eleven distinct facts over the run, among them `(on red_cube_01 bowl_01)` and
+three cubes that do not exist, to the three that are true on every pair:
+`(clear red_cube_01)`, `(occluded_from red_cube_01 cam_over)`,
+`(on red_cube_01 table_01)`. Fusion is untouched: the ADD-S tables of all six
+cube scenes are identical before and after.
+
+Two limits on that table. These are the scenes that suggested the rule, each
+with one real object; the clutter scenes are its test and are not shot yet.
+And on the one multi-object recording there is — the 2026-10-04 rehearsal,
+bowl, bottle and cube, TV on, not a scored result — reading the same decision
+off its facts keeps all 450 real object-pairs and removes 101 of 115 false
+ones: the other 14 are a false cube that landed at table height.
+
+What it does not do: a false object that happens to land at table height is
+supported, and stays. And it asserts a static scene — an object in a gripper
+rests on nothing by this rule; a consumer with a hand in the scene declares it
+a ground class or turns the check off.
+
 ## Acceptance criteria status
 
 | Criterion | Status |
@@ -63,5 +135,6 @@ because a wrong tolerance yields a plausible-looking wrong scene graph.
 | Deterministic: same `SceneState` in → same fact set out | Met — asserted over 25 input permutations |
 | Tolerances from config, no hard-coded constants | Met |
 | Edge-case fixtures (stack, container, single-view occlusion, unknown object) | Met |
+| An object that rests on nothing is not reported (2026-10-05) | Met on the seven single-object scenes of 2026-10-05 — 1 of 2,771 false object-pairs left, 0 of 2,100 real ones lost; **not yet measured on clutter** |
 | Predicate accuracy ≥ 95% vs. hand-labelled ground truth | **Blocked** — needs the benchmark scene suite, which needs real captures |
 | Emitted PDDL parses in PM1's planner unmodified | **[VERIFY]** — only balanced-paren and vocabulary checks run here; not yet fed to PM1 |

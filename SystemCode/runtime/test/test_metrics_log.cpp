@@ -31,6 +31,21 @@ int64_t Count(const std::string& db_path, const std::string& table) {
   return n;
 }
 
+// objects.supported for one object of one pair; -1 where it is NULL.
+int SupportedOf(const std::string& db_path, const std::string& object_id, int64_t run_id) {
+  sqlite3* db = nullptr;
+  EXPECT_EQ(sqlite3_open(db_path.c_str(), &db), SQLITE_OK);
+  sqlite3_stmt* stmt = nullptr;
+  const std::string sql = "SELECT supported FROM objects WHERE object_id = '" + object_id +
+                          "' AND run_id = " + std::to_string(run_id);
+  EXPECT_EQ(sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr), SQLITE_OK);
+  EXPECT_EQ(sqlite3_step(stmt), SQLITE_ROW);
+  const int v = sqlite3_column_type(stmt, 0) == SQLITE_NULL ? -1 : sqlite3_column_int(stmt, 0);
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+  return v;
+}
+
 // frame_views.brightness_gain for one camera of one pair; -1 where it is NULL.
 double GainOf(const std::string& db_path, const std::string& camera_id, int64_t pair_index) {
   sqlite3* db = nullptr;
@@ -225,6 +240,10 @@ TEST(MetricsLog, ALogFromBeforeTheGainColumnGainsItAndKeepsItsRows) {
                          nullptr, nullptr),
             SQLITE_OK)
       << sqlite3_errmsg(raw);
+  // ...and before objects recorded what the support check made of them.
+  ASSERT_EQ(sqlite3_exec(raw, "ALTER TABLE objects DROP COLUMN supported", nullptr, nullptr, nullptr),
+            SQLITE_OK)
+      << sqlite3_errmsg(raw);
   sqlite3_close(raw);
 
   {
@@ -242,8 +261,47 @@ TEST(MetricsLog, ALogFromBeforeTheGainColumnGainsItAndKeepsItsRows) {
   EXPECT_EQ(Count(db, "frame_views"), 4);
   EXPECT_DOUBLE_EQ(GainOf(db, "cam_over", 0), -1.0) << "written before the column: not recorded";
   EXPECT_DOUBLE_EQ(GainOf(db, "cam_over", 1), 45.0 / 23.0);
+  EXPECT_EQ(SupportedOf(db, "table_01", first), -1) << "written before the column: not recorded";
   // The older run still rebuilds for the ablation harness.
   EXPECT_EQ(LoadAblationFrames(db, first).size(), 1u);
+}
+
+TEST(MetricsLog, RecordsWhichObjectsTheSupportCheckLeftOut) {
+  // t3_cube_over, 2026-10-05: fusion tracked a second cube at the occluder's
+  // range. It stays in the objects table -- that fusion produced it is the
+  // finding -- and the column says the scene graph did not report it.
+  PipelineResult r = Result(0);
+  ObjectState phantom = r.scene.objects[0];
+  phantom.id = "red_cube_02";
+  phantom.cls = "red_cube";
+  phantom.pose_w.translation() = Eigen::Vector3d(0.0265, -0.1042, 0.1202);
+  r.scene.objects.push_back(phantom);
+
+  const std::string db = TempDb();
+  MetricsLog log(db);
+  RunInfo info;
+  info.source = "replay";
+  info.detector_backend = "mock:fixture";
+  info.pose_backend = "mock:identity";
+  info.config_dir = "config";
+
+  r.support_checked = true;
+  r.unsupported_ids = {"red_cube_02"};
+  const int64_t checked = log.BeginRun(info);
+  log.WriteFrame(checked, r);
+  log.EndRun(checked, "ok", 1);
+  EXPECT_EQ(SupportedOf(db, "red_cube_02", checked), 0);
+  EXPECT_EQ(SupportedOf(db, "mustard_bottle_01", checked), 1);
+  EXPECT_EQ(SupportedOf(db, "table_01", checked), 1);
+
+  // The check off is not the same as every object passing it.
+  r.support_checked = false;
+  r.unsupported_ids.clear();
+  const int64_t unchecked = log.BeginRun(info);
+  log.WriteFrame(unchecked, r);
+  log.EndRun(unchecked, "ok", 1);
+  EXPECT_EQ(SupportedOf(db, "red_cube_02", unchecked), -1);
+  EXPECT_EQ(SupportedOf(db, "table_01", unchecked), -1);
 }
 
 TEST(MetricsLog, RejectsAForeignSchemaVersion) {

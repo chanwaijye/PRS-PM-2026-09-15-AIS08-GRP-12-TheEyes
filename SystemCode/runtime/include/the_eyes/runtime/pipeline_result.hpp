@@ -41,6 +41,11 @@ struct PipelineResult {
   std::map<std::string, std::vector<PoseEstimate>> estimates;
   SceneState scene;                 // after static injection and Annotate
   std::vector<std::string> static_ids;   // ids in `scene` that came from scene.yaml
+  // Whether the scene graph's support check ran on this pair, and the ids in
+  // `scene` it left out of the facts because they rest on nothing. They stay in
+  // `scene`: that is what fusion tracked, and the difference is the finding.
+  bool support_checked = false;
+  std::vector<std::string> unsupported_ids;
   scenegraph::PddlResult pddl;
   StageTimings timings;
   fusion::FusionDiagnostics fusion_diag;

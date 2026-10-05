@@ -95,5 +95,30 @@ TEST(Pddl, EmptySceneStillProducesAParseableInitBlock) {
   EXPECT_TRUE(r.facts.empty());
 }
 
+TEST(Pddl, AnObjectThatRestsOnNothingIsLeftOutOfTheInitBlockAndNamed) {
+  // The cube on the table, and a second one hanging 95 mm above it.
+  ObjectState table = Make("table_01", {0.0, 0.0, -0.02}, {0.60, 0.40, 0.02});
+  table.cls = "table";
+  SceneState scene;
+  scene.objects = {
+      table,
+      Make("red_cube_01", {0.0, 0.0, 0.025}, {0.025, 0.025, 0.025}),
+      Make("red_cube_02", {0.08, -0.12, 0.120}, {0.025, 0.025, 0.025}, kViewCamOver),
+  };
+  PredicateConfig cfg;
+  cfg.require_support = true;
+
+  const PddlResult r = EmitInit(scene, cfg);
+  EXPECT_EQ(r.init_block.find("red_cube_02"), std::string::npos) << r.init_block;
+  EXPECT_NE(r.init_block.find("(on red_cube_01 table_01)"), std::string::npos) << r.init_block;
+  EXPECT_EQ(r.unsupported, std::vector<std::string>{"red_cube_02"});
+  EXPECT_TRUE(r.warnings.empty());
+
+  // Without the check it is a constant in the planner's world.
+  const PddlResult before = EmitInit(scene, PredicateConfig{});
+  EXPECT_NE(before.init_block.find("(clear red_cube_02)"), std::string::npos);
+  EXPECT_TRUE(before.unsupported.empty());
+}
+
 }  // namespace
 }  // namespace the_eyes::scenegraph

@@ -43,6 +43,24 @@ bool Has(const PredicateResult& r, const std::string& fact) {
 
 PredicateConfig Cfg() { return PredicateConfig{}; }
 
+// The support check is off in a bare config; a fixture that wants it says so.
+PredicateConfig CfgWithSupport(std::vector<std::string> containers = {"bowl"}) {
+  PredicateConfig cfg;
+  cfg.in_container_classes = std::move(containers);
+  cfg.require_support = true;
+  cfg.ground_classes = {"table"};
+  return cfg;
+}
+
+bool Mentions(const PredicateResult& r, const std::string& id) {
+  for (const std::string& f : r.facts) {
+    if (f.find(" " + id + " ") != std::string::npos || f.find(" " + id + ")") != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // `in` is default-deny on the container class, so a fixture that wants a
 // container has to name it. That is the point of the flag: the declaration is
 // visible at the call site rather than inferred from a box's proportions.
@@ -364,6 +382,229 @@ TEST(Predicates, AbsentContainerClassesKeyThrowsRatherThanDefaulting) {
                       << "views:\n  names: [\"cam_front\", \"cam_over\"]\n";
   EXPECT_THROW(LoadPredicateConfig(tmpl), std::runtime_error);
   std::remove(tmpl);
+}
+
+// ---------------------------------------------------------------------------
+// The support check. Every number in the first three fixtures is a median from
+// the 2026-10-05 recordings (docs/OCTOBER_PLAN.md, "The objects that are not
+// there"), with the table top moved to z = 0 as Table() has it.
+// ---------------------------------------------------------------------------
+const Eigen::Vector3d kCubeHalf(0.025, 0.025, 0.025);
+const Eigen::Vector3d kBowlHalf(0.0807, 0.0806, 0.0275);
+
+TEST(SupportCheck, APoseAtTheOccludersRangeFloatsAndIsNotReported) {
+  // t3_cube_over: cam_front has the cube where it is; cam_over, half hidden,
+  // puts it 171 mm away and 120 mm up, with the higher pose score of the two.
+  SceneState scene;
+  scene.objects = {
+      Table(),
+      Make("red_cube_01", "red_cube", {-0.0542, 0.0134, 0.0290}, kCubeHalf, kViewCamFront),
+      Make("red_cube_02", "red_cube", {0.0265, -0.1042, 0.1202}, kCubeHalf, kViewCamOver),
+  };
+  const PredicateResult r = Extract(scene, CfgWithSupport());
+  EXPECT_TRUE(Has(r, "(on red_cube_01 table_01)"));
+  EXPECT_FALSE(Mentions(r, "red_cube_02"));
+  EXPECT_EQ(r.unsupported, std::vector<std::string>{"red_cube_02"});
+  EXPECT_TRUE(r.warnings.empty()) << "a steady state, not an event";
+
+  // The same scene without the check reports both, as it did on the day.
+  const PredicateResult before = Extract(scene, Cfg());
+  EXPECT_TRUE(Has(before, "(clear red_cube_02)"));
+  EXPECT_TRUE(Has(before, "(occluded_from red_cube_02 cam_front)"));
+  EXPECT_TRUE(before.unsupported.empty());
+}
+
+TEST(SupportCheck, ATrackUnderTheTableIsNotReported) {
+  // t3_cube_over, the stray detection at the image edge: 92 mm below the top.
+  SceneState scene;
+  scene.objects = {
+      Table(),
+      Make("red_cube_01", "red_cube", {-0.0542, 0.0134, 0.0290}, kCubeHalf),
+      Make("red_cube_03", "red_cube", {0.1484, 0.3010, -0.0919}, kCubeHalf, kViewCamOver),
+  };
+  const PredicateResult r = Extract(scene, CfgWithSupport());
+  EXPECT_FALSE(Mentions(r, "red_cube_03"));
+  EXPECT_EQ(r.unsupported, std::vector<std::string>{"red_cube_03"});
+}
+
+TEST(SupportCheck, TheTrayTakenForABowlGoesAndTakesItsFalseFactWithIt) {
+  // Every cube scene: the tray is a `bowl` 20 mm below the table top, and the
+  // cube, which is on the table, also reads as on it.
+  SceneState scene;
+  scene.objects = {
+      Table(),
+      Make("bowl_01", "bowl", {-0.0116, 0.0174, -0.0198}, kBowlHalf, kViewCamFront),
+      Make("red_cube_01", "red_cube", {-0.0542, 0.0134, 0.0290}, kCubeHalf, kViewCamFront),
+  };
+  const PredicateResult before = Extract(scene, Cfg());
+  ASSERT_TRUE(Has(before, "(on red_cube_01 bowl_01)")) << "the false fact this fixture is about";
+  ASSERT_TRUE(Has(before, "(on red_cube_01 table_01)"));
+
+  const PredicateResult r = Extract(scene, CfgWithSupport());
+  EXPECT_TRUE(Has(r, "(on red_cube_01 table_01)"));
+  EXPECT_FALSE(Mentions(r, "bowl_01"));
+  EXPECT_EQ(r.unsupported, std::vector<std::string>{"bowl_01"});
+  EXPECT_TRUE(Has(r, "(clear red_cube_01)"));
+}
+
+TEST(SupportCheck, SupportRunsThroughAStackAndThroughAContainer) {
+  // Nothing here touches the table except the bottom block and the bowl.
+  SceneState scene;
+  scene.objects = {
+      Table(),
+      Make("block_01", "block", {0.0, 0.0, 0.025}, kCubeHalf),
+      Make("block_02", "block", {0.0, 0.0, 0.075}, kCubeHalf),
+      Make("block_03", "block", {0.0, 0.0, 0.125}, kCubeHalf),
+      Make("bowl_01", "bowl", {0.30, 0.20, 0.03}, {0.08, 0.08, 0.03}),
+      Make("ball_01", "ball", {0.30, 0.20, 0.03}, {0.02, 0.02, 0.02}),
+  };
+  const PredicateResult r = Extract(scene, CfgWithSupport());
+  EXPECT_TRUE(r.unsupported.empty());
+  EXPECT_TRUE(Has(r, "(on block_03 block_02)"));
+  EXPECT_TRUE(Has(r, "(in ball_01 bowl_01)"));
+  // With everything grounded the check changes nothing at all.
+  EXPECT_EQ(r.facts, Extract(scene, CfgWithContainers({"bowl"})).facts);
+}
+
+TEST(SupportCheck, RestingOnSomethingUnsupportedIsNotSupport) {
+  // A phantom with a second phantom on top of it, well clear of the table.
+  SceneState scene;
+  scene.objects = {
+      Table(),
+      Make("red_cube_01", "red_cube", {0.0, 0.0, 0.025}, kCubeHalf),
+      Make("red_cube_02", "red_cube", {0.2, 0.0, 0.125}, kCubeHalf),
+      Make("red_cube_03", "red_cube", {0.2, 0.0, 0.175}, kCubeHalf),
+  };
+  ASSERT_TRUE(Has(Extract(scene, Cfg()), "(on red_cube_03 red_cube_02)"));
+  const PredicateResult r = Extract(scene, CfgWithSupport());
+  EXPECT_EQ(r.unsupported, (std::vector<std::string>{"red_cube_02", "red_cube_03"}));
+  EXPECT_FALSE(Mentions(r, "red_cube_02"));
+  EXPECT_FALSE(Mentions(r, "red_cube_03"));
+  EXPECT_TRUE(Has(r, "(on red_cube_01 table_01)"));
+}
+
+TEST(SupportCheck, AnUnsupportedContainerDoesNotTakeItsContentsWithIt) {
+  // The cube is on the table. A phantom bowl hangs around it, off the table,
+  // and by the pairwise rules the cube is IN that bowl -- which, containment
+  // being exclusive, would strip the cube of its (on ... table). Grounding is
+  // decided before that happens: the bowl goes, the cube stays on the table.
+  SceneState scene;
+  scene.objects = {
+      Table(),
+      Make("red_cube_01", "red_cube", {0.0, 0.0, 0.025}, kCubeHalf),
+      // Its floor is 18 mm above the table top: outside the 15 mm tolerance.
+      Make("bowl_01", "bowl", {0.0, 0.0, 0.068}, {0.10, 0.10, 0.05}),
+  };
+  const PredicateResult before = Extract(scene, CfgWithContainers({"bowl"}));
+  ASSERT_TRUE(Has(before, "(in red_cube_01 bowl_01)"));
+  ASSERT_FALSE(Has(before, "(on red_cube_01 table_01)"));
+
+  const PredicateResult r = Extract(scene, CfgWithSupport());
+  EXPECT_EQ(r.unsupported, std::vector<std::string>{"bowl_01"});
+  EXPECT_TRUE(Has(r, "(on red_cube_01 table_01)"));
+  EXPECT_FALSE(Mentions(r, "bowl_01"));
+}
+
+TEST(SupportCheck, WithNoGroundInTheSceneEverythingGoesAndItSaysWhy) {
+  SceneState scene;
+  scene.objects = {Make("red_cube_01", "red_cube", {0.0, 0.0, 0.025}, kCubeHalf),
+                   Make("red_cube_02", "red_cube", {0.0, 0.0, 0.075}, kCubeHalf)};
+  const PredicateResult r = Extract(scene, CfgWithSupport());
+  EXPECT_TRUE(r.facts.empty());
+  EXPECT_EQ(r.unsupported, (std::vector<std::string>{"red_cube_01", "red_cube_02"}));
+  ASSERT_EQ(r.warnings.size(), 1u);
+  EXPECT_NE(r.warnings[0].find("no object of a ground class"), std::string::npos) << r.warnings[0];
+
+  // An empty scene is not a misconfiguration.
+  EXPECT_TRUE(Extract(SceneState{}, CfgWithSupport()).warnings.empty());
+}
+
+TEST(SupportCheck, AnnotateLeavesAnUnsupportedObjectInTheSceneWithNoRelations) {
+  SceneState scene;
+  scene.objects = {
+      Table(),
+      Make("red_cube_01", "red_cube", {-0.0542, 0.0134, 0.0290}, kCubeHalf, kViewCamFront),
+      Make("red_cube_02", "red_cube", {0.0265, -0.1042, 0.1202}, kCubeHalf, kViewCamOver),
+  };
+  const PredicateResult r = Annotate(scene, CfgWithSupport());
+  ASSERT_EQ(scene.objects.size(), 3u) << "the scene is fusion's account; nothing is removed";
+  EXPECT_FALSE(scene.objects[1].relations.empty());
+  EXPECT_TRUE(scene.objects[2].relations.empty());
+  EXPECT_EQ(r.unsupported, std::vector<std::string>{"red_cube_02"});
+  EXPECT_EQ(r.facts, Extract(scene, CfgWithSupport()).facts);
+}
+
+TEST(SupportCheck, IsDeterministicUnderInputPermutation) {
+  SceneState scene;
+  scene.objects = {
+      Table(),
+      Make("bowl_01", "bowl", {-0.0116, 0.0174, -0.0198}, kBowlHalf),
+      Make("red_cube_01", "red_cube", {-0.0542, 0.0134, 0.0290}, kCubeHalf),
+      Make("red_cube_02", "red_cube", {0.0265, -0.1042, 0.1202}, kCubeHalf),
+      Make("red_cube_03", "red_cube", {0.1484, 0.3010, -0.0919}, kCubeHalf),
+      Make("block_02", "block", {-0.0542, 0.0134, 0.0790}, kCubeHalf),
+  };
+  const PredicateResult reference = Extract(scene, CfgWithSupport());
+  std::mt19937 rng(7);
+  for (int i = 0; i < 20; ++i) {
+    std::shuffle(scene.objects.begin(), scene.objects.end(), rng);
+    const PredicateResult r = Extract(scene, CfgWithSupport());
+    EXPECT_EQ(r.facts, reference.facts);
+    EXPECT_EQ(r.unsupported, reference.unsupported);
+  }
+  EXPECT_EQ(reference.unsupported,
+            (std::vector<std::string>{"bowl_01", "red_cube_02", "red_cube_03"}));
+  EXPECT_TRUE(Has(reference, "(on block_02 red_cube_01)"));
+}
+
+std::string PredicatesYamlWith(const std::string& support_section) {
+  char tmpl[] = "/tmp/the_eyes_predicates_XXXXXX";
+  const int fd = ::mkstemp(tmpl);
+  if (fd >= 0) ::close(fd);
+  std::ofstream(tmpl) << "on:\n  surface_tol_m: 0.015\n  min_overlap_ratio: 0.25\n"
+                      << "in:\n  containment_margin_m: 0.005\n  max_volume_ratio: 0.5\n"
+                      << "  container_classes: [bowl]\n"
+                      << "views:\n  names: [\"cam_front\", \"cam_over\"]\n"
+                      << support_section;
+  return tmpl;
+}
+
+TEST(SupportCheck, ConfigSectionIsOptionalButStrictWhenPresent) {
+  // A predicates.yaml saved with a run from before the check still loads, and
+  // still means what it meant.
+  const std::string none = PredicatesYamlWith("");
+  EXPECT_FALSE(LoadPredicateConfig(none).require_support);
+  std::remove(none.c_str());
+
+  const std::string on = PredicatesYamlWith(
+      "support:\n  require_support: true\n  ground_classes: [table, shelf]\n");
+  const PredicateConfig cfg = LoadPredicateConfig(on);
+  EXPECT_TRUE(cfg.require_support);
+  EXPECT_EQ(cfg.ground_classes, (std::vector<std::string>{"table", "shelf"}));
+  std::remove(on.c_str());
+
+  for (const char* bad : {
+           "support:\n  require_support: true\n",                       // no ground classes
+           "support:\n  ground_classes: [table]\n",                     // no switch
+           "support:\n  require_support: true\n  ground_classes: []\n",  // nothing to stand on
+           "support:\n  require_support: maybe\n  ground_classes: [table]\n",
+       }) {
+    const std::string path = PredicatesYamlWith(bad);
+    EXPECT_THROW(LoadPredicateConfig(path), std::runtime_error) << bad;
+    std::remove(path.c_str());
+  }
+  // Off with an empty list is a legitimate way to say "no check".
+  const std::string off = PredicatesYamlWith(
+      "support:\n  require_support: false\n  ground_classes: []\n");
+  EXPECT_FALSE(LoadPredicateConfig(off).require_support);
+  std::remove(off.c_str());
+}
+
+TEST(SupportCheck, TheShippedConfigTurnsItOnWithTheTableAsGround) {
+  const PredicateConfig cfg =
+      LoadPredicateConfig(std::string(THE_EYES_CONFIG_DIR) + "/predicates.yaml");
+  EXPECT_TRUE(cfg.require_support);
+  EXPECT_EQ(cfg.ground_classes, std::vector<std::string>{"table"});
 }
 
 }  // namespace

@@ -41,6 +41,36 @@ in:
   container_classes:
     - bowl
 
+support:
+  # An object that rests on nothing is not reported: it is left out of every
+  # fact, as subject and as object. "Rests on something" means a chain of
+  # `on` / `in` relations that ends at a ground class.
+  #
+  # Why this lives here and not in the detector or the fusion gate: nothing
+  # upstream can tell these objects from real ones. MEASURED on the 2026-10-05
+  # recordings (scripts/scene_graph_audit.py, docs/OCTOBER_PLAN.md) -- a cube
+  # posed at the occluder's range (pose score 0.86), a cube fitted to the red
+  # print on the occluder (0.90), and the tray taken for a bowl (0.87-0.97), beside
+  # the one correct estimate at 0.64. What they share is geometry: they float,
+  # or sit below the table top. Over the six cube scenes and t1_bottle the real
+  # object rests on something on 2,100 of 2,100 object-pairs, and the objects
+  # that are not there on 1 of 2,771; on the 2026-10-04 three-object rehearsal,
+  # 450 of 450 against 14 of 115.
+  #
+  # What it does not catch: a false object that happens to land at table height
+  # (those 14). What it assumes: a static scene. Something held in a gripper
+  # rests on nothing by this rule -- a consumer with a hand in the scene adds
+  # it to ground_classes, or sets this false.
+  #
+  # The section is optional (absent = no check, which is what a predicates.yaml
+  # saved before 2026-10-05 meant) and strict when present.
+  require_support: true
+  # Classes that need nothing under them. Declared rather than inferred, like
+  # the containers above. Must name a class that config/scene.yaml puts in the
+  # scene, or every object is dropped -- the runner refuses to start if not.
+  ground_classes:
+    - table
+
 views:
   # Order defines the ObjectState::visible_views bit positions: index 0 -> bit0.
   # Must match the ViewBit enum in the_eyes/types.hpp and the camera namespaces
