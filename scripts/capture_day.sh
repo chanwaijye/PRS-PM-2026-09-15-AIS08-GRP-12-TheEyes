@@ -163,9 +163,16 @@ PYEOF_SHIFT
 # Records $2 pairs as session name $1. The runner's output goes to the terminal
 # (stderr) and $3; stdout carries only the session directory, for $(...).
 record() {
-  local name="$1" pairs="$2" logf="$3" rc
-  "$RUN" live --record-only "$name" --frames "$pairs" 2>&1 | tee "$logf" >&2
-  rc=${PIPESTATUS[0]}
+  local name="$1" pairs="$2" logf="$3" rc try
+  # A camera that was closed a moment ago can refuse to open ("set_xu failed:
+  # Resource temporarily unavailable", 2026-10-05, straight after a preview).
+  # One retry after a pause clears it; a second failure is reported.
+  for try in 1 2; do
+    "$RUN" live --record-only "$name" --frames "$pairs" 2>&1 | tee "$logf" >&2
+    rc=${PIPESTATUS[0]}
+    [[ $rc -eq 0 ]] && break
+    [[ $try -eq 1 ]] && { echo "recording failed to start (exit $rc) -- retrying once in 6 s" >&2; sleep 6; }
+  done
   [[ $rc -eq 0 ]] || return $rc
   # The runner prints an absolute path; keep it absolute either way, because
   # the caller links to it and a doubled prefix is a dangling link.
