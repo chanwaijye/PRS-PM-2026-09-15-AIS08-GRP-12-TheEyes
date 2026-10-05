@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <map>
+#include <optional>
 #include <set>
 
 #include <gtest/gtest.h>
@@ -119,6 +121,78 @@ std::unique_ptr<Pipeline> BuildPipeline(const Fixture& fx) {
                                     std::move(fusion), c.predicates, c.scene, c.fusion.view_names);
 }
 
+// Mean luma of the colour image each stage was handed, by camera.
+struct Seen {
+  std::map<std::string, double> detector;
+  std::map<std::string, double> pose;
+};
+
+class SpyDetector : public detector::Detector {
+ public:
+  explicit SpyDetector(Seen* seen) : seen_(seen) {}
+  DetectionSet Detect(const detector::DetectorInput& in) override {
+    seen_->detector[in.camera_id] = MeanLuma(in.rgb);
+    DetectionSet set;
+    set.camera_id = in.camera_id;
+    set.stamp_ns = in.stamp_ns;
+    set.detections.push_back({"bowl", 0.9f, cv::Rect2i(60, 30, 50, 50), 1});
+    return set;
+  }
+  std::string name() const override { return "spy"; }
+
+ private:
+  Seen* seen_;
+};
+
+// Declines every request: the test is about what it was shown.
+class SpyPose : public pose::PoseEstimator {
+ public:
+  explicit SpyPose(Seen* seen) : seen_(seen) {}
+  std::optional<PoseEstimate> Estimate(const pose::PoseRequest& request) override {
+    seen_->pose[request.frame->camera_id] = MeanLuma(request.frame->rgb);
+    return std::nullopt;
+  }
+  std::string name() const override { return "spy"; }
+
+ private:
+  Seen* seen_;
+};
+
+std::unique_ptr<Pipeline> BuildSpyPipeline(Seen* seen, const BrightnessConfig& brightness) {
+  LoadedConfigs c = LoadAllConfigs(THE_EYES_CONFIG_DIR, THE_EYES_REPO_ROOT);
+  DetectorHandle det;
+  det.detector = std::make_unique<SpyDetector>(seen);
+  det.label = "spy";
+  PoseHandle pose;
+  pose.estimator = std::make_shared<SpyPose>(seen);
+  pose.label = "spy";
+  std::map<std::string, std::unique_ptr<pose::PoseAgent>> agents;
+  for (const std::string& v : c.fusion.view_names) {
+    agents[v] = std::make_unique<pose::PoseAgent>(c.meshes, c.pose_agent, pose.estimator);
+  }
+  auto fusion = std::make_unique<fusion::Fusion>(c.fusion, c.extrinsics, ExtentsFrom(c.meshes));
+  auto pipeline = std::make_unique<Pipeline>(std::move(det), std::move(pose), std::move(agents),
+                                             std::move(fusion), c.predicates, c.scene,
+                                             c.fusion.view_names);
+  pipeline->set_brightness(brightness);
+  return pipeline;
+}
+
+// One pair with cam_front at a grey level of 100 and cam_over at 20.
+FramePair BrightAndDarkPair() {
+  FramePair p;
+  p.pair_index = 0;
+  p.stamp_ns = FrontStamp(0);
+  p.skew_ms = 11.0;
+  camera::CameraFrame front = Flat("cam_front", "261722073945", FrontStamp(0), 10);
+  front.rgb = cv::Mat(kH, kW, CV_8UC3, cv::Scalar(100, 100, 100));
+  camera::CameraFrame over = Flat("cam_over", "261822074567", OverStamp(0), 20);
+  over.rgb = cv::Mat(kH, kW, CV_8UC3, cv::Scalar(20, 20, 20));
+  p.frames.emplace("cam_front", std::move(front));
+  p.frames.emplace("cam_over", std::move(over));
+  return p;
+}
+
 std::vector<std::string> FactsOfRun(const std::string& db, int64_t run_id) {
   sqlite3* raw = nullptr;
   EXPECT_EQ(sqlite3_open(db.c_str(), &raw), SQLITE_OK);
@@ -218,4 +292,45 @@ TEST(ReplayPipeline, RunsEndToEndWithoutHardwareAndIsDeterministic) {
   ASSERT_EQ(frames.size(), static_cast<size_t>(kPairs));
   EXPECT_EQ(frames.back().estimates.size(), 3u);
   EXPECT_TRUE(frames.back().ground_truth.empty());
+}
+
+TEST(PipelineBrightness, TheDetectorSeesTheFloorAndNothingElseDoes) {
+  BrightnessConfig floor;
+  floor.enabled = true;
+  floor.target_mean = 45.0;
+  floor.max_gain = 4.0;
+
+  Seen seen;
+  const FramePair pair = BrightAndDarkPair();
+  const PipelineResult r = BuildSpyPipeline(&seen, floor)->Process(pair);
+
+  // The dark view is lifted to the floor for the detector; the bright one is
+  // not touched, and the gain says which was which.
+  EXPECT_NEAR(seen.detector.at("cam_over"), 45.0, 1.0);
+  EXPECT_NEAR(seen.detector.at("cam_front"), 100.0, 1e-9);
+  EXPECT_NEAR(r.brightness_gain.at("cam_over"), 45.0 / 20.0, 1e-9);
+  EXPECT_DOUBLE_EQ(r.brightness_gain.at("cam_front"), 1.0);
+  // The pose estimator keeps the sensor's picture, and so does the caller's
+  // frame -- which is the one the recorder writes.
+  EXPECT_NEAR(seen.pose.at("cam_over"), 20.0, 1e-9);
+  EXPECT_NEAR(MeanLuma(pair.frames.at("cam_over").rgb), 20.0, 1e-9);
+}
+
+TEST(PipelineBrightness, ApplyToPoseSharesTheBrightenedFrameAndOffChangesNothing) {
+  BrightnessConfig both;
+  both.enabled = true;
+  both.target_mean = 45.0;
+  both.max_gain = 4.0;
+  both.apply_to_pose = true;
+  Seen seen;
+  const FramePair pair = BrightAndDarkPair();
+  BuildSpyPipeline(&seen, both)->Process(pair);
+  EXPECT_NEAR(seen.pose.at("cam_over"), 45.0, 1.0);
+  EXPECT_NEAR(MeanLuma(pair.frames.at("cam_over").rgb), 20.0, 1e-9);
+
+  Seen off_seen;
+  const PipelineResult off = BuildSpyPipeline(&off_seen, BrightnessConfig{})->Process(pair);
+  EXPECT_NEAR(off_seen.detector.at("cam_over"), 20.0, 1e-9);
+  EXPECT_NEAR(off_seen.pose.at("cam_over"), 20.0, 1e-9);
+  EXPECT_DOUBLE_EQ(off.brightness_gain.at("cam_over"), 1.0);
 }

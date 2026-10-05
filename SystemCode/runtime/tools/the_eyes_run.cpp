@@ -249,6 +249,18 @@ std::unique_ptr<Pipeline> BuildPipeline(const LoadedConfigs& c, StartupReport* r
   // corrected depth must be distinguishable from one logged without.
   report->Info("depth correction: " + c.depth_correction.Describe());
   pipeline->set_depth_correction(c.depth_correction);
+  {
+    const BrightnessConfig& b = c.runtime.brightness;
+    std::ostringstream os;
+    if (b.enabled) {
+      os << "brightness normalisation: mean luma to " << b.target_mean << ", gain at most x"
+         << b.max_gain << ", " << (b.apply_to_pose ? "detector and pose estimator" : "detector only");
+    } else {
+      os << "brightness normalisation: off";
+    }
+    report->Info(os.str());
+  }
+  pipeline->set_brightness(c.runtime.brightness);
   return pipeline;
 }
 

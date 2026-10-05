@@ -34,6 +34,14 @@
 # process  needs the GPU and the FoundationPose server, not the rig. Per scene:
 #          replay → ground truth from the stills → visibility → ablation, then
 #          checks each scene's measured visibility against its declared tier.
+#          Each scene is processed on the calibration in force WHEN IT WAS SHOT:
+#          `scene` saves the extrinsics at the stills and at the recording, and
+#          the depth correction, beside the scene and names them in notes.yaml
+#          (extrinsics_stills, extrinsics_recording, depth_correction). A rig
+#          that is re-registered mid-session -- 2026-10-05, twice -- then needs
+#          no bookkeeping, and a scene whose stills and recording straddle the
+#          re-registration uses one set for each. Everything else comes from the
+#          current config/.
 #
 # Layout (both trees are gitignored):
 #   captures/scored/<day>/<scene>/{notes.yaml, gt_stills/, gt_check.log,
@@ -352,6 +360,13 @@ EOF
     esac
   done
   echo "$gt_check" > "$dir/gt_check.status"
+  # The extrinsics these stills were shot under. Copied stills keep the ones
+  # they were shot under, not today's.
+  if [[ -n "$STILLS_FROM" && -f "$DAYDIR/$STILLS_FROM/extrinsics_at_stills.yaml" ]]; then
+    cp "$DAYDIR/$STILLS_FROM/extrinsics_at_stills.yaml" "$dir/extrinsics_at_stills.yaml"
+  else
+    cp config/extrinsics.yaml "$dir/extrinsics_at_stills.yaml"
+  fi
 
   local shift_txt="not checked (no $DAYDIR/reregister_begin)"
   if [[ -d "$DAYDIR/reregister_begin" ]]; then
@@ -396,6 +411,9 @@ scene_record() {
   local session=""
   session=$(record "scored_$NAME" "$PAIRS" "$dir/record.log")
   rc=$?
+  cp config/extrinsics.yaml "$dir/extrinsics_at_recording.yaml"
+  [[ -f config/depth_correction.yaml ]] && cp config/depth_correction.yaml "$dir/depth_correction.yaml"
+  [[ -f "$dir/extrinsics_at_stills.yaml" ]] || cp config/extrinsics.yaml "$dir/extrinsics_at_stills.yaml"
   [[ -n "$session" ]] && ln -sfn "$session" "$dir/session"
 
   local note="$NOTE"
@@ -419,6 +437,9 @@ gt_check: "$gt_check"
 stills_from: ${stills_from:-}
 camera_shift: "$shift_txt"
 record_config: "${RECORD_CONFIG_DIR:-config}"
+extrinsics_stills: "$NAME/extrinsics_at_stills.yaml"
+extrinsics_recording: "$NAME/extrinsics_at_recording.yaml"
+depth_correction: "$( [[ -f "$dir/depth_correction.yaml" ]] && echo "$NAME/depth_correction.yaml" )"
 session: "${session:-}"
 record_exit: $rc
 git_rev: $(git rev-parse HEAD)
@@ -501,13 +522,34 @@ print("tier check: " + ("PASS" if not problems else "FAIL -- " + "; ".join(probl
 EOF
 }
 
+# One key of a notes.yaml, or nothing.
+note_field() {
+  python3 -c "import sys, yaml; v = yaml.safe_load(open(sys.argv[1])).get(sys.argv[2]); print(v if v else '')" "$1" "$2"
+}
+
+# Makes $1 the CURRENT config/ with one scene's own calibration put in: $2 an
+# extrinsics file and $3 a depth-correction file, both relative to the day
+# directory; an empty one leaves config's own in place.
+scene_config() {
+  local dst="$1" ex="$2" dc="$3"
+  mkdir -p "$dst" && cp -r config/. "$dst/"
+  if [[ -n "$ex" ]]; then
+    [[ -f "$DAYDIR/$ex" ]] || die "$DAYDIR/$ex is named in a notes.yaml and does not exist"
+    cp "$DAYDIR/$ex" "$dst/extrinsics.yaml"
+  fi
+  if [[ -n "$dc" ]]; then
+    [[ -f "$DAYDIR/$dc" ]] || die "$DAYDIR/$dc is named in a notes.yaml and does not exist"
+    cp "$DAYDIR/$dc" "$dst/depth_correction.yaml"
+  fi
+}
+
 cmd_process() {
   need_bins "$RUN" "$GT" "$VIS" "$ABL"
   [[ -d "$DAYDIR" ]] || die "no $DAYDIR"
   local summary=()
   for n in "$DAYDIR"/*/notes.yaml; do
     [[ -e "$n" ]] || continue
-    local sdir name out session
+    local sdir name out session ex_rec ex_gt dc
     sdir=$(dirname "$n"); name=$(basename "$sdir"); out="$RUNDIR/$name"
     session=$(readlink -f "$sdir/session" || true)
     say "== process $name =="
@@ -515,32 +557,41 @@ cmd_process() {
       summary+=("$name: NO SESSION"); echo "no recorded session -- skipped"; continue
     fi
     mkdir -p "$out"
+    ex_rec=$(note_field "$n" extrinsics_recording); ex_gt=$(note_field "$n" extrinsics_stills)
+    dc=$(note_field "$n" depth_correction)
+    scene_config "$out/config_recording" "$ex_rec" "$dc"
+    scene_config "$out/config_stills" "$ex_gt" "$dc"
+    echo "calibration: recording on ${ex_rec:-config/extrinsics.yaml}, stills on ${ex_gt:-config/extrinsics.yaml}, depth ${dc:-config/depth_correction.yaml}" |
+      tee "$out/calibration_used.txt"
     if [[ -f "$out/metrics.sqlite" && $FORCE -eq 0 ]]; then
-      echo "replay: $out/metrics.sqlite exists, reusing (--force to replay again)"
+      echo "replay: $out/metrics.sqlite exists, reusing (--force adds a new run to it)"
     else
-      rm -f "$out/metrics.sqlite"
       # shellcheck disable=SC2086
-      "$RUN" replay "$session" --pose foundationpose --db "$out/metrics.sqlite" \
-        --print-every 50 $REPLAY_ARGS > "$out/replay.log" 2>&1 ||
+      "$RUN" replay "$session" --pose foundationpose --config-dir "$out/config_recording" \
+        --repo-root "$REPO" --db "$out/metrics.sqlite" --print-every 50 $REPLAY_ARGS \
+        > "$out/replay.log" 2>&1 ||
         { tail -15 "$out/replay.log"; summary+=("$name: REPLAY FAILED"); continue; }
-      grep -E "^=== latency|^pose_agent|^metrics: .* \(ok\)" "$out/replay.log" || true
+      grep -E "^=== latency|^metrics: .* \(ok\)" "$out/replay.log" || true
     fi
-    if ! "$GT" "$sdir/gt_stills" "$out/metrics.sqlite" --stills > "$out/gt.log" 2>&1; then
+    if ! "$GT" "$sdir/gt_stills" "$out/metrics.sqlite" --stills --config "$out/config_stills" \
+         > "$out/gt.log" 2>&1; then
       tail -15 "$out/gt.log"; summary+=("$name: GROUND TRUTH REFUSED (see $out/gt.log)"); continue
     fi
     grep -E "cross-camera|REFUSED|rejected" "$out/gt.log" || true
-    "$VIS" "$session" "$out/metrics.sqlite" --csv "$out/visibility.csv" \
-      --overlay "$out/visibility_overlay" > "$out/visibility.log" 2>&1 ||
+    "$VIS" "$session" "$out/metrics.sqlite" --config-dir "$out/config_recording" --repo-root "$REPO" \
+      --csv "$out/visibility.csv" --overlay "$out/visibility_overlay" > "$out/visibility.log" 2>&1 ||
       { tail -10 "$out/visibility.log"; summary+=("$name: VISIBILITY FAILED"); continue; }
     sed -n '/^view \/ object/,/^$/p;/^WARNING/,$p' "$out/visibility.log"
     local tc; tc=$(tier_check "$n" "$out/visibility.csv"); echo "$tc"
-    "$ABL" "$out/metrics.sqlite" > "$out/ablation.log" 2>&1 || true
+    "$ABL" "$out/metrics.sqlite" --config-dir "$out/config_recording" --repo-root "$REPO" \
+      > "$out/ablation.log" 2>&1 || true
+    sed -n '3,13p' "$out/ablation.log"
     summary+=("$name: $(sed -n 's/^tier: //p' "$n") $tc")
   done
   say "== summary $DAY =="
   printf '%s\n' "${summary[@]}"
   echo
-  echo "Per scene: $RUNDIR/<scene>/{gt,visibility,ablation}.log and visibility_overlay/."
+  echo "Per scene: $RUNDIR/<scene>/{gt,visibility,ablation}.log, calibration_used.txt and visibility_overlay/."
   echo "A FAILED tier check means the scene is not the tier it was declared as. Reshoot it"
   echo "while the rig is still set up, or re-declare it -- never report it under the old tier."
 }

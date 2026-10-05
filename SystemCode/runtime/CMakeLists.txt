@@ -18,6 +18,7 @@ set(RUNTIME_SOURCES
   src/marker_trays.cpp
   src/visibility.cpp
   src/depth_correction.cpp
+  src/brightness.cpp
   src/runtime_config.cpp
   src/backends.cpp
   src/fixed_box_detector.cpp
@@ -89,6 +90,7 @@ if(THE_EYES_BUILD_TESTS)
     test/test_marker_trays.cpp
     test/test_visibility.cpp
     test/test_depth_correction.cpp
+    test/test_brightness.cpp
     test/test_gt_chain.cpp
     test/test_console_panels.cpp)
   # Links calibration so the ground-truth chain can be tested end to end

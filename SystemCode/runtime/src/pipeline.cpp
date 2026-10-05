@@ -80,6 +80,12 @@ PipelineResult Pipeline::Process(const FramePair& pair) {
       continue;
     }
 
+    // The colour image the networks see. `frame.rgb` itself is left alone: the
+    // same buffer may be on its way to the recorder.
+    const double gain = BrightnessGain(frame.rgb, brightness_);
+    const cv::Mat rgb_normalised = Brighten(frame.rgb, gain);
+    r.brightness_gain[view] = gain;
+
     DetectionSet dets;
     {
       double ms = 0.0;
@@ -87,6 +93,7 @@ PipelineResult Pipeline::Process(const FramePair& pair) {
         ScopedTimer t(&ms);
         try {
           detector::DetectorInput in = ToDetectorInput(frame);
+          in.rgb = rgb_normalised;
           in.depth_scale_m *= depth_correction_.For(view);
           dets = detector_.detector->Detect(in);
         } catch (const std::exception& e) {
@@ -115,6 +122,7 @@ PipelineResult Pipeline::Process(const FramePair& pair) {
         ScopedTimer t(&ms);
         try {
           pose::Frame pf = ToPoseFrame(frame);
+          if (brightness_.apply_to_pose) pf.rgb = rgb_normalised;
           pf.depth_scale_m *= depth_correction_.For(view);
           est = agent.Process(dets, pf);
         } catch (const std::exception& e) {

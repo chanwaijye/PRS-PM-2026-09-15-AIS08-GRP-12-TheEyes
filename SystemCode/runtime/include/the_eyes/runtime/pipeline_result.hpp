@@ -34,6 +34,9 @@ struct PipelineResult {
   uint64_t frames_dropped_since_last = 0;
   // camera_id -> (stamp_ns, frame_number) of the frame actually processed
   std::map<std::string, std::pair<uint64_t, uint64_t>> view_stamps;
+  // camera_id -> gain the brightness normalisation applied to this frame
+  // (1.0 when it is off, or when the frame was already bright enough)
+  std::map<std::string, double> brightness_gain;
   std::map<std::string, DetectionSet> detections;
   std::map<std::string, std::vector<PoseEstimate>> estimates;
   SceneState scene;                 // after static injection and Annotate

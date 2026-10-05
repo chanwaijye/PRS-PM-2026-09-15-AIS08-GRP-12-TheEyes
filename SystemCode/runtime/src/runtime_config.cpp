@@ -81,6 +81,18 @@ RuntimeConfig LoadRuntimeConfig(const std::string& yaml_path) {
   cfg.output.captures_dir = RequireString(out, "output", "captures_dir");
   cfg.output.runs_dir = RequireString(out, "output", "runs_dir");
   cfg.output.print_every = RequireInRange<int>(out, "output", "print_every", 1, 100000);
+
+  if (root["brightness"]) {
+    const YAML::Node b = root["brightness"];
+    if (!b.IsMap() || !b["enabled"] || !b["apply_to_pose"]) {
+      throw std::runtime_error("runtime.yaml: 'brightness' needs enabled, target_mean, max_gain "
+                               "and apply_to_pose");
+    }
+    cfg.brightness.enabled = b["enabled"].as<bool>();
+    cfg.brightness.target_mean = RequireInRange<double>(b, "brightness", "target_mean", 1.0, 254.0);
+    cfg.brightness.max_gain = RequireInRange<double>(b, "brightness", "max_gain", 1.0, 16.0);
+    cfg.brightness.apply_to_pose = b["apply_to_pose"].as<bool>();
+  }
   return cfg;
 }
 

@@ -56,3 +56,23 @@ output:
   # One status line to stdout every N processed pairs. The PDDL block is
   # printed only when the fact set changes, so this is the only steady output.
   print_every: 30
+
+# Brightness normalisation of the colour image ahead of the detector
+# (runtime/brightness.hpp). A FLOOR, not a target: a frame whose mean luma is
+# below `target_mean` is scaled up to it, by at most `max_gain`; a brighter
+# frame is left exactly as it is.
+#
+# 45 is just under the darkest view of the 2026-10-05 scored cube set (cam_over,
+# mean luma 45.6-60.5 over the six scenes), so that set is untouched by it, and
+# it is above the 37 at which cam_over lost the bottle. Measured on 60 pairs per scene: at 45 the night
+# bottle goes from 0/60 to 60/60 in cam_over (score 0.90) and no cube scene
+# changes; at 60 and above the cube in cam_over is LOST (t1_cube_b 60/60 ->
+# 53/60 at 60, 2/60 at 100) -- brighter is not better for this detector.
+#
+# apply_to_pose is false on measurement too: giving FoundationPose the
+# brightened frame moved the night bottle from 3.21 to 3.26 mm, i.e. nothing.
+brightness:
+  enabled: true
+  target_mean: 45
+  max_gain: 4.0
+  apply_to_pose: false

@@ -16,6 +16,7 @@
 #include "the_eyes/fusion/fusion.hpp"
 #include "the_eyes/pose/pose_agent.hpp"
 #include "the_eyes/runtime/backends.hpp"
+#include "the_eyes/runtime/brightness.hpp"
 #include "the_eyes/runtime/depth_correction.hpp"
 #include "the_eyes/runtime/frame_pair.hpp"
 #include "the_eyes/runtime/pipeline_result.hpp"
@@ -45,6 +46,11 @@ class Pipeline {
   void set_depth_correction(DepthCorrection c) { depth_correction_ = std::move(c); }
   const DepthCorrection& depth_correction() const { return depth_correction_; }
 
+  // Brightness normalisation of the colour image handed to the detector, and
+  // to the pose estimator when apply_to_pose is set. Off until set.
+  void set_brightness(BrightnessConfig c) { brightness_ = c; }
+  const BrightnessConfig& brightness() const { return brightness_; }
+
   // Cumulative per-stage latency: "detect:<cam>", "pose:<cam>", "fusion",
   // "scenegraph", "total".
   const std::map<std::string, pose::LatencyStats>& latency() const { return latency_; }
@@ -64,6 +70,7 @@ class Pipeline {
   std::map<std::string, pose::LatencyStats> latency_;
   size_t detector_warnings_seen_ = 0;
   DepthCorrection depth_correction_;
+  BrightnessConfig brightness_;
 };
 
 }  // namespace the_eyes::runtime

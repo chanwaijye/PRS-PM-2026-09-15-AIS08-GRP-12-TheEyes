@@ -1,6 +1,10 @@
 // Re-runs the occlusion ablation from a metrics log.
 //
-//   ablation_from_log <metrics.sqlite> [--run N] [--config-dir DIR]
+//   ablation_from_log <metrics.sqlite> [--run N] [--config-dir DIR] [--repo-root DIR]
+//
+// --repo-root is where relative mesh paths resolve (default: the parent of the
+// config directory). It matters when the config directory is a per-scene copy
+// that does not sit beside assets/.
 //
 // Reads the per-view PoseEstimates the runner logged (`estimates`) and the
 // `ground_truth` rows for the same run, rebuilds fusion::AblationFrames and
@@ -53,16 +57,19 @@ fusion::ModelPoints LoadObjVertices(const std::string& path, size_t max_points) 
 
 int main(int argc, char** argv) {
   if (argc < 2) {
-    std::cerr << "usage: ablation_from_log <metrics.sqlite> [--run N] [--config-dir DIR]\n";
+    std::cerr << "usage: ablation_from_log <metrics.sqlite> [--run N] [--config-dir DIR] "
+                 "[--repo-root DIR]\n";
     return EXIT_FAILURE;
   }
   const std::string db = argv[1];
   int64_t run_id = -1;
   std::string config_dir = "config";
+  std::string repo_root_arg;
   for (int i = 2; i < argc; ++i) {
     const std::string a = argv[i];
     if (a == "--run" && i + 1 < argc) run_id = std::stoll(argv[++i]);
     else if (a == "--config-dir" && i + 1 < argc) config_dir = argv[++i];
+    else if (a == "--repo-root" && i + 1 < argc) repo_root_arg = argv[++i];
     else {
       std::cerr << "ablation_from_log: unknown argument " << a << "\n";
       return EXIT_FAILURE;
@@ -89,7 +96,9 @@ int main(int argc, char** argv) {
       return EXIT_SUCCESS;
     }
 
-    const std::string repo_root = std::filesystem::absolute(config_dir).parent_path().string();
+    const std::string repo_root =
+        repo_root_arg.empty() ? std::filesystem::absolute(config_dir).parent_path().string()
+                              : std::filesystem::absolute(repo_root_arg).string();
     fusion::FusionConfig cfg = fusion::LoadFusionConfig(config_dir + "/fusion.yaml");
     const fusion::ExtrinsicsSet ex = fusion::LoadExtrinsics(config_dir + "/extrinsics.yaml");
     const pose::MeshRegistry meshes = pose::LoadMeshRegistry(config_dir + "/meshes.yaml", true, repo_root);

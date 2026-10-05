@@ -95,7 +95,9 @@ the startup report warns that nothing from the run is a detection result.
    PNG for both streams (lossless, bit-exact on replay). A full queue drops and
    counts; capture never blocks.
 3. **Detect** per view (`OnnxDetector` or `MockDetector`). A frame without
-   aligned depth is skipped with a warning, never zero-filled (§2).
+   aligned depth is skipped with a warning, never zero-filled (§2). A dark
+   colour frame is first brightened up to a floor — the detector's copy only;
+   see "Brightness floor" below.
 4. **Pose** per view via one `PoseAgent` per camera sharing one estimator.
 5. **Fuse** both views' estimates in one `Fusion::Process` call.
 6. **Static scene** from `config/scene.yaml` (the table) is injected —
@@ -128,7 +130,9 @@ not bitwise deterministic; use `provider: cpu` for parity work.
 (source, backends, active detector provider with CPU fallback flagged, config
 dir, git revision, per-camera K/serial JSON, startup report), `frames` (one per
 pair: stamps, skew, drops, per-stage ms, fusion diagnostics), `frame_views`
-(per camera per pair: detect/pose ms, counts, pose_agent diagnostics),
+(per camera per pair: detect/pose ms, counts, pose_agent diagnostics, and
+`brightness_gain` — the gain that view's frame was given before the detector;
+NULL in logs written before 2026-10-05, which gain the column on reopening),
 `detections`, `estimates` (full camera-frame `PoseEstimate`: t + unit
 quaternion, score, symmetric, extent, track id), `objects` (`ObjectState`
 after annotation, including sigmas and velocity, `is_static` for injected
@@ -242,6 +246,66 @@ is driven when the person at the keyboard is not the person at the rig;
 a tray that has not been touched; `STILLS_CAMERAS` points the stills at a
 cameras file with a lower colour exposure.
 
+**Each scene is processed on the calibration it was shot on (2026-10-05).** The
+rig was re-registered twice in one session, once between a scene's stills and
+its recording. So `scene` copies `config/extrinsics.yaml` beside the scene at
+the stills and again at the recording, with `config/depth_correction.yaml`, and
+names the three in `notes.yaml`; `process` builds a config directory per scene
+from them (`runs/.../<scene>/config_stills`, `config_recording`), solves ground
+truth on the first and replays, measures visibility and scores on the second,
+and writes which it used to `calibration_used.txt`. `visibility_from_gt` and
+`ablation_from_log` take `--repo-root` for this, as `the_eyes_run` does: a
+config directory outside `config/` still finds the meshes. `process --force`
+adds a run to a scene's log instead of replacing it; the tools read the latest.
+Checked against the six cube scenes, which had been processed by hand with the
+right files: all six ablation tables came out identical.
+
+`scripts/scene_graph_audit.py <day>` reads the same logs for what ADD-S does
+not score: every fused track, whether it is the object that was really there,
+whether it rests on anything, and each view's error along and off its own line
+of sight (`docs/OCTOBER_PLAN.md`, "The objects that are not there").
+
+## Brightness floor (2026-10-05)
+
+The detector was trained on synthetic frames far brighter than the rig
+delivers, and below a frame mean of about 40 a view stops finding an object it
+can plainly see (`brightness.hpp` has the numbers). Camera gain does not fix
+it. The picture is in the recording, though, so the pipeline scales a dark
+frame up before the detector: `brightness:` in `config/runtime.yaml`, by
+`clamp(target_mean / mean luma, 1, max_gain)`, per view and per frame. The
+recording is never touched, and FoundationPose gets the raw frame unless
+`apply_to_pose` is set.
+
+It is a **floor, not a target**, because brighter is not better for this
+detector. Detections of the scene's one object on the first 60 pairs, mock
+pose, by `target_mean` (cam_front / cam_over; each view's mean luma in brackets):
+
+| scene | off | 45 | 60 | 80 | 100 |
+|---|---|---|---|---|---|
+| `t1_bottle`, night (48 / 23) | 59 / **0** | 59 / **60** | 60 / 60 | 60 / 60 | 60 / 60 |
+| `t1_cube` (96 / 61) | 60 / 60 | 60 / 60 | 60 / 60 | 60 / **15** | 60 / 33 |
+| `t1_cube_b` (80 / 49) | 60 / 60 | 60 / 60 | 60 / **53** | 60 / 59 | 60 / **2** |
+| `t3_cube_front`, half hidden from cam_front (73 / 47) | 60 / 51 | 60 / 51 | 60 / **17** | 60 / 11 | 60 / 0 |
+| `dim_t1_cube`, dusk (50 / 29) | 60 / 0 | 60 / 0 | 60 / 1 | 60 / 2 | 59 / 44 |
+
+So the shipped floor is 45: just under the darkest view of the scored cube set
+(cam_over, 45.6–60.5 over the six scenes), which it therefore leaves untouched,
+and above the 37 at which cam_over lost the bottle. With FoundationPose, all 300 pairs:
+
+| scene | cam_over found | cam_front | cam_over | gate + EKF |
+|---|---|---|---|---|
+| `t1_bottle`, floor off | 0 / 300 | 2.85 mm | — | 2.83 mm, 99.7% inside |
+| `t1_bottle`, floor 45 | 300 / 300 | 2.85 mm | 3.21 mm | **2.51 mm, 100%** |
+| `t1_bottle`, floor 45, pose brightened too | 300 / 300 | 2.85 mm | 3.26 mm | 2.56 mm |
+| the six cube scenes, floor 45 | as before | identical | identical | identical |
+
+What it does not do: at dusk (`dim_t1_cube`, cam_over at 29) only a target of
+100 or more brings the cube back, and that target loses it in good light; and
+cam_front at a frame mean of 22 (`dim_t3_bottle_over`) is not recovered at any
+target. Below about 40 the answer is still more light. The gain each view got
+is logged per pair (`frame_views.brightness_gain`) and the setting is in the
+run's startup report.
+
 ## Measured (2026-09-06)
 
 From actual runs on this workstation (RTX 5070 Ti, cameras at 848x480 30 fps,
@@ -307,17 +371,19 @@ it the provider cannot find cuDNN, the session falls back to CPU, and the run
 reports CPU latency while looking entirely healthy — so the path is baked into
 the binary rather than left to `LD_LIBRARY_PATH` at the call site.
 
-## Tests (`test_runtime`, 102, no hardware)
+## Tests (`test_runtime`, 110, no hardware)
 
 | suite | pins |
 |---|---|
 | `FramePairer` | nearest pairing with the −11 ms offset; a gap in one stream drops only unpairable frames and keeps stamps monotonic; late frames are stale; ring overflow counts; stall timeout; grabber failure propagates with the camera name; two jittered producer threads against a slow consumer never emit a pair outside max skew |
 | `RecorderReplay` | 5 random pairs round-trip bit-exact (rgb, depth incl. 0 and 65535, K, scale, serial, stamps, frame numbers); start/limit; refuses to overwrite; rejects a future `format_version`; a full queue drops and counts without blocking and the survivors replay in order |
 | `StaticScene` | the shipped `scene.yaml` injects `table_01` with all view bits and no uncertainty; a cube resting on it reads `(on red_cube_01 table_01)`; bad configs and id collisions throw |
-| `MetricsLog` | every table written; `LoadAblationFrames` reproduces the logged estimates to 1e-12; reopen keeps the schema; a foreign schema version is refused |
+| `MetricsLog` | every table written; `LoadAblationFrames` reproduces the logged estimates to 1e-12; reopen keeps the schema; a foreign schema version is refused; the brightness gain is logged per view, and a log from before that column gains it, keeps its rows and still rebuilds |
 | `RuntimeConfig`, `Backends`, `StartupChecks` | strict loaders; factories; missing model names the export command; a dead pose socket names the server command; the shipped configs cross-reference; a swapped serial / view order / world frame is caught |
 | `ReplayPipeline` | record a synthetic session → fixture detector → identity pose → real extrinsics/fusion/predicates/scene → `Pipeline` → `MetricsLog`, twice: identical facts, right row counts, ablation frames rebuild |
 | `MarkerTrays` | tray config loading and its refusals; Markley averaging and reported scatter; the outlier screen keeps a cluster shaped like the real stills whole, drops a ~120° flip listed first and a card in the wrong recess; ground truth round-trips through the log with pair, instance and source |
+| `PipelineBrightness` | through the real `Pipeline` with a spy detector and a spy estimator: the dark view reaches the detector at the floor and the bright one untouched, the result carries each view's gain, the pose estimator and the caller's frame keep the raw picture; `apply_to_pose` shares it; off changes nothing |
+| `Brightness` | luma weights on RGB order; the gain reaches the target, never darkens, stops at the cap, and is 1 when off; brightening saturates and never touches the caller's pixels; the config section is optional, strict when present |
 | `Visibility` | a face-on cube projects to exactly 45 × 45 px at the right depth; a tilted cube's depth matches an independent ray cast to 1e-6 m; occluder, tolerance, missing depth (unknown, not hidden), `behind`, erosion; OBJ face spellings, relative indices and refusals; the shipped meshes load and render |
 
 ## Design choices, stated once

@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <string>
 
+#include "the_eyes/runtime/brightness.hpp"
+
 namespace the_eyes::runtime {
 
 struct DetectorBackendConfig {
@@ -43,9 +45,12 @@ struct RuntimeConfig {
   LiveConfig live;
   RecorderTuning recorder;
   OutputConfig output;
+  BrightnessConfig brightness;  // disabled when the file has no `brightness:` section
 };
 
-// Strict: every section and key must be present and in range.
+// Strict: every section and key must be present and in range. The one
+// exception is `brightness`, which may be absent -- configs written before it
+// existed must still load, and mean "off" -- but is strict once it is there.
 RuntimeConfig LoadRuntimeConfig(const std::string& yaml_path);
 
 struct PoseBackendConfig {

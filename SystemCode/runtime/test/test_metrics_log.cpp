@@ -31,6 +31,21 @@ int64_t Count(const std::string& db_path, const std::string& table) {
   return n;
 }
 
+// frame_views.brightness_gain for one camera of one pair; -1 where it is NULL.
+double GainOf(const std::string& db_path, const std::string& camera_id, int64_t pair_index) {
+  sqlite3* db = nullptr;
+  EXPECT_EQ(sqlite3_open(db_path.c_str(), &db), SQLITE_OK);
+  sqlite3_stmt* stmt = nullptr;
+  const std::string sql = "SELECT brightness_gain FROM frame_views WHERE camera_id = '" +
+                          camera_id + "' AND pair_index = " + std::to_string(pair_index);
+  EXPECT_EQ(sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr), SQLITE_OK);
+  EXPECT_EQ(sqlite3_step(stmt), SQLITE_ROW);
+  const double g = sqlite3_column_type(stmt, 0) == SQLITE_NULL ? -1.0 : sqlite3_column_double(stmt, 0);
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+  return g;
+}
+
 Eigen::Isometry3d Pose(double x, double y, double z, double yaw_deg) {
   Eigen::Isometry3d p = Eigen::Isometry3d::Identity();
   p.linear() = (Eigen::AngleAxisd(yaw_deg * 3.14159265358979323846 / 180.0, Eigen::Vector3d::UnitZ()) *
@@ -48,6 +63,8 @@ PipelineResult Result(uint64_t pair_index) {
   r.frames_dropped_since_last = 1;
   r.view_stamps["cam_front"] = {r.stamp_ns, 100 + pair_index};
   r.view_stamps["cam_over"] = {r.stamp_ns - 11'000'000ULL, 200 + pair_index};
+  // The night bottle of 2026-10-05: cam_front bright enough, cam_over at 23.
+  r.brightness_gain = {{"cam_front", 1.0}, {"cam_over", 45.0 / 23.0}};
 
   DetectionSet front;
   front.camera_id = "cam_front";
@@ -145,6 +162,9 @@ TEST(MetricsLog, WritesEveryTableAndReadsBackEstimatesExactly) {
   EXPECT_EQ(Count(db, "warnings"), 2);
   EXPECT_EQ(Count(db, "ground_truth"), 0);
   EXPECT_EQ(LatestRunId(db), run_id);
+  // What the detector was shown is part of the record, per view and per pair.
+  EXPECT_DOUBLE_EQ(GainOf(db, "cam_front", 1), 1.0);
+  EXPECT_DOUBLE_EQ(GainOf(db, "cam_over", 1), 45.0 / 23.0);
 
   const std::vector<fusion::AblationFrame> frames = LoadAblationFrames(db, run_id);
   ASSERT_EQ(frames.size(), 2u);
@@ -180,6 +200,50 @@ TEST(MetricsLog, WritesEveryTableAndReadsBackEstimatesExactly) {
   EXPECT_EQ(Count(db, "schema_version"), 1);
   EXPECT_EQ(Count(db, "runs"), 2);
   EXPECT_EQ(Count(db, "frames"), 2);
+}
+
+TEST(MetricsLog, ALogFromBeforeTheGainColumnGainsItAndKeepsItsRows) {
+  // The scored logs of 2026-10-05 were written before frame_views recorded the
+  // brightness gain. Reprocessing adds a run to the same file, so it has to
+  // open: the old rows read NULL ("not recorded"), the new ones carry the gain.
+  const std::string db = TempDb();
+  int64_t first = -1;
+  {
+    MetricsLog log(db);
+    RunInfo info;
+    info.source = "replay";
+    info.detector_backend = "mock:fixture";
+    info.pose_backend = "mock:identity";
+    info.config_dir = "config";
+    first = log.BeginRun(info);
+    log.WriteFrame(first, Result(0));
+    log.EndRun(first, "ok", 1);
+  }
+  sqlite3* raw = nullptr;
+  ASSERT_EQ(sqlite3_open(db.c_str(), &raw), SQLITE_OK);
+  ASSERT_EQ(sqlite3_exec(raw, "ALTER TABLE frame_views DROP COLUMN brightness_gain", nullptr,
+                         nullptr, nullptr),
+            SQLITE_OK)
+      << sqlite3_errmsg(raw);
+  sqlite3_close(raw);
+
+  {
+    MetricsLog log(db);
+    RunInfo info;
+    info.source = "replay";
+    info.detector_backend = "mock:fixture";
+    info.pose_backend = "mock:identity";
+    info.config_dir = "config";
+    const int64_t second = log.BeginRun(info);
+    EXPECT_EQ(second, first + 1);
+    log.WriteFrame(second, Result(1));
+    log.EndRun(second, "ok", 1);
+  }
+  EXPECT_EQ(Count(db, "frame_views"), 4);
+  EXPECT_DOUBLE_EQ(GainOf(db, "cam_over", 0), -1.0) << "written before the column: not recorded";
+  EXPECT_DOUBLE_EQ(GainOf(db, "cam_over", 1), 45.0 / 23.0);
+  // The older run still rebuilds for the ablation harness.
+  EXPECT_EQ(LoadAblationFrames(db, first).size(), 1u);
 }
 
 TEST(MetricsLog, RejectsAForeignSchemaVersion) {

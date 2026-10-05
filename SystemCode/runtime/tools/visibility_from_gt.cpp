@@ -16,6 +16,8 @@
 //
 //     --run N         run_id (default: the newest in the database)
 //     --config-dir D  config directory (default: ./config)
+//     --repo-root D   where relative mesh paths resolve (default: the parent
+//                     of the config directory)
 //     --tol-mm T      depth agreement tolerance (default 40). MEASURED on the
 //                     first real scene (2026-10-04, nothing occluding the
 //                     bowl): cam_front's depth inside the bowl reads 2-3 cm
@@ -68,6 +70,7 @@ struct Options {
   std::string session;
   std::string db;
   std::string config = "config";
+  std::string repo_root;
   int64_t run_id = -1;
   double tol_mm = 40.0;
   int erode_px = 2;
@@ -78,7 +81,8 @@ struct Options {
 
 int Usage() {
   std::cerr << "usage: visibility_from_gt <session_dir> <metrics.sqlite> [--run N]\n"
-               "         [--config-dir DIR] [--tol-mm T] [--erode-px E] [--max-pairs N]\n"
+               "         [--config-dir DIR] [--repo-root DIR] [--tol-mm T] [--erode-px E]\n"
+               "         [--max-pairs N]\n"
                "         [--csv FILE] [--overlay DIR]\n";
   return 2;
 }
@@ -129,6 +133,7 @@ int main(int argc, char** argv) {
     try {
       if (a == "--run") o.run_id = std::stoll(next());
       else if (a == "--config-dir") o.config = next();
+      else if (a == "--repo-root") o.repo_root = next();
       else if (a == "--tol-mm") o.tol_mm = std::stod(next());
       else if (a == "--erode-px") o.erode_px = std::stoi(next());
       else if (a == "--max-pairs") o.max_pairs = std::stoull(next());
@@ -146,7 +151,9 @@ int main(int argc, char** argv) {
   o.db = pos[1];
 
   try {
-    const std::string repo_root = fs::absolute(o.config).parent_path().string();
+    const std::string repo_root = o.repo_root.empty()
+                                      ? fs::absolute(o.config).parent_path().string()
+                                      : fs::absolute(o.repo_root).string();
     const fusion::ExtrinsicsSet ex = fusion::LoadExtrinsics(o.config + "/extrinsics.yaml");
     const pose::MeshRegistry meshes =
         pose::LoadMeshRegistry(o.config + "/meshes.yaml", true, repo_root);

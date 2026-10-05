@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS frame_views(
   detect_ms REAL, pose_ms REAL, n_detections INTEGER, n_estimates INTEGER,
   dropped_no_mesh INTEGER, dropped_roi_too_small INTEGER,
   dropped_low_score INTEGER, declined_by_estimator INTEGER,
+  brightness_gain REAL,
   PRIMARY KEY(run_id, pair_index, camera_id));
 CREATE TABLE IF NOT EXISTS detections(
   run_id INTEGER NOT NULL, pair_index INTEGER NOT NULL, camera_id TEXT NOT NULL,
@@ -178,6 +179,14 @@ sqlite3* Open(const std::string& path, bool create) {
   return db;
 }
 
+bool HasColumn(sqlite3* db, const char* table, const std::string& column) {
+  Stmt q(db, (std::string("PRAGMA table_info(") + table + ")").c_str());
+  while (q.Row()) {
+    if (q.Str(1) == column) return true;
+  }
+  return false;
+}
+
 Eigen::Isometry3d PoseFrom(const Stmt& s, int first_col) {
   Eigen::Isometry3d p = Eigen::Isometry3d::Identity();
   p.translation() = Eigen::Vector3d(s.Dbl(first_col), s.Dbl(first_col + 1), s.Dbl(first_col + 2));
@@ -205,6 +214,13 @@ MetricsLog::MetricsLog(const std::string& db_path) : path_(db_path), impl_(std::
   Exec(db, "PRAGMA synchronous=NORMAL;");
   Exec(db, "PRAGMA foreign_keys=ON;");
   Exec(db, kSchema);
+  // frame_views.brightness_gain was added on 2026-10-05, after the first scored
+  // logs were written. It is one nullable column, so a log from before it gets
+  // the column rather than a refusal: NULL there reads as "not recorded", and
+  // no reader of the older columns is affected. Not a schema version bump.
+  if (!HasColumn(db, "frame_views", "brightness_gain")) {
+    Exec(db, "ALTER TABLE frame_views ADD COLUMN brightness_gain REAL;");
+  }
 
   {
     Stmt v(db, "SELECT version FROM schema_version LIMIT 1");
@@ -233,7 +249,8 @@ MetricsLog::MetricsLog(const std::string& db_path) : path_(db_path), impl_(std::
   impl_->frame_view = Stmt(db,
       "INSERT INTO frame_views(run_id, pair_index, camera_id, stamp_ns, frame_number, detect_ms, "
       "pose_ms, n_detections, n_estimates, dropped_no_mesh, dropped_roi_too_small, "
-      "dropped_low_score, declined_by_estimator) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+      "dropped_low_score, declined_by_estimator, brightness_gain) "
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
   impl_->detection = Stmt(db,
       "INSERT INTO detections(run_id, pair_index, camera_id, stamp_ns, cls, score, track_id, "
       "x, y, w, h) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
@@ -303,8 +320,14 @@ void MetricsLog::WriteFrame(int64_t run_id, const PipelineResult& r) {
           .Bind(static_cast<int64_t>(det != r.detections.end() ? det->second.detections.size() : 0))
           .Bind(static_cast<int64_t>(est != r.estimates.end() ? est->second.size() : 0))
           .Bind(d.dropped_no_mesh).Bind(d.dropped_roi_too_small)
-          .Bind(d.dropped_low_score).Bind(d.declined_by_estimator)
-          .Run();
+          .Bind(d.dropped_low_score).Bind(d.declined_by_estimator);
+      const auto gain = r.brightness_gain.find(camera_id);
+      if (gain != r.brightness_gain.end()) {
+        s.frame_view.Bind(gain->second);
+      } else {
+        s.frame_view.BindNull();
+      }
+      s.frame_view.Run();
     }
 
     for (const auto& [camera_id, set] : r.detections) {
