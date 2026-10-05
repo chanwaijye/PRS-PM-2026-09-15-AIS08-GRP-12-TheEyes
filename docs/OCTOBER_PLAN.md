@@ -113,9 +113,11 @@ Read with the session's conditions, all recorded in each scene's `notes.yaml`:
   registration; `t4_cube_over` and `t3_cube_over` have stills from before the
   move and recordings from after, so their ground truth is solved on 17:27 and
   their recordings lifted with 18:32; the rest are on 18:32. The closing
-  registration at 18:44 was 0.16 mm from 18:32. `runs/.../extrinsics_used.txt`
-  says which was used where; `capture_day.sh process` cannot do this yet and
-  the helper that did is saved beside the results.
+  registration at 18:44 was 0.16 mm from 18:32. Each scene now carries the
+  calibration it was shot on (`extrinsics_at_stills.yaml`,
+  `extrinsics_at_recording.yaml`, `depth_correction.yaml`, named in its
+  `notes.yaml`) and `capture_day.sh process` uses them; reprocessing all six
+  that way, with the brightness floor on, reproduced the table above exactly.
 - **The light changed over the session**, from room light plus fading daylight
   to room light alone. Arms are compared within a scene, where it is constant.
 - **The monitor was blanked** for every still and recording.
@@ -125,9 +127,8 @@ Read with the session's conditions, all recorded in each scene's `notes.yaml`:
 - The tray is detected as a `bowl` on every pair of every scene, so every scene
   graph carries a false `(on red_cube_01 bowl_01)` (finding 3).
 - In both half-hidden scenes the pipeline's own output holds a **second cube
-  track** for most of the run: the hidden view's estimate is far enough from
-  the good one to be taken for another object. ADD-S does not see it; predicate
-  accuracy will. Not yet examined.
+  track** for most of the run. ADD-S does not see it; predicate accuracy will.
+  Examined below — two different causes.
 - A cube is one object and a symmetric one; the naive baseline's 22 mm is the
   symmetry, not occlusion.
 
@@ -138,7 +139,48 @@ Raising the colour gain from 64 to 96 or 128 under the room light washes the
 picture out and loses the cube in both views. So: gain stays at 64, and a
 session should not start until cam_over's frame mean is above about 40.
 
-## The bottle, attempted the same night — NOT scored
+### The objects that are not there (examined 5 Oct, nothing changed yet)
+
+The scene graph of every scored scene holds more than the one object on the
+table. Per cause, from the `objects`, `detections` and `estimates` tables
+(`scripts/scene_graph_audit.py 20261005` prints the tracks, their support and
+each view's range error):
+
+- **A half-hidden view puts the object at the occluder's range**
+  (`t3_cube_over`, 300 of 300 pairs). cam_over detects the visible half of the
+  cube (score 0.56) and FoundationPose places it 171 mm from the truth: 170 mm
+  nearer the camera along its own line of sight, 15 mm off that line. The
+  visible half lies in the stereo shadow beside the card, so only 30% of the
+  detection box has depth at all and it reads 496 mm where the cube's centre is
+  685 mm deep — the card's depth, not the cube's. 171 mm is past the 150 mm
+  association radius, so the estimate becomes its own cluster and its own
+  track. **Its pose score is 0.86 against 0.64 for cam_front's correct one**: had
+  it landed inside the radius, the gate would have kept the wrong view. That is
+  the 2026-09-05 review's point that the pose scores do not rank the views,
+  with a number on it.
+- **The detector reads the card's red print as a cube** (`t3_cube_front`, 255 of
+  300 pairs, score 0.36), and FoundationPose fits a cube to the card's surface
+  there with score 0.90: a cube 178 mm from the real one and 114 mm above the
+  table. cam_front's estimate of the real, half-hidden cube is fine (4.5 mm).
+  A higher detector threshold would not separate them — the real cube scores
+  0.43 in cam_over in the same scene.
+- **Stray low-score detections** (0.26–0.36) at the image edge: 74 pairs in
+  `t3_cube_over`, single pairs elsewhere, placed below the table or 1.3 m away.
+- **The tray as a `bowl`** on every pair (finding 3), 18–62 mm *below* the table.
+
+Counted over the six cube scenes and `t1_bottle`: the real object is in the
+scene graph on 2,100 object-pairs and something that is not there on 2,771.
+**All 2,100 real ones rest on something (`on` the table); 1 of the 2,771 others
+does.** They float, or sit under the table. So the cheap fix is in the
+scene-graph bridge, not the detector: an object that rests on nothing is not
+reported as an object. That changes what the scene-graph bridge reports and is
+not made yet; it needs deciding, and checking on the clutter scenes, which were
+not part of the count that suggested it.
+
+What is done about it before then: **the card gets a plain, non-red face**
+(and its wooden stand wrapped) for every scene still to shoot.
+
+## The bottle, attempted the same night — one scene now usable
 
 After the cube set the tripods were knocked (recalibrated at 19:11) and the
 daylight went. Under the room light alone:
@@ -155,13 +197,37 @@ daylight went. Under the room light alone:
   had dimmed to 22 / 10, and there even ×6 finds the fully visible bottle on
   only 41/45 pairs at 0.48. The light was not stable enough to go on.
 
-So: the bottle and clutter scenes are shot in the cube set's window, about
-17:15–18:30, room light plus daylight, and a brightness normalisation goes into
-the pipeline first.
+**The brightness floor is in the pipeline** (`brightness:` in
+`config/runtime.yaml`; `SystemCode/runtime/README.md`, "Brightness floor"): a
+frame whose mean is under 45 is scaled up to it for the detector only, the
+recording untouched. It is a floor because brighter loses the cube — at a
+target of 60 cam_over drops it on 7 of 60 pairs, at 100 on 58. Reprocessed
+with it, 300 pairs each:
+
+| scene | cam_front | cam_over | gate + EKF |
+|---|---|---|---|
+| `t1_bottle` (cam_over brightened ×1.9) | 2.85 mm · 99.7% | 3.21 mm · 100% | **2.51 mm · 100%** |
+| `t1_bottle` with the floor off | 2.85 mm · 99.7% | found on 0/300 | 2.83 mm · 99.7% |
+| the six cube scenes | unchanged | unchanged | unchanged — no frame is under 45 |
+
+So `t1_bottle` stands as the bottle's unoccluded scene (ground truth 0.7 mm
+across cameras, tier check passed, inside 19.6 mm on every pair), with it said
+beside the number that cam_over's frames were brightened for the detector. The
+floor does not rescue the two darker attempts: `dim_t3_bottle_over` (cam_front
+at 22) still finds nothing in cam_front, and `dim_t1_cube` (cam_over at 29)
+nothing in cam_over. Those stay set aside.
+
+So: the remaining bottle and clutter scenes are shot in the cube set's window,
+about 17:15–18:30, room light plus daylight.
 
 ## Next evening — bottle and clutter, ~1 h 15
 
-- [ ] `t1_bottle`, `t3_bottle_over` (a card tall enough for a 191 mm bottle)
+- [ ] Before anything: cover the card's printed face with plain paper that is
+      not red, and wrap its stand (the red print is detected as a cube)
+- [ ] Board check; recalibrate if the tripods have moved since 19:11 on 5 Oct
+- [x] `t1_bottle` — shot 5 Oct, usable with the brightness floor
+- [ ] `t1_bottle_b` (second placement), `t3_bottle_over`, `t4_bottle_over` (a card
+      tall enough for a 191 mm bottle)
 - [ ] `t2_clutter_a/b/c`: all three trays (460 × 370 mm shared view: bowl + cube
       side by side, 380 × 210 mm, bottle tray 216 × 100 mm in front) plus the
       eight distractors, rearranged each time

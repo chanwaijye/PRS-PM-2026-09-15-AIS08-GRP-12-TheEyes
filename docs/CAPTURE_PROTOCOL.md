@@ -644,7 +644,11 @@ fixed occlusion for 300 pairs; a hand does not, and T3's "partially occluded"
 band is meaningless if the fraction drifts while recording. Give the card a
 colour that is none of the three class colours and none of the distractor
 neutrals, so it can never be mistaken for a target and can be segmented later if
-a visible-fraction figure is ever wanted.
+a visible-fraction figure is ever wanted. **Its print counts as its colour
+(2026-10-05):** the card used for the cube set had small red marks printed on
+it, and in `t3_cube_front` the detector read them as a `red_cube` on 255 of 300
+pairs, to which the pose estimator gave a cube on the card's surface
+(`OCTOBER_PLAN.md`). A plain face, and the stand wrapped.
 
 Occlude **cam_over** by preference — it is the view whose loss the fusion claim
 is about — but only once prerequisite §3.1 is satisfied and cam_over is
@@ -667,7 +671,9 @@ startup checks, re-registration and an empty-table recording; `scene` shoots
 the ground-truth stills, checks every tray decodes and agrees *before*
 recording, records with `--record-only` and writes the run notes; `end`
 re-registers into a scratch file to show the rig held; `process` does step 8
-plus visibility, and checks each scene against its declared tier. One change
+plus visibility, on the calibration each scene was shot on (`scene` saves the
+extrinsics at the stills and at the recording, and the depth correction, beside
+the scene), and checks each scene against its declared tier. One change
 from the steps below, which predate §3.1b: ground truth comes from **1920×1080
 stills** shot with the occluder out of view, not from 30 opening pairs at
 848×480 — the 18 mm trap in §3.1b rules the pairs out.
