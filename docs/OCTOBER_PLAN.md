@@ -51,10 +51,11 @@ rehearsal (daylight, TV on — **none of it is a scored result**):
 
 ---
 
-## What is left to capture — about 3 to 3.5 hours at the rig
+## What is left to capture — about 2.5 hours at the rig
 
-No scored scene exists yet. The cube scenes planned for the night of Sun 4 Oct
-were **aborted at 22:00: the room lighting failed.**
+The cube set is done (below). The cube scenes were first planned for the night
+of Sun 4 Oct and **aborted at 22:00 when the room lighting failed**; they were
+shot on Mon 5 Oct once it came back.
 
 The times below are from the 4 Oct rehearsal's pace, not from a guess: driven
 from the keyboard with `capture_day.sh scene --stage stills|record`, a scene
@@ -63,7 +64,7 @@ and the 300-pair recording are about a minute of machine time).
 
 | Capture | Scenes | Time |
 |---|---|---|
-| **Cube set** — alone; hidden and half hidden from each camera | 5 | 35–40 min |
+| ~~**Cube set** — alone; hidden and half hidden from each camera~~ **done 5 Oct** (it took about 75 min, with a USB fault and a re-registration in it) | 6 | — |
 | **Bottle** — alone; half hidden | 2 | 15 min |
 | **Clutter (T2)** — three trays + 8 distractors, ~10 min each to arrange | 3 | 30–35 min |
 | **Training layouts** for the detector, including empty trays (finding 3) | 10–12 | 35–40 min |
@@ -75,9 +76,9 @@ T4 ×2). On top: about an hour of preparation and an hour of slack for reshoots.
 
 **Preparation, before any scored scene:**
 
-- [ ] **Fix the lighting** — the one item with no estimate. If it cannot be
-      fixed, the fallback is Sat 10 Oct in daylight with the curtains drawn,
-      every scored scene in one sitting so the light is the same throughout
+- [x] **Lighting** — the room light works again as of 5 Oct, about 17:23.
+      Daylight alone is NOT a fallback: on 5 Oct it left cam_over blind to the
+      cube (frame mean 28), and a card casts its shadow on the target
 - [ ] Wrap the occluder's wooden stand (it is detected as a cube) — 5 min
 - [ ] Bottle seats flat in its tray; seat height 179.0 mm ±0.3 (`PRINT_PLAN.md` §8.1) — 20–40 min if not done
 - [ ] Eight distractors in the palette neutrals — 15–30 min
@@ -87,34 +88,92 @@ tripods or the two camera cables, and `capture_day.sh begin` first. Afterwards
 `capture_day.sh end`, then copy `captures/` to an external drive — it is
 gitignored and exists only on this machine.
 
-## First working evening (Mon 5 Oct if the lighting is fixed) — the cube set, ~45 min
+## The cube set — SHOT AND SCORED, Mon 5 Oct
 
-After this the main claim has data behind it.
+The first scored data. Six scenes under the room light (which came back on at
+about 17:23), 300 pairs each, none dropped; scenes in `captures/scored/20261005/`,
+results in `runs/scored/20261005/`. ADD-S in mm, with the share of pairs inside
+10% of the cube's diameter (8.7 mm), misses counted against it:
 
-- [ ] `capture_day.sh begin` — re-register, empty-table recording, re-fit `depth_tare`
-- [ ] `t1_cube` — cube alone, tray flat on the bare table
-- [ ] `t4_cube_over`, then `t3_cube_over` (card slid aside; `--stills-from`, tray untouched)
-- [ ] `t4_cube_front`, then `t3_cube_front` — the other camera
-- [ ] `capture_day.sh end`; back up
+| scene | hidden view sees | cam_front | cam_over | naive | gate | gate + EKF |
+|---|---|---|---|---|---|---|
+| `t1_cube` — alone | — | 2.78 · 100% | 3.32 · 100% | 22.34 · 0% | 1.89 · 100% | **1.68 · 100%** |
+| `t1_cube_b` — alone, second placement | — | 3.13 · 100% | 2.74 · 100% | 22.13 · 0% | 1.84 · 100% | **1.70 · 100%** |
+| `t4_cube_over` — hidden from cam_over | 0% | 3.02 · 100% | found on 0/300 | 3.02 · 100% | 3.02 · 100% | **2.97 · 100%** |
+| `t3_cube_over` — half hidden from cam_over | 44%, 5% with depth | 2.34 · 100% | matched on 0/300 | 2.34 · 100% | 2.34 · 100% | **2.26 · 100%** |
+| `t4_cube_front` — hidden from cam_front | 0% | found on 0/300 | 2.04 · 100% | 2.04 · 100% | 2.04 · 100% | **1.88 · 100%** |
+| `t3_cube_front` — half hidden from cam_front | 60%, 59% with depth | 4.55 · 100% | 3.01 · 85% | 22.71 · 15% | 2.32 · 100% | **2.02 · 100%** |
 
-**If only fifteen minutes are available:** `t1_cube` and `t4_cube_over`. Those
-two scenes are the minimum that supports the claim.
+Read with the session's conditions, all recorded in each scene's `notes.yaml`:
 
-## Second evening — bottle and clutter, ~1 h 15
+- **Ground truth agrees across cameras to 0.6 mm** in every scene, and every
+  measured tier matches what was staged.
+- **Two registrations.** cam_front's USB host controller hung at 18:13; the
+  cable was replugged and the camera moved 2.5 px. `t1_cube` is on the 17:27
+  registration; `t4_cube_over` and `t3_cube_over` have stills from before the
+  move and recordings from after, so their ground truth is solved on 17:27 and
+  their recordings lifted with 18:32; the rest are on 18:32. The closing
+  registration at 18:44 was 0.16 mm from 18:32. `runs/.../extrinsics_used.txt`
+  says which was used where; `capture_day.sh process` cannot do this yet and
+  the helper that did is saved beside the results.
+- **The light changed over the session**, from room light plus fading daylight
+  to room light alone. Arms are compared within a scene, where it is constant.
+- **The monitor was blanked** for every still and recording.
+
+**What these six scenes do not show, and must be said with them:**
+
+- The tray is detected as a `bowl` on every pair of every scene, so every scene
+  graph carries a false `(on red_cube_01 bowl_01)` (finding 3).
+- In both half-hidden scenes the pipeline's own output holds a **second cube
+  track** for most of the run: the hidden view's estimate is far enough from
+  the good one to be taken for another object. ADD-S does not see it; predicate
+  accuracy will. Not yet examined.
+- A cube is one object and a symmetric one; the naive baseline's 22 mm is the
+  symmetry, not occlusion.
+
+**Also measured that afternoon, in the dim daylight before the light came on**
+(`dim_t1_cube`, not part of the scored set): at a frame mean of 28, cam_over
+found the unoccluded cube on 0 of 300 pairs; at 85 it found it on 45 of 45.
+Raising the colour gain from 64 to 96 or 128 under the room light washes the
+picture out and loses the cube in both views. So: gain stays at 64, and a
+session should not start until cam_over's frame mean is above about 40.
+
+## The bottle, attempted the same night — NOT scored
+
+After the cube set the tripods were knocked (recalibrated at 19:11) and the
+daylight went. Under the room light alone:
+
+- **19:17, `t1_bottle`** (gain 64, frame mean 48 / 23): cam_front finds the
+  bottle on 299/300 pairs, cam_over on 0.
+- **Camera gain does not fix it.** At 128 cam_over found the bottle on 45/45
+  pairs in one test and 7/300 a minute later, with its frame mean 2 lower.
+- **Brightening the recorded picture does.** The same gain-64 recording,
+  multiplied by 2, 3 or 4 before the detector: 60/60 in both views, scores
+  0.89–0.95. So `t1_bottle` is usable once that is in the pipeline, and
+  recordings can stay at the cube set's camera settings.
+- **19:45, half-hidden bottle** (set aside as `dim_t3_bottle_over`): the room
+  had dimmed to 22 / 10, and there even ×6 finds the fully visible bottle on
+  only 41/45 pairs at 0.48. The light was not stable enough to go on.
+
+So: the bottle and clutter scenes are shot in the cube set's window, about
+17:15–18:30, room light plus daylight, and a brightness normalisation goes into
+the pipeline first.
+
+## Next evening — bottle and clutter, ~1 h 15
 
 - [ ] `t1_bottle`, `t3_bottle_over` (a card tall enough for a 191 mm bottle)
 - [ ] `t2_clutter_a/b/c`: all three trays (460 × 370 mm shared view: bowl + cube
       side by side, 380 × 210 mm, bottle tray 216 × 100 mm in front) plus the
       eight distractors, rearranged each time
 
-## Third evening — training layouts, ~50 min
+## The evening after — training layouts, ~50 min
 
 - [ ] 10–12 varied layouts with stills, ~90 pairs each, disjoint from the scored
       scenes: five or six with the objects moved and turned, two with **empty
       trays**, two with the card standing in view. Labels come later from the
       ground-truth poses
 
-Three of the five weekday evenings (5–9 Oct) are used, so two can be lost.
+One evening is used and two are needed, of the four left (6–9 Oct), so two can be lost.
 
 ## Any evening, no rig needed — process while the rig is still there
 

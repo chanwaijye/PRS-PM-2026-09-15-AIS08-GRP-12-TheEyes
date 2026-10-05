@@ -68,6 +68,14 @@ STILLS_CAMERAS="${STILLS_CAMERAS:-config/cameras.yaml}"
 # re-registration before the scene is refused. Measured 2026-10-04: untouched
 # cameras repeat to 0.0-0.5 px, and the two moves that day were 2.3 and 4.5 px.
 MAX_SHIFT_PX="${MAX_SHIFT_PX:-1.5}"
+# The config directory the RECORDINGS are made with, when it is not config/.
+# For a session whose light needs different colour settings: on 2026-10-05,
+# under the room light alone at night, cam_over's frame mean was 23 and it
+# found the bottle on 0 of 300 pairs at gain 64, 0 of 45 at 96 and 45 of 45 at
+# 128 -- while that afternoon, in brighter light, 96 and 128 washed the picture
+# out and lost the cube. A copy of config/ with the one setting changed keeps
+# config/ itself the default and puts the choice on record with the scenes.
+RECORD_CONFIG_DIR="${RECORD_CONFIG_DIR:-}"
 
 die() { echo "capture_day: $*" >&2; exit 1; }
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
@@ -168,7 +176,12 @@ record() {
   # Resource temporarily unavailable", 2026-10-05, straight after a preview).
   # One retry after a pause clears it; a second failure is reported.
   for try in 1 2; do
-    "$RUN" live --record-only "$name" --frames "$pairs" 2>&1 | tee "$logf" >&2
+    if [[ -n "$RECORD_CONFIG_DIR" ]]; then
+      "$RUN" live --record-only "$name" --frames "$pairs" --config-dir "$RECORD_CONFIG_DIR" \
+        --repo-root "$REPO" 2>&1 | tee "$logf" >&2
+    else
+      "$RUN" live --record-only "$name" --frames "$pairs" 2>&1 | tee "$logf" >&2
+    fi
     rc=${PIPESTATUS[0]}
     [[ $rc -eq 0 ]] && break
     [[ $try -eq 1 ]] && { echo "recording failed to start (exit $rc) -- retrying once in 6 s" >&2; sleep 6; }
@@ -405,6 +418,7 @@ stills_requested: $STILLS
 gt_check: "$gt_check"
 stills_from: ${stills_from:-}
 camera_shift: "$shift_txt"
+record_config: "${RECORD_CONFIG_DIR:-config}"
 session: "${session:-}"
 record_exit: $rc
 git_rev: $(git rev-parse HEAD)
