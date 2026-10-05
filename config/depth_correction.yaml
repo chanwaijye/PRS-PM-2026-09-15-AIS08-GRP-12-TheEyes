@@ -4,18 +4,18 @@
 # `scale` multiplies metric depth for that camera wherever the pipeline or a
 # tool reads it; recordings keep the raw sensor values. A camera whose error
 # is not a scale is written as 1.0, with what was fitted kept beside it.
-fitted_from: "/home/wjchan/projects/PRS-PM-2026-09-15-AIS08-GRP-12-TheEyes/captures/runtime/20261004_160905_empty_desk"
+fitted_from: "/home/wjchan/projects/PRS-PM-2026-09-15-AIS08-GRP-12-TheEyes/captures/runtime/20261005_171334_empty_table"
 region_half_extent_m: [0.23, 0.185]
 cameras:
   cam_front:
-    scale: 1.0102
-    fitted_scale: 1.0102
-    table_height_before_mm: 4.18
-    table_height_after_mm: 0.17
-    held_out_pixels: 283150
+    scale: 1.0126
+    fitted_scale: 1.0126
+    table_height_before_mm: 4.86
+    table_height_after_mm: -0.06
+    held_out_pixels: 280910
   cam_over:
     scale: 1.0000
-    fitted_scale: 0.9920
-    table_height_before_mm: -1.37
-    table_height_after_mm: -1.37
-    held_out_pixels: 278331
+    fitted_scale: 1.0002
+    table_height_before_mm: 0.39
+    table_height_after_mm: 0.39
+    held_out_pixels: 263969
