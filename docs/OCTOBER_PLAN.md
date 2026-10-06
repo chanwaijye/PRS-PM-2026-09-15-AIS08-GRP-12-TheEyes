@@ -243,17 +243,146 @@ nothing in cam_over. Those stay set aside.
 So: the remaining bottle and clutter scenes are shot in the cube set's window,
 about 17:15–18:30, room light plus daylight.
 
-## Next evening — bottle and clutter, ~1 h 15
+## The bottle set — shot Tue 6 Oct, 21:40–23:00, under the two LED lamps
 
-- [ ] Before anything: cover the card's printed face with plain paper that is
-      not red, and wrap its stand (the red print is detected as a cube)
-- [ ] Board check; recalibrate if the tripods have moved since 19:11 on 5 Oct
+Three scenes, 300 pairs each, none dropped; `captures/scored/20261006/`, results
+`runs/scored/20261006/`. Ground truth agrees across cameras to 0.6–0.7 mm. ADD-S
+in mm, with the share of pairs inside 10% of the bottle's diameter (19.6 mm):
+
+| scene | hidden view sees | cam_front | cam_over | naive | gate | gate + EKF |
+|---|---|---|---|---|---|---|
+| `t1_bottle_b` — alone, second placement | — | 4.98 · 100% | 3.20 · 100% | 9.60 · 100% | 4.98 · 100% | **4.96 · 100%** |
+| `t4_bottle_over` — hidden from cam_over | 6% | 4.00 · 100% | found on 0/300 | 4.00 · 100% | 4.00 · 100% | **3.95 · 100%** |
+| `t3_bottle_over` — half hidden from cam_over | tier NOT certified (below) | 3.17 · 100% | 90.31 · 0% | 47.81 · 0% | 90.31 · 0% | **90.21 · 0%** |
+
+**`t3_bottle_over` is the fused arm failing, and it has to be reported as that.**
+cam_over, half hidden, puts the bottle 125 mm from the truth — 123 mm nearer
+along its own line of sight, at the cover's range — with a pose score of 0.94.
+cam_front has it to 2.6 mm with 0.84. The two are 90 mm apart by ADD-S, inside
+the 150 mm association radius, so they are one cluster in conflict on every
+pair, and the gate keeps the higher score: the wrong view. The fused pose then
+sits about 35 mm clear of the table (centre at 133 mm, where it should be
+98 mm) and the support check drops the bottle from the scene graph on 272 of
+300 pairs; all 956 facts of the run are about an object that is not where the
+facts put it or not there at all. This is the case 5 Oct's `t3_cube_over` missed only by distance
+(171 mm, outside the radius). The pose score cannot arbitrate between views.
+What can, on this evidence: the detector's score (0.95 against 0.77) and how
+much of the object's silhouette has measured depth at all (95% against 0%). A fusion
+change, replay-side, with this recording and the two cube T3 scenes as its test.
+
+**`t1_bottle_b`: cam_front reads the bottle back to front** (178° from the truth,
+pose score 0.88 against cam_over's correct 0.81; the views are 176° apart on
+every pair), and the gate again keeps the higher score. ADD-S barely shows it —
+4.98 against 3.20 mm — because the bottle is nearly its own mirror image. The
+naive mean of the two is 9.60 mm. On 5 Oct's `t1_bottle` both views agreed to 3°.
+
+**The tier of `t3_bottle_over` is not certified.** `visibility_from_gt` reads
+cam_over as seeing 88% of the bottle, and `process` fails the scene; by the
+colour image the cover hides roughly 60% of its width. The cover was a binder
+with a grey cloth draped over it, about 37 cm from the camera, and the cloth
+has no depth within ~50 px of its edge — the strip that covers the bottle — so
+the tool counts the hidden part as no-depth, which it reads as visible. To report the
+scene as T3 the tool must first establish the occlusion some other way (the
+other camera's depth sees the cover); until then it is an unclassified scene
+with a result, not a T3 scene.
+
+Learned at the rig that night:
+
+- **An occluder needs a flat face with texture the depth sensor can match, up
+  to its edge.** Under the lamps: white paper over the card had depth on 5% of
+  its face; a pale smooth binder let the tool confirm only 31% of the bottle as
+  hidden. A cloth over the binder works across its face (`t4_bottle_over`, a
+  white cloth: 94% of the bottle confirmed hidden) but not at its draped edge
+  (`t3_bottle_over`, a grey one). The printed card of 5 Oct, flat, was measured
+  up to its edge. Colour is not the variable; smoothness and the edge are.
+- **The lamps fade.** Frame mean luma 117 / 77 at 21:43, 88 / 55 at 22:10,
+  78 / 46 at 22:50 on the empty table: battery lamps, and cam_over was down to
+  the 45 floor in about 70 minutes. No frame of the three scenes needed the
+  floor (every logged gain is 1.0).
+- **The rig moved twice.** A cat before the session (baseline 4.07 mm / 0.59°:
+  full recalibration at 22:04), and both cameras between 22:29 and 22:45 while
+  cam_front's dead USB link was being replugged (3.0 and 6.1 px; baseline
+  1.33 mm / 0.23°: re-registration at 22:47). Frame checks put `t1_bottle_b` and
+  `t4_bottle_over` wholly on the 22:04 calibration and `t3_bottle_over` wholly
+  on 22:47. cam_front's link this time did not come back with a controller
+  unbind/bind; only the replug did.
+- No closing board shot at 23:00; the frame check stood in for it (0.00 px in
+  both cameras across `t3_bottle_over`).
+
+### Restarted at 23:07 — the bottle again, and the first clutter scene
+
+The lamps went back on at 80% battery, the cameras had not moved (0.00 px), and
+the bottle sequence was shot again on a third placement, this time with every
+tier certified. Same calibration (22:47), same units:
+
+| scene | hidden view sees | cam_front | cam_over | naive | gate | gate + EKF |
+|---|---|---|---|---|---|---|
+| `t1_bottle_c` — alone | — | 3.43 · 100% | 4.61 · 100% | 9.53 · 100% | 3.43 · 100% | **3.37 · 100%** |
+| `t4_bottle_over_b` — hidden from cam_over | 2% | 2.93 · 100% | found on 0/300 | 2.93 · 100% | 2.93 · 100% | **2.89 · 100%** |
+| `t3_bottle_over_b` — half hidden from cam_over | ≤ 68% (see below) | 3.13 · 100% | 35.05 · 0% | 20.62 · 6% | 34.10 · 3% | **33.99 · 0.3%** |
+
+- **`t3_bottle_over_b` is `t3_bottle_over` again, now on a scene whose tier
+  check passes**: cam_over's pose is 68 mm off (65 mm nearer along its line of
+  sight) with a pose score of 0.99; cam_front's is 3 mm off with 0.85; the gate
+  keeps cam_over; the fused bottle rests on nothing and is in the scene graph
+  on 0 of 300 pairs. The detector's scores are 0.46 and 0.86 — the right way
+  round. Two recordings of the same failure, one certified.
+- Its "68% visible" is an upper bound. The tool confirms a third of the bottle
+  hidden (the cover's wide face has depth there) and counts the rest of the
+  covered part, near the cover's edge, as no-depth = visible.
+- `t1_bottle_c`: cam_front flipped again (171°, pose score 0.89 against 0.82),
+  kept by the gate. Two placements of three that night.
+- The binder-and-cloth cover is measurable when the bottle is behind the middle
+  of its **wide face** (2% visible) and not when it is behind the narrow side
+  seen obliquely (the first try at `t4_bottle_over_b` read 96% visible).
+
+**`t2_clutter_a` — recorded at 23:38, to be reshot.** Cube, bowl and bottle on
+their trays, four distractors on the table behind and beside them (a handset,
+a wooden block, a roll of tape, a card — not the proposal's eight). All six
+view-object pairs clear (cam_over sees 82% of the cube). Pooled over the three
+objects, 900 object-pairs, each against its own threshold:
+
+| arm | found | ADD-S | inside 0.1 d |
+|---|---|---|---|
+| cam_front | 746 / 900 | 2.69 mm | 82.9% |
+| cam_over | 875 / 900 | 3.32 mm | 97.2% |
+| naive | 889 / 900 | 5.81 mm | 84.1% |
+| gate | 889 / 900 | 2.91 mm | 98.8% |
+| gate + EKF | 889 / 900 | **2.86 mm** | **98.8%** |
+
+The first scene in which fusion beats both single views. It is not kept as a
+scored scene, for one reason: the light had collapsed to a frame luma of
+34 / 19 (81 / 50 half an hour before), and every frame was brightened ×1.31 /
+×2.43 by the floor to be detected at all. It does show the floor working well
+below where it was tested. Two more things it shows:
+
+- **The support check in clutter:** the three real objects are reported on 889
+  of 889 object-pairs; of 493 false object-pairs, 194 survive — one false cube
+  at table height, 192 mm from the real one, on 194 pairs. 582 of 2,517 facts
+  name it. This is the case the rule cannot catch.
+- Ground truth across cameras is 1.2–1.9 mm with three trays in view, against
+  0.6–0.7 mm for one.
+
+Getting to that layout took four tries (an empty desk, trays without objects,
+distractors stacked on the trays), so the instruction for a clutter scene is
+now spelt out: each object on its own tray, distractors on the bare table
+behind and beside, nothing on a tray but its object.
+
+Frame check at the end, against `t1_bottle_c`: cam_front 0.0–0.2 px through
+the clutter scene; cam_over crept +0.3 to +0.5 px (848 × 480; about 1 px on the
+stills, inside the 1.5 px limit) from `t4_bottle_over_b` onward. Stopped 23:42.
+
+## Next evening — clutter, ~40 min
+
 - [x] `t1_bottle` — shot 5 Oct, usable with the brightness floor
-- [ ] `t1_bottle_b` (second placement), `t3_bottle_over`, `t4_bottle_over` (a card
-      tall enough for a 191 mm bottle)
+- [x] `t1_bottle_b`, `t4_bottle_over`, `t3_bottle_over` — shot 6 Oct (above)
+- [ ] Board check first, every time: the rig has not survived a night yet
+- [ ] Lamps on charge until the session starts; or shoot 17:15–18:30
 - [ ] `t2_clutter_a/b/c`: all three trays (460 × 370 mm shared view: bowl + cube
       side by side, 380 × 210 mm, bottle tray 216 × 100 mm in front) plus the
-      eight distractors, rearranged each time
+      eight distractors, rearranged each time. Each object on its own tray;
+      distractors on the bare table behind and beside the trays, never on one.
+      `t2_clutter_a` of 6 Oct was shot too dark and is to be redone
 
 ## The evening after — training layouts, ~50 min
 
