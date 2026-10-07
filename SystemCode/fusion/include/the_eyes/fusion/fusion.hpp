@@ -50,6 +50,10 @@ struct FusedObservation {
 struct FusionDiagnostics {
   int views_rejected = 0;
   int two_view_conflicts = 0;
+  // Estimates not fused because another view sees through them
+  // (ViewEvidenceConfig::max_seen_through). Counted apart from views_rejected:
+  // these never reached a cluster, so no fused object carries their bit.
+  int views_refuted = 0;
   int tracks_created = 0;
   int tracks_retired = 0;
   std::vector<std::string> warnings;

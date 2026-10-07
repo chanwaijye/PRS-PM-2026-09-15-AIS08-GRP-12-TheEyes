@@ -89,12 +89,34 @@ std::string AblationResult::Format() const {
     if (i > 0 && r.temporal_filter != previous_filter) os << "\n";
     previous_filter = r.temporal_filter;
     os << std::left << std::setw(15) << r.label << std::setw(7) << r.views.size()
-       << std::setw(7) << (r.mode == FusionMode::kNaive ? "naive" : "gated") << std::setw(7)
+       << std::setw(7) << (r.mode == FusionMode::kNaive ? "naive" : (r.by_score ? "score" : "gated"))
+       << std::setw(7)
        << (r.temporal_filter ? "ekf" : "raw") << std::right << std::setw(6)
        << r.ground_truth_objects << std::setw(9) << r.matched << std::setw(8) << r.missed
        << std::setw(12) << std::fixed << std::setprecision(2) << (r.mean_add_s_m * 1000.0)
        << std::setw(9) << std::setprecision(4) << r.mean_add_s_fraction << std::setw(13)
        << std::setprecision(4) << r.recall_at_0p1_diameter << "\n";
+  }
+
+  // Per object, when there is more than one: the pooled rows above cannot say
+  // which object a scene fails on. Indented, so the pooled table still reads
+  // (and greps) as it did.
+  size_t classes = 0;
+  for (const AblationRow& r : rows) classes = std::max(classes, r.by_class.size());
+  if (classes > 1) {
+    os << "\nper object:\n";
+    os << "  " << std::left << std::setw(15) << "arm" << std::setw(16) << "class" << std::right
+       << std::setw(6) << "gt" << std::setw(9) << "matched" << std::setw(8) << "missed"
+       << std::setw(12) << "ADD-S mm" << std::setw(13) << "recall@0.1d" << "\n";
+    for (const AblationRow& r : rows) {
+      for (const auto& [cls, c] : r.by_class) {
+        os << "  " << std::left << std::setw(15) << r.label << std::setw(16) << cls << std::right
+           << std::setw(6) << c.ground_truth_objects << std::setw(9) << c.matched << std::setw(8)
+           << c.missed << std::setw(12) << std::fixed << std::setprecision(2)
+           << (c.mean_add_s_m * 1000.0) << std::setw(13) << std::setprecision(4)
+           << c.recall_at_0p1_diameter << "\n";
+      }
+    }
   }
   return os.str();
 }
@@ -118,28 +140,42 @@ AblationResult RunOcclusionAblation(const std::vector<AblationFrame>& frames,
   // A single view runs the gated policy: with one estimate per object the gate
   // has nothing to compare and the weighting has one weight, so the two
   // policies are identical there and the label omits it.
+  //
+  // When the configuration uses depth evidence (view_evidence.enabled) each
+  // tier gains one row, `gate-score`: both views, the gate as it was before the
+  // evidence -- a conflict settled by the estimator's score, no veto. It is to
+  // `gated` what `naive` is to the gate: the same input with exactly one thing
+  // taken away. The single views never use the evidence: half of it comes from
+  // the other camera.
   struct Configuration {
     std::string label;
     std::vector<std::string> allowed_views;
     FusionMode mode;
     bool temporal_filter;
+    bool view_evidence;
   };
+  const bool evidence = cfg.view_evidence.enabled;
   std::vector<Configuration> configurations;
   for (const bool filter : {false, true}) {
     const std::string suffix = filter ? "+ekf" : "";
     for (const std::string& view : cfg.view_names) {
-      configurations.push_back({view + suffix, {view}, FusionMode::kGated, filter});
+      configurations.push_back({view + suffix, {view}, FusionMode::kGated, filter, false});
     }
-    configurations.push_back({"naive" + suffix, cfg.view_names, FusionMode::kNaive, filter});
+    configurations.push_back({"naive" + suffix, cfg.view_names, FusionMode::kNaive, filter, false});
+    if (evidence) {
+      configurations.push_back(
+          {"gate-score" + suffix, cfg.view_names, FusionMode::kGated, filter, false});
+    }
     configurations.push_back(
-        {filter ? "fused" : "gated", cfg.view_names, FusionMode::kGated, filter});
+        {filter ? "fused" : "gated", cfg.view_names, FusionMode::kGated, filter, evidence});
   }
 
   AblationResult result;
-  for (const auto& [label, allowed_views, mode, temporal_filter] : configurations) {
+  for (const auto& [label, allowed_views, mode, temporal_filter, view_evidence] : configurations) {
     FusionConfig arm_cfg = cfg;
     arm_cfg.mode = mode;
     arm_cfg.temporal_filter = temporal_filter;
+    arm_cfg.use_view_evidence = view_evidence;
     Fusion fusion(arm_cfg, extrinsics, extents);
 
     AblationRow row;
@@ -147,9 +183,13 @@ AblationResult RunOcclusionAblation(const std::vector<AblationFrame>& frames,
     row.views = allowed_views;
     row.mode = mode;
     row.temporal_filter = temporal_filter;
+    row.by_score = evidence && !view_evidence && mode == FusionMode::kGated &&
+                   allowed_views.size() > 1;
     double add_s_sum = 0.0;
     double fraction_sum = 0.0;
     int below_threshold = 0;
+    std::map<std::string, double> class_add_s_sum;
+    std::map<std::string, int> class_below_threshold;
 
     for (const AblationFrame& frame : frames) {
       std::vector<PoseEstimate> filtered;
@@ -163,6 +203,8 @@ AblationResult RunOcclusionAblation(const std::vector<AblationFrame>& frames,
 
       for (const GroundTruthObject& gt : frame.ground_truth) {
         ++row.ground_truth_objects;
+        AblationClassStats& per_class = row.by_class[gt.cls];
+        ++per_class.ground_truth_objects;
 
         const auto model = models.find(gt.cls);
         if (model == models.end()) {
@@ -189,15 +231,28 @@ AblationResult RunOcclusionAblation(const std::vector<AblationFrame>& frames,
         }
         if (best == nullptr) {
           ++row.missed;
+          ++per_class.missed;
           continue;
         }
 
         ++row.matched;
+        ++per_class.matched;
         const double add_s = AddS(best->pose_w, gt.pose_w, model->second.points);
         const double fraction = add_s / model->second.diameter_m;
         add_s_sum += add_s;
         fraction_sum += fraction;
-        if (fraction < 0.1) ++below_threshold;
+        class_add_s_sum[gt.cls] += add_s;
+        if (fraction < 0.1) {
+          ++below_threshold;
+          ++class_below_threshold[gt.cls];
+        }
+      }
+    }
+    for (auto& [cls, stats] : row.by_class) {
+      if (stats.matched > 0) stats.mean_add_s_m = class_add_s_sum[cls] / stats.matched;
+      if (stats.ground_truth_objects > 0) {
+        stats.recall_at_0p1_diameter =
+            static_cast<double>(class_below_threshold[cls]) / stats.ground_truth_objects;
       }
     }
 

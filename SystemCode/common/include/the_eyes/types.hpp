@@ -41,7 +41,35 @@ struct PoseEstimate {
   // per-estimate and so cannot come from a class-keyed registry.
   // Zero means "not supplied" -- fusion then falls back to its extent registry.
   Eigen::Vector3d extent = Eigen::Vector3d::Zero();
+
+  // --- What the depth images say about this pose. ADDITIVE (2026-10-07) ------
+  //
+  // `score` is the estimator's own opinion, and on real data it does not rank
+  // the views: on the half-hidden bottle of 2026-10-06 the view that put the
+  // object 125 mm from the truth scored 0.94 and the view that had it to 3 mm
+  // scored 0.84. These two are measurements instead -- the object rendered at
+  // the estimated pose, compared with what a depth camera saw there.
+  //
+  // depth_support  share of the pose's silhouette in ITS OWN view where the
+  //                measured depth agrees with the pose.
+  // seen_through   the largest share, over the OTHER views, of the pose's
+  //                silhouette where that view measures a surface BEYOND the
+  //                object: another camera looking through the place the object
+  //                is claimed to occupy. A surface in front of it is occlusion
+  //                and counts for nothing either way.
+  //
+  // Both in [0, 1]. NEGATIVE means "not supplied", as with ObjectState's
+  // sigmas, and fusion then falls back to `score`. See has_view_evidence().
+  double depth_support = -1.0;
+  double seen_through = -1.0;
 };
+
+// Whether both depth-evidence fields were supplied. A producer that has no
+// second view to consult leaves seen_through negative, and an estimate with
+// only half the evidence is treated as having none.
+inline bool has_view_evidence(const PoseEstimate& e) {
+  return e.depth_support >= 0.0 && e.seen_through >= 0.0;
+}
 
 // INTERFACES.md §4 — one entry per camera, loaded from config/extrinsics.yaml.
 struct CameraExtrinsics {

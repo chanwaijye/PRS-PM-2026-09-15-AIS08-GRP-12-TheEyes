@@ -388,6 +388,188 @@ TEST(Fusion, TwoViewConflictKeepsTheHigherScoringViewAndPenalisesConfidence) {
                                     1e-9);
 }
 
+// ---------------------------------------------------------------------------
+// Depth evidence (2026-10-07). The numbers in these fixtures are medians from
+// the scored recordings: scripts/view_evidence_study.py, docs/OCTOBER_PLAN.md.
+// ---------------------------------------------------------------------------
+FusionConfig CfgWithEvidence() {
+  FusionConfig cfg;
+  cfg.view_evidence.enabled = true;
+  return cfg;
+}
+
+PoseEstimate WithEvidence(PoseEstimate e, double depth_support, double seen_through) {
+  e.depth_support = depth_support;
+  e.seen_through = seen_through;
+  return e;
+}
+
+TEST(ViewEvidence, AConflictIsSettledByDepthNotByTheEstimatorsScore) {
+  // t3_bottle_over_b: the half-hidden view puts the bottle 68 mm from the
+  // truth with a pose score of 0.99; the clear view has it with 0.85. By score
+  // the gate kept the wrong one on every pair.
+  const ExtrinsicsSet ex = Rig();
+  const Eigen::Isometry3d good = Pose({0.10, 0.0, 0.03});
+  const Eigen::Isometry3d bad = Pose({0.10, 0.0, 0.03 + 0.068});
+  const PoseEstimate clear = WithEvidence(Observe(ex, "cam_front", "bottle", good, 0.85), 0.90, 0.00);
+  // Not refuted outright here (seen_through below the veto), so the two reach
+  // the gate as a conflict and the evidence has to settle it.
+  const PoseEstimate hidden = WithEvidence(Observe(ex, "cam_over", "bottle", bad, 0.99), 0.15, 0.20);
+
+  FusionDiagnostics diag;
+  const auto fused = FuseFrame({clear, hidden}, ex, CfgWithEvidence(), {}, &diag);
+  ASSERT_EQ(fused.size(), 1u);
+  EXPECT_EQ(diag.two_view_conflicts, 1);
+  EXPECT_EQ(fused[0].visible_views, kViewCamFront);
+  EXPECT_EQ(fused[0].rejected_views, kViewCamOver);
+  EXPECT_LT((fused[0].pose_w.translation() - good.translation()).norm(), 1e-6);
+
+  // The same two estimates with the rule off: the higher score wins, which is
+  // what was recorded.
+  const auto before = FuseFrame({clear, hidden}, ex, Cfg(), {}, nullptr);
+  ASSERT_EQ(before.size(), 1u);
+  EXPECT_EQ(before[0].visible_views, kViewCamOver);
+  EXPECT_LT((before[0].pose_w.translation() - bad.translation()).norm(), 1e-6);
+}
+
+TEST(ViewEvidence, EvidenceThatDoesNotSeparateTheViewsLeavesTheScoreToDecide) {
+  // t1_bottle_c: the two views read the bottle 170 deg apart, and the depth
+  // backs both about equally -- 0.86 and 0.90, the difference reaching 0.11
+  // on some pairs. Deciding on that flipped the choice from pair to pair and
+  // the filter averaged the two (5.73 mm against 3.37). Inside the margin the
+  // score decides, the same way on every frame.
+  const ExtrinsicsSet ex = Rig();
+  const Eigen::Isometry3d a_pose = Pose({0.10, 0.0, 0.03});
+  const Eigen::Isometry3d b_pose = Pose({0.10, 0.0, 0.03}, 170.0);
+  const FusionConfig cfg = CfgWithEvidence();
+  for (const double other_support : {0.90, 0.82, 0.97, 0.75}) {
+    const PoseEstimate front = WithEvidence(Observe(ex, "cam_front", "bottle", a_pose, 0.89), 0.86, 0.01);
+    const PoseEstimate over = WithEvidence(Observe(ex, "cam_over", "bottle", b_pose, 0.82), other_support, 0.01);
+    FusionDiagnostics diag;
+    const auto fused = FuseFrame({front, over}, ex, cfg, {}, &diag);
+    ASSERT_EQ(fused.size(), 1u);
+    EXPECT_EQ(diag.two_view_conflicts, 1);
+    EXPECT_EQ(fused[0].visible_views, kViewCamFront) << "score 0.89 against 0.82, at " << other_support;
+  }
+  // Past the margin the evidence takes over.
+  const PoseEstimate front = WithEvidence(Observe(ex, "cam_front", "bottle", a_pose, 0.89), 0.60, 0.0);
+  const PoseEstimate over = WithEvidence(Observe(ex, "cam_over", "bottle", b_pose, 0.82),
+                                         0.60 + cfg.view_evidence.min_gap + 0.01, 0.0);
+  EXPECT_EQ(FuseFrame({front, over}, ex, cfg, {}, nullptr)[0].visible_views, kViewCamOver);
+}
+
+TEST(ViewEvidence, AnEstimateAnotherViewSeesThroughIsNotFusedAtAll) {
+  // t3_cube_over: 171 mm from the truth -- outside the association radius, so
+  // it was never in conflict with anything. It founded a second cube instead.
+  const ExtrinsicsSet ex = Rig();
+  const Eigen::Isometry3d good = Pose({0.10, 0.0, 0.03});
+  const Eigen::Isometry3d phantom = Pose({0.10 + 0.171, 0.0, 0.03});
+  const PoseEstimate clear = WithEvidence(Observe(ex, "cam_front", "cube", good, 0.64), 0.93, 0.00);
+  const PoseEstimate refuted = WithEvidence(Observe(ex, "cam_over", "cube", phantom, 0.86), 0.18, 0.91);
+
+  ASSERT_EQ(FuseFrame({clear, refuted}, ex, Cfg(), {}, nullptr).size(), 2u) << "as recorded";
+
+  FusionDiagnostics diag;
+  const auto fused = FuseFrame({clear, refuted}, ex, CfgWithEvidence(), {}, &diag);
+  ASSERT_EQ(fused.size(), 1u);
+  EXPECT_EQ(diag.views_refuted, 1);
+  EXPECT_EQ(diag.two_view_conflicts, 0) << "it never reached a cluster";
+  EXPECT_EQ(fused[0].visible_views, kViewCamFront);
+  EXPECT_EQ(fused[0].rejected_views, 0u);
+
+  // And over time: no second track, ever.
+  Fusion fusion(CfgWithEvidence(), ex);
+  for (int i = 0; i < 5; ++i) {
+    const SceneState s = fusion.Process({clear, refuted}, 1'000'000'000ULL + i * 33'000'000ULL);
+    ASSERT_EQ(s.objects.size(), 1u);
+    EXPECT_EQ(s.objects[0].id, "cube_01");
+  }
+}
+
+TEST(ViewEvidence, TheVetoIsAThresholdAndAgreeingViewsAreUntouched) {
+  const ExtrinsicsSet ex = Rig();
+  const Eigen::Isometry3d truth = Pose({0.10, 0.0, 0.03});
+  const FusionConfig cfg = CfgWithEvidence();
+  // The worst correct estimate on record: 0.18 seen through (t2_clutter_c).
+  const PoseEstimate a = WithEvidence(Observe(ex, "cam_front", "cube", truth, 0.7), 0.89, 0.06);
+  const PoseEstimate b = WithEvidence(Observe(ex, "cam_over", "cube", truth, 0.7), 0.41, 0.18);
+  FusionDiagnostics diag;
+  const auto fused = FuseFrame({a, b}, ex, cfg, {}, &diag);
+  ASSERT_EQ(fused.size(), 1u);
+  EXPECT_EQ(fused[0].visible_views, kViewCamFront | kViewCamOver);
+  EXPECT_EQ(diag.views_refuted, 0);
+
+  // Exactly at the threshold it goes; just under, it stays.
+  PoseEstimate at = b, under = b;
+  at.seen_through = cfg.view_evidence.max_seen_through;
+  under.seen_through = cfg.view_evidence.max_seen_through - 1e-9;
+  EXPECT_EQ(FuseFrame({a, at}, ex, cfg, {}, nullptr)[0].visible_views, kViewCamFront);
+  EXPECT_EQ(FuseFrame({a, under}, ex, cfg, {}, nullptr)[0].visible_views,
+            kViewCamFront | kViewCamOver);
+}
+
+TEST(ViewEvidence, OcclusionIsNotRefutation) {
+  // t4_bottle_over_b: the object fully hidden from the second camera. That
+  // camera measures the occluder IN FRONT of the object over 98% of its
+  // silhouette, which is seen_through = 0 -- a surface in front says nothing
+  // about what is behind it. The single view must survive, alone.
+  const ExtrinsicsSet ex = Rig();
+  const Eigen::Isometry3d truth = Pose({0.10, 0.0, 0.03});
+  const PoseEstimate only = WithEvidence(Observe(ex, "cam_front", "bottle", truth, 0.85), 0.95, 0.00);
+  FusionDiagnostics diag;
+  const auto fused = FuseFrame({only}, ex, CfgWithEvidence(), {}, &diag);
+  ASSERT_EQ(fused.size(), 1u);
+  EXPECT_EQ(fused[0].visible_views, kViewCamFront);
+  EXPECT_EQ(diag.views_refuted, 0);
+}
+
+TEST(ViewEvidence, WithoutEvidenceOnBothEstimatesTheScoreStillDecides) {
+  // A producer that supplies nothing -- every log before 2026-10-07, the mock
+  // estimator, a rig with one depth camera -- gets the gate it always had.
+  const ExtrinsicsSet ex = Rig();
+  const Eigen::Isometry3d good = Pose({0.10, 0.0, 0.03});
+  const Eigen::Isometry3d bad = Pose({0.10, 0.0, 0.13});
+  const PoseEstimate hi = Observe(ex, "cam_front", "cube", good, 0.95);
+  const PoseEstimate lo = Observe(ex, "cam_over", "cube", bad, 0.40);
+  EXPECT_FALSE(has_view_evidence(hi));
+  auto fused = FuseFrame({hi, lo}, ex, CfgWithEvidence(), {}, nullptr);
+  ASSERT_EQ(fused.size(), 1u);
+  EXPECT_EQ(fused[0].visible_views, kViewCamFront);
+
+  // One estimate with evidence and one without is not a comparison either.
+  fused = FuseFrame({hi, WithEvidence(lo, 0.99, 0.0)}, ex, CfgWithEvidence(), {}, nullptr);
+  ASSERT_EQ(fused.size(), 1u);
+  EXPECT_EQ(fused[0].visible_views, kViewCamFront) << "score, 0.95 against 0.40";
+
+  // Half the evidence is none: depth_support alone does not arm the veto.
+  PoseEstimate half = lo;
+  half.depth_support = 0.1;
+  EXPECT_FALSE(has_view_evidence(half));
+}
+
+TEST(ViewEvidence, NaiveAndTheHarnessSwitchIgnoreIt) {
+  const ExtrinsicsSet ex = Rig();
+  const Eigen::Isometry3d good = Pose({0.10, 0.0, 0.03});
+  const Eigen::Isometry3d phantom = Pose({0.10 + 0.171, 0.0, 0.03});
+  const PoseEstimate clear = WithEvidence(Observe(ex, "cam_front", "cube", good, 0.64), 0.93, 0.00);
+  const PoseEstimate refuted = WithEvidence(Observe(ex, "cam_over", "cube", phantom, 0.86), 0.18, 0.91);
+
+  // kNaive believes every view: that is the baseline's definition.
+  FusionConfig naive = CfgWithEvidence();
+  naive.mode = FusionMode::kNaive;
+  EXPECT_EQ(FuseFrame({clear, refuted}, ex, naive, {}, nullptr).size(), 2u);
+
+  // The harness's switch: a single-view arm must not be told what the other
+  // camera saw, or it is no longer "one view alone".
+  FusionConfig single = CfgWithEvidence();
+  single.use_view_evidence = false;
+  const auto alone = FuseFrame({refuted}, ex, single, {}, nullptr);
+  ASSERT_EQ(alone.size(), 1u);
+  EXPECT_EQ(alone[0].visible_views, kViewCamOver);
+  // With the switch on, the same single estimate is vetoed.
+  EXPECT_TRUE(FuseFrame({refuted}, ex, CfgWithEvidence(), {}, nullptr).empty());
+}
+
 TEST(Fusion, AgreeingViewsAreNotGated) {
   const ExtrinsicsSet ex = Rig();
   const Eigen::Isometry3d truth = Pose({0.10, 0.0, 0.03});

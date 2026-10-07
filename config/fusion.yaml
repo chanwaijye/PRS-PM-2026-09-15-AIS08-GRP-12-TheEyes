@@ -36,6 +36,51 @@ disagreement_gate:
   # rather than pretending to a consensus that does not exist.
   two_view_conflict_confidence_penalty: 0.5
 
+view_evidence:
+  # What the depth images say about each per-view pose, and what the gate does
+  # with it. The runner renders the object at every estimated pose into its own
+  # view and into the other view and compares with the measured depth
+  # (runtime/view_evidence.hpp); each estimate then carries
+  #   depth_support  share of its silhouette its OWN view's depth agrees with
+  #   seen_through   share of its silhouette where the OTHER view measures a
+  #                  surface beyond the object -- free space where it would be
+  #
+  # Why: the estimator's score does not rank the views. MEASURED on the
+  # half-hidden bottle (t3_bottle_over_b, 2026-10-06): the view 68 mm from the
+  # truth scores 0.99, the view 3 mm from it 0.85, and by score the gate kept
+  # the wrong one on every pair -- fused ADD-S 34 mm against the clear view's 3.
+  #
+  # Two rules, both off when the estimates carry no evidence:
+  #  1. an estimate seen through by max_seen_through or more is not fused at
+  #     all (it cannot found a cluster or a track either);
+  #  2. a two-view conflict keeps the estimate with the larger
+  #     depth_support x (1 - seen_through), not the larger score.
+  #
+  # max_seen_through. MEASURED on the 16 scored scenes of 2026-10-05..07, every
+  # estimate logged (estimates.seen_through): the 10,843 within 30 mm of the
+  # truth are seen through by 0.13 at most; the four the gate got wrong by
+  # 0.46-0.54, 0.69-0.76, 0.85-0.94 and 0.96-1.00 (the bottle twice and the
+  # cube at the occluder's range, a cube fitted to the occluder's print). One
+  # third has none of either on the wrong side.
+  #
+  # The section is optional -- absent means off, the gate of before 2026-10-07 --
+  # and strict when present.
+  enabled: true
+  max_seen_through: 0.3333
+  # Rule 2 applies only when the two estimates' evidence differs by at least
+  # this; closer, and the score decides as before. MEASURED on the scored
+  # scenes: the two views of the unoccluded bottle differ by up to 0.14 on some
+  # pair, and with no margin the choice between them flipped from frame to
+  # frame (t1_bottle_c: fused ADD-S 5.73 mm against 3.37). The cases the rule is for are nowhere near it: 0.92 against 0.08,
+  # 0.94 against 0.00.
+  min_gap: 0.15
+  # Measured depth within agree_tol_m of the rendered surface supports the
+  # pose; more than through_tol_m beyond it is free space. The second is the
+  # visibility tool's 40 mm, for its reason: depth inside the bowl reads
+  # 2-3 cm short.
+  agree_tol_m: 0.020
+  through_tol_m: 0.040
+
 ekf:
   # Error-state EKF, constant-velocity position model + orientation random walk.
   # Process noise: how much the model is allowed to be wrong per second.

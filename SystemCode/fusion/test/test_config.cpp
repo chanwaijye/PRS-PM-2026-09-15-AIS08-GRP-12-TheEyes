@@ -72,6 +72,71 @@ TEST(FusionConfig, ViewOrderMatchesTheViewBitEnum) {
   EXPECT_EQ(cfg.view_names[1], "cam_over");
 }
 
+// The shipped file with its view_evidence section replaced by `section`.
+std::string ShippedWithEvidenceSection(const std::string& section) {
+  std::ifstream in(ConfigPath("fusion.yaml"));
+  std::string body((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  const size_t from = body.find("\nview_evidence:");
+  const size_t to = body.find("\nekf:");
+  EXPECT_NE(from, std::string::npos);
+  EXPECT_NE(to, std::string::npos);
+  body = body.substr(0, from + 1) + section + body.substr(to);
+  char tmpl[] = "/tmp/the_eyes_fusion_cfg_XXXXXX";
+  const int fd = ::mkstemp(tmpl);
+  if (fd >= 0) ::close(fd);
+  std::ofstream(tmpl) << body;
+  return tmpl;
+}
+
+TEST(FusionConfig, TheShippedFileUsesTheDepthEvidence) {
+  const FusionConfig cfg = LoadFusionConfig(ConfigPath("fusion.yaml"));
+  EXPECT_TRUE(cfg.view_evidence.enabled);
+  EXPECT_NEAR(cfg.view_evidence.max_seen_through, 1.0 / 3.0, 1e-3);
+  EXPECT_DOUBLE_EQ(cfg.view_evidence.min_gap, 0.15);
+  EXPECT_DOUBLE_EQ(cfg.view_evidence.agree_tol_m, 0.020);
+  EXPECT_DOUBLE_EQ(cfg.view_evidence.through_tol_m, 0.040);
+  // The in-code threshold and tolerances are the shipped ones; only `enabled`
+  // differs, so that a bare FusionConfig is the gate without the evidence.
+  const FusionConfig defaults;
+  EXPECT_FALSE(defaults.view_evidence.enabled);
+  EXPECT_NEAR(defaults.view_evidence.max_seen_through, cfg.view_evidence.max_seen_through, 1e-3);
+  EXPECT_DOUBLE_EQ(defaults.view_evidence.min_gap, cfg.view_evidence.min_gap);
+  EXPECT_DOUBLE_EQ(defaults.view_evidence.agree_tol_m, cfg.view_evidence.agree_tol_m);
+  EXPECT_DOUBLE_EQ(defaults.view_evidence.through_tol_m, cfg.view_evidence.through_tol_m);
+}
+
+TEST(FusionConfig, TheEvidenceSectionIsOptionalButStrictWhenPresent) {
+  // A fusion.yaml saved with a run from before 2026-10-07 has no such section,
+  // still loads, and still means the gate it meant.
+  const std::string none = ShippedWithEvidenceSection("");
+  EXPECT_FALSE(LoadFusionConfig(none).view_evidence.enabled);
+  std::remove(none.c_str());
+
+  const std::string off = ShippedWithEvidenceSection(
+      "view_evidence:\n  enabled: false\n  max_seen_through: 0.5\n  min_gap: 0.2\n"
+      "  agree_tol_m: 0.01\n  through_tol_m: 0.03\n");
+  const FusionConfig cfg = LoadFusionConfig(off);
+  EXPECT_FALSE(cfg.view_evidence.enabled);
+  EXPECT_DOUBLE_EQ(cfg.view_evidence.max_seen_through, 0.5);
+  EXPECT_DOUBLE_EQ(cfg.view_evidence.min_gap, 0.2);
+  EXPECT_DOUBLE_EQ(cfg.view_evidence.through_tol_m, 0.03);
+  std::remove(off.c_str());
+
+  const std::string rest = "  agree_tol_m: 0.02\n  through_tol_m: 0.04\n";
+  for (const std::string& bad : {
+           "view_evidence:\n  max_seen_through: 0.33\n  min_gap: 0.1\n" + rest,   // no switch
+           "view_evidence:\n  enabled: true\n  min_gap: 0.1\n" + rest,            // no threshold
+           "view_evidence:\n  enabled: true\n  max_seen_through: 0.33\n" + rest,  // no margin
+           // a zero threshold would veto every estimate
+           "view_evidence:\n  enabled: true\n  max_seen_through: 0.0\n  min_gap: 0.1\n" + rest,
+           "view_evidence:\n  enabled: perhaps\n  max_seen_through: 0.33\n  min_gap: 0.1\n" + rest,
+       }) {
+    const std::string path = ShippedWithEvidenceSection(bad);
+    EXPECT_THROW(LoadFusionConfig(path), std::runtime_error) << bad;
+    std::remove(path.c_str());
+  }
+}
+
 TEST(FusionConfig, MissingSectionThrows) {
   char tmpl[] = "/tmp/the_eyes_fusion_cfg_XXXXXX";
   const int fd = ::mkstemp(tmpl);

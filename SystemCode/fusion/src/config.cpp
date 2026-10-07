@@ -62,6 +62,27 @@ FusionConfig LoadFusionConfig(const std::string& yaml_path) {
   cfg.disagreement_gate.two_view_conflict_confidence_penalty = RequireDouble(
       gate, "disagreement_gate", "two_view_conflict_confidence_penalty", 0.0, 1.0);
 
+  // Optional: a fusion.yaml saved with a run from before the rule existed still
+  // loads and still means what it meant. Strict when present.
+  if (root["view_evidence"]) {
+    const YAML::Node ev = RequireSection(root, "view_evidence");
+    const YAML::Node enabled = ev["enabled"];
+    if (!enabled || !enabled.IsScalar()) {
+      throw std::runtime_error("fusion.yaml: missing 'view_evidence.enabled'");
+    }
+    try {
+      cfg.view_evidence.enabled = enabled.as<bool>();
+    } catch (const YAML::Exception&) {
+      throw std::runtime_error("fusion.yaml: 'view_evidence.enabled' must be true or false");
+    }
+    cfg.view_evidence.max_seen_through =
+        RequireDouble(ev, "view_evidence", "max_seen_through", 0.01, 1.0);
+    cfg.view_evidence.min_gap = RequireDouble(ev, "view_evidence", "min_gap", 0.0, 1.0);
+    cfg.view_evidence.agree_tol_m = RequireDouble(ev, "view_evidence", "agree_tol_m", 1e-4, 1.0);
+    cfg.view_evidence.through_tol_m =
+        RequireDouble(ev, "view_evidence", "through_tol_m", 1e-4, 1.0);
+  }
+
   const YAML::Node ekf = RequireSection(root, "ekf");
   cfg.ekf.process_noise_position_m =
       RequireDouble(ekf, "ekf", "process_noise_position_m", 0.0, 10.0);

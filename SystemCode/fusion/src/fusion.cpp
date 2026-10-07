@@ -23,6 +23,10 @@ struct WorldEstimate {
   SymmetryGroup group = SymmetryGroup::kNone;
   Eigen::Vector3d extent = Eigen::Vector3d::Zero();
   uint32_t view_bit = 0;
+  // How well the depth images back this pose, in [0, 1]: its own view's
+  // support, discounted by what another view sees through. Negative when the
+  // estimate carried no evidence or this arm is not allowed to use it.
+  double evidence = -1.0;
 };
 
 SymmetryGroup GroupOf(const FusionConfig& cfg, const std::string& cls) {
@@ -136,7 +140,7 @@ Eigen::Quaterniond FuseOrientation(const std::vector<const WorldEstimate*>& grou
 // Returns the survivors; sets *rejected_bits and *two_view_conflict.
 std::vector<const WorldEstimate*> ApplyDisagreementGate(
     const std::vector<const WorldEstimate*>& group, const DisagreementGateConfig& gate,
-    uint32_t* rejected_bits, bool* two_view_conflict) {
+    double min_evidence_gap, uint32_t* rejected_bits, bool* two_view_conflict) {
   *rejected_bits = 0;
   *two_view_conflict = false;
 
@@ -174,7 +178,19 @@ std::vector<const WorldEstimate*> ApplyDisagreementGate(
     }
 
     *two_view_conflict = true;
-    const size_t keep = (group[0]->score >= group[1]->score) ? 0 : 1;
+    // Which one to keep. The estimator's score does not answer that: on the
+    // half-hidden bottle (2026-10-06) the view 125 mm from the truth scored
+    // 0.94 and the view 3 mm from it 0.84, and the gate kept the first on
+    // every pair. When both estimates carry depth evidence and it separates
+    // them, the better-backed one is kept. When it does not -- a gap inside
+    // the evidence's own frame-to-frame noise -- the score decides as it
+    // always did: a choice made on noise changes from frame to frame, and the
+    // filter then averages two poses that were never the same pose.
+    const bool by_evidence =
+        group[0]->evidence >= 0.0 && group[1]->evidence >= 0.0 &&
+        std::abs(group[0]->evidence - group[1]->evidence) >= min_evidence_gap;
+    const size_t keep = by_evidence ? ((group[0]->evidence >= group[1]->evidence) ? 0 : 1)
+                                    : ((group[0]->score >= group[1]->score) ? 0 : 1);
     *rejected_bits = group[1 - keep]->view_bit;
     survivors.push_back(group[keep]);
     return survivors;
@@ -239,6 +255,21 @@ std::vector<FusedObservation> FuseFrame(const std::vector<PoseEstimate>& estimat
       continue;
     }
 
+    // The depth evidence, where this arm may use it. kNaive believes every
+    // view; that is what makes it the baseline.
+    const bool use_evidence = cfg.mode == FusionMode::kGated && cfg.use_view_evidence &&
+                              cfg.view_evidence.enabled && has_view_evidence(est);
+    if (use_evidence && est.seen_through >= cfg.view_evidence.max_seen_through) {
+      // Another camera measures free space where this object would be. Not an
+      // outlier to be outvoted -- with two cameras there is no vote -- but a
+      // claim one of the views can see to be false. Dropped before
+      // association, so it cannot found a cluster or a track of its own
+      // either (t3_cube_over, 2026-10-05: 171 mm off, outside the association
+      // radius, a second cube for 300 pairs).
+      if (diagnostics != nullptr) ++diagnostics->views_refuted;
+      continue;
+    }
+
     WorldEstimate w;
     w.camera_id = est.camera_id;
     w.cls = est.cls;
@@ -247,6 +278,7 @@ std::vector<FusedObservation> FuseFrame(const std::vector<PoseEstimate>& estimat
     w.symmetric = est.symmetric;
     w.group = GroupOf(cfg, est.cls);
     w.view_bit = bit;
+    if (use_evidence) w.evidence = est.depth_support * (1.0 - est.seen_through);
     w.extent = est.extent;
     if (w.extent.isZero()) {
       const auto reg = extents.find(est.cls);
@@ -296,8 +328,8 @@ std::vector<FusedObservation> FuseFrame(const std::vector<PoseEstimate>& estimat
     const std::vector<const WorldEstimate*> survivors =
         (cfg.mode == FusionMode::kNaive)
             ? cluster
-            : ApplyDisagreementGate(cluster, cfg.disagreement_gate, &rejected_bits,
-                                    &two_view_conflict);
+            : ApplyDisagreementGate(cluster, cfg.disagreement_gate, cfg.view_evidence.min_gap,
+                                    &rejected_bits, &two_view_conflict);
 
     FusedObservation obs;
     obs.cls = survivors.front()->cls;

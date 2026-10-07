@@ -274,6 +274,107 @@ TEST(Ablation, RowsCoverEveryViewPlusFusedAndFormatCleanly) {
 // The baseline arm -- what makes the headline claim falsifiable
 // --------------------------------------------------------------------------
 
+TEST(Ablation, WithDepthEvidenceEachTierGainsTheGateByScoreRow) {
+  // The half-hidden bottle, as recorded: the clear view right with the lower
+  // score, the hidden view 68 mm off with the higher one and no depth behind it.
+  const ExtrinsicsSet ex = Rig();
+  FusionConfig cfg;
+  cfg.view_evidence.enabled = true;
+  const Eigen::Isometry3d truth = Pose({0.10, 0.0, 0.03});
+  const Eigen::Isometry3d wrong = Pose({0.10, 0.0, 0.03 + 0.068});
+
+  std::vector<AblationFrame> frames;
+  for (int i = 0; i < 30; ++i) {
+    AblationFrame f;
+    f.stamp_ns = 1'000'000'000ULL + static_cast<uint64_t>(i) * 33'000'000ULL;
+    PoseEstimate clear = Observe(ex, "cam_front", "cube", truth, 0.85);
+    clear.depth_support = 0.90;
+    clear.seen_through = 0.00;
+    PoseEstimate hidden = Observe(ex, "cam_over", "cube", wrong, 0.99);
+    hidden.depth_support = 0.15;
+    hidden.seen_through = 0.20;   // under the veto: the gate has to decide
+    f.estimates = {clear, hidden};
+    f.ground_truth = {GroundTruthObject{"cube", truth}};
+    frames.push_back(std::move(f));
+  }
+
+  const AblationResult result = RunOcclusionAblation(frames, ex, cfg, {}, Models());
+  ASSERT_EQ(result.rows.size(), 10u);
+  const std::vector<std::string> expected = {
+      "cam_front", "cam_over", "naive", "gate-score", "gated",
+      "cam_front+ekf", "cam_over+ekf", "naive+ekf", "gate-score+ekf", "fused"};
+  for (size_t i = 0; i < expected.size(); ++i) EXPECT_EQ(result.rows[i].label, expected[i]);
+  EXPECT_TRUE(Row(result, "gate-score").by_score);
+  EXPECT_FALSE(Row(result, "gated").by_score);
+  EXPECT_FALSE(Row(result, "cam_over").by_score);
+
+  // By score the gate keeps the wrong view; by evidence the right one. The
+  // single views are what they were: cam_over alone is still 68 mm off, and
+  // nothing the other camera saw is allowed to remove it.
+  EXPECT_NEAR(Row(result, "gate-score").mean_add_s_m, Row(result, "cam_over").mean_add_s_m, 1e-9);
+  EXPECT_GT(Row(result, "gate-score").mean_add_s_m, 0.03);
+  EXPECT_LT(Row(result, "gated").mean_add_s_m, 1e-6);
+  EXPECT_LT(Row(result, "fused").mean_add_s_m, 1e-3);
+  EXPECT_EQ(Row(result, "cam_over").matched, 30);
+  EXPECT_NE(result.Format().find("gate-score"), std::string::npos);
+  EXPECT_NE(result.Format().find("score"), std::string::npos);
+
+  // With the rule off in the configuration the table is the eight rows it was,
+  // whatever the estimates carry.
+  FusionConfig off;
+  EXPECT_EQ(RunOcclusionAblation(frames, ex, off, {}, Models()).rows.size(), 8u);
+}
+
+TEST(Ablation, TheTableSaysWhichObjectAMultiObjectSceneFailsOn) {
+  // t2_clutter_c in miniature: two objects, one of them 20 mm off in both
+  // views. Pooled that is "50% inside", which is true of neither object.
+  const ExtrinsicsSet ex = Rig();
+  const FusionConfig cfg;
+  const Eigen::Isometry3d cube = Pose({0.10, 0.0, 0.03});
+  const Eigen::Isometry3d block = Pose({-0.15, 0.10, 0.03});
+  const Eigen::Isometry3d block_wrong = Pose({-0.15, 0.10, 0.03 + 0.020});
+  ModelRegistry models = Models();
+  models["block"] = models.at("cube");
+
+  std::vector<AblationFrame> frames;
+  for (int i = 0; i < 10; ++i) {
+    AblationFrame f;
+    f.stamp_ns = 1'000'000'000ULL + static_cast<uint64_t>(i) * 33'000'000ULL;
+    f.estimates = {Observe(ex, "cam_front", "cube", cube), Observe(ex, "cam_over", "cube", cube),
+                   Observe(ex, "cam_front", "block", block_wrong),
+                   Observe(ex, "cam_over", "block", block_wrong)};
+    f.ground_truth = {GroundTruthObject{"cube", cube}, GroundTruthObject{"block", block}};
+    frames.push_back(std::move(f));
+  }
+  const AblationResult result = RunOcclusionAblation(frames, ex, cfg, {}, models);
+  const AblationRow& gated = Row(result, "gated");
+  EXPECT_DOUBLE_EQ(gated.recall_at_0p1_diameter, 0.5);
+  ASSERT_EQ(gated.by_class.size(), 2u);
+  EXPECT_DOUBLE_EQ(gated.by_class.at("cube").recall_at_0p1_diameter, 1.0);
+  EXPECT_DOUBLE_EQ(gated.by_class.at("block").recall_at_0p1_diameter, 0.0);
+  EXPECT_EQ(gated.by_class.at("block").matched, 10);
+  // ADD-S, not the offset: nearest model point, so 20 mm of offset reads as less.
+  EXPECT_GT(gated.by_class.at("block").mean_add_s_m, 0.009);
+  EXPECT_LT(gated.by_class.at("cube").mean_add_s_m, 1e-6);
+  // The pooled mean is the matched-weighted mean of the per-class ones.
+  EXPECT_NEAR(gated.mean_add_s_m,
+              0.5 * (gated.by_class.at("cube").mean_add_s_m + gated.by_class.at("block").mean_add_s_m),
+              1e-9);
+  const std::string table = result.Format();
+  EXPECT_NE(table.find("per object:"), std::string::npos) << table;
+  EXPECT_NE(table.find("block"), std::string::npos);
+
+  // One object: one entry, and no second table.
+  const AblationResult single =
+      RunOcclusionAblation({frames[0].stamp_ns ? AblationFrame{frames[0].stamp_ns,
+                                                               {frames[0].estimates[0], frames[0].estimates[1]},
+                                                               {frames[0].ground_truth[0]}}
+                                               : AblationFrame{}},
+                           ex, cfg, {}, models);
+  EXPECT_EQ(Row(single, "gated").by_class.size(), 1u);
+  EXPECT_EQ(single.Format().find("per object:"), std::string::npos);
+}
+
 TEST(Ablation, GatedFusionBeatsTheNaiveBaselineWhenOneViewIsAnOutlier) {
   // The scenario the disagreement gate exists for, and the only kind of
   // scenario in which this module can out-perform a two-line average: one view

@@ -23,9 +23,13 @@ Dependencies: Eigen3, yaml-cpp, GTest. **No hardware, no models, no ROS.**
 ```
 per-view PoseEstimate
   -> world frame            extrinsics.cpp   T_world_cam * pose_cam
+  -> free-space veto        fusion.cpp       drop an estimate another view
+                                             sees through (depth evidence)
   -> cross-view association fusion.cpp       greedy NN within class,
                                              one estimate per camera per cluster
-  -> disagreement gate      fusion.cpp       drop outlier views
+  -> disagreement gate      fusion.cpp       drop outlier views; a two-view
+                                             conflict is settled by depth
+                                             evidence, by score without it
   -> confidence-weighted    quaternion_average.cpp  Markley eigendecomposition
      fuse                                    + score-weighted centroid
   -> track association      fusion.cpp       stable ids across frames
@@ -97,6 +101,61 @@ reject anything from. `LoadFusionConfig` enforces `max_translation_m <
 max_distance_m` and refuses to load otherwise. This was a real bug in the first
 version of `config/fusion.yaml`, caught by the gate tests.
 
+**Which view to believe is decided by depth, not by the estimator's score
+(2026-10-07).** With two cameras there is no majority, so when the views
+disagree the gate has to pick one, and it used to pick the higher
+`PoseEstimate::score`. On the first half-hidden bottle scenes that was the
+wrong view on every pair: the hidden view puts the bottle at the occluder's
+range, 68–125 mm from the truth, with a FoundationPose score of 0.94–0.99; the
+clear view has it to 3 mm with 0.84–0.85. The score is the estimator's opinion
+of its own answer and it does not rank the views.
+
+Each estimate now arrives with two *measurements* (`INTERFACES.md` §3; made by
+`runtime/view_evidence.hpp`, which renders the object at the estimated pose and
+compares it with the depth images): `depth_support`, the share of its
+silhouette its own view's depth agrees with, and `seen_through`, the share
+where the **other** view measures a surface *beyond* the object — a camera
+looking straight through the place the object is claimed to be. Two rules use
+them, both configured in `fusion.yaml` `view_evidence:` and both inert for an
+estimate that carries no evidence:
+
+1. **Free-space veto.** An estimate seen through by `max_seen_through` (one
+   third) or more is not fused at all. It is dropped before association, so it
+   cannot found a cluster or a track of its own either — which is what the
+   half-hidden cube of 2026-10-05 did, 171 mm from the truth and so outside the
+   association radius: a second cube for 300 pairs.
+2. **Arbitration.** A two-view conflict keeps the estimate with the larger
+   `depth_support × (1 − seen_through)` — when the two differ in it by at least
+   `min_gap` (0.15). Closer than that and the score decides, as before: the
+   two views of the unoccluded bottle differ by up to 0.14 on some pair, and a
+   choice made inside that band changes from frame to frame.
+
+The asymmetry carries the rule. A surface *in front of* the object is an
+occluder and is evidence of nothing; so is a pixel with no depth. Only a
+surface *behind* where the object should be contradicts it. So a camera that
+cannot see an object never vetoes it — a fully hidden object survives on the
+one view that has it — while a camera that sees past it always does.
+
+**Measured**, all 20 processed scenes of 2026-10-05..07 replayed (ADD-S of
+gate + EKF, share inside 0.1 d; `gate-score` is the gate without the evidence):
+
+| scene | `gate-score+ekf` | `fused` |
+|---|---|---|
+| `t3_bottle_over` — half hidden | 90.21 mm · 0% | **3.15 mm · 100%** |
+| `t3_bottle_over_b` — half hidden, tier certified | 33.99 mm · 0.3% | **3.10 mm · 100%** |
+| the other 18 | — | identical to 0.01 mm |
+
+The veto fired on 300, 291, 300 and 255 pairs of the four estimates it was
+built for and on 3 pairs of a phantom bowl; on no correct estimate in 4,800
+pairs. Of the 10,843 logged estimates within 30 mm of the truth the most any is
+seen through is 0.13; the vetoed ones are seen through by 0.46 at least
+(`estimates.seen_through` in each scene's log; `scripts/view_evidence_study.py`
+is the study that preceded the rule).
+
+It is a property of having a second camera, not of this object set: nothing in
+it is tuned per class. What it cannot settle is a pose that is wrong and
+occupies the right space, such as the bottle read back to front (below).
+
 **Error-state EKF, not a quaternion Kalman filter.** State is nominal `(p, v, q)`
 with error `[δp, δv, δθ] ∈ R⁹`. Keeping orientation error minimal (3-dim, in the
 tangent space at `q`) avoids the singular covariance that the unit-norm
@@ -121,7 +180,8 @@ survives for `ekf.max_coast_s` so a briefly-occluded object keeps its id.
 ## Occlusion ablation
 
 `RunOcclusionAblation()` runs one identical estimate stream through **eight
-arms**, each with a fresh `Fusion`, and reports ADD-S. `CLAUDE.md`: this result
+arms** — ten when the configuration uses depth evidence — each with a fresh
+`Fusion`, and reports ADD-S. `CLAUDE.md`: this result
 is never cut, so the harness is treated as a deliverable and is itself tested.
 
 Three things differ between arms and the harness varies them one at a time:
@@ -137,6 +197,15 @@ filter** (the per-object EKF) is applied. Rows come in two tiers, raw and EKF:
 | `cam_front+ekf`, `cam_over+ekf` | one | — | ekf |
 | `naive+ekf` | both | naive | ekf |
 | `fused` | both | gated | ekf |
+
+With `view_evidence.enabled` each tier gains a row between `naive` and the
+policy — `gate-score` and `gate-score+ekf`: both views, the gate **without**
+the depth evidence, a conflict settled by score. `gated − gate-score` is what
+the evidence buys with nothing else changed. The single-view arms never use
+the evidence, because half of it comes from the other camera, and `naive`
+never does by definition. A multi-object scene also gets a per-object table
+under the pooled one: pooled, a scene with one object at 0% and two at 100%
+reads as 67% of nothing in particular.
 
 Read it as pairs that differ in exactly one thing. `gated − naive` and
 `fused − naive+ekf` are what **this module's policy** buys, at each filter
@@ -182,11 +251,29 @@ so in its own output.
 | Disagreement gate rejects an injected outlier | Met — three- and two-view branches |
 | Single-view objects pass through with correct `visible_views` | Met |
 | Refuses to start on extrinsics failing the quality gate | Met — throws in the constructor |
-| Occlusion ablation harness emitting comparable ADD-S | Met — eight-arm harness + demo; filter and policy varied independently since 2026-09-06 |
+| Occlusion ablation harness emitting comparable ADD-S | Met — eight-arm harness + demo; filter and policy varied independently since 2026-09-06; ten arms and a per-object table when depth evidence is in use (2026-10-08) |
+| A view that is wrong is not believed over one that is right (2026-10-08) | Met on the half-hidden bottle, twice (90 → 3.2 mm, 34 → 3.1 mm) with no other scene changed; **not** met for the bottle read back to front (Known gaps) |
 | Unknown-object merge from the clustering path | **Not started** — `cluster_agent` is above MVP and does not exist yet |
 
 ## Known gaps
 
+- **The bottle read back to front (2026-10-06).** In two of three placements
+  cam_front's pose of the mustard bottle is 171–178° from the truth, with the
+  higher score, and the gate keeps it. The depth evidence does not settle it:
+  a bottle turned half a turn occupies almost the same space, both views are
+  backed about equally (0.86 against 0.90) and the margin leaves the choice to
+  the score. ADD-S barely registers it (3.4 against 4.6 mm) because nearest-
+  point distance forgives exactly this. It is an estimator ambiguity that
+  wants either the bottle's near-symmetry declared, as the cube's symmetry is,
+  or an ADD column for objects that are not symmetric.
+- **A view the gate rejects reads as "occluded".** `visible_views` carries the
+  surviving views only, and the scene graph reads a missing bit as
+  `(occluded_from ...)`. True when the view was vetoed for seeing an occluder's
+  depth; not true when it was merely outvoted, as with the bottle above.
+- **The evidence stage costs about 10 ms a pair** on the scored scenes (two to
+  six estimates, each rendered into two views at full resolution). It is
+  logged per pair (`frames.evidence_ms`). Nothing has been done to make it
+  cheaper; rendering only the object's bounding box would.
 - **`extent` for unknown objects.** Adding `extent` to `PoseEstimate` (§3,
   additive) was necessary because nothing upstream supplied `ObjectState::extent`.
   Known classes can fall back to the `ExtentRegistry`; the DBSCAN path must carry

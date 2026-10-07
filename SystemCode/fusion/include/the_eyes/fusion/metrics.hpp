@@ -23,6 +23,14 @@
 //   naive+ekf       both views, naive, EKF   |  baseline with the filter
 //   fused           both views, gated, EKF   |  the deployed system
 //
+// With depth evidence in use (FusionConfig::view_evidence, 2026-10-07) each
+// tier has a fifth row between `naive` and the policy:
+//
+//   gate-score      both views, gated, raw   |  the gate WITHOUT the evidence:
+//   gate-score+ekf  both views, gated, EKF   |  a conflict settled by score
+//
+// so `gated - gate-score` is what the evidence buys, on its own.
+//
 // Read it as pairs that differ in exactly one thing. `gated - naive` and
 // `fused - naive+ekf` are the policy's contribution, at each filter setting.
 // `naive - cam_front` is the second camera's. `cam_front+ekf - cam_front` and
@@ -94,11 +102,25 @@ struct AblationFrame {
   std::vector<GroundTruthObject> ground_truth;
 };
 
+// One arm's numbers for one class. The pooled row hides which object a
+// multi-object scene fails on: on t2_clutter_c (2026-10-07) "66.8% inside" was
+// two objects at 100% and the cube at 0%.
+struct AblationClassStats {
+  int ground_truth_objects = 0;
+  int matched = 0;
+  int missed = 0;
+  double mean_add_s_m = 0.0;            // over matched instances only
+  double recall_at_0p1_diameter = 0.0;  // over ALL instances, misses included
+};
+
 struct AblationRow {
   std::string label;                  // see the arm table at the top of this file
   std::vector<std::string> views;     // which cameras' estimates this arm saw
   FusionMode mode = FusionMode::kGated;
   bool temporal_filter = false;
+  // True for the `gate-score` rows: the gated policy with the depth evidence
+  // withheld, in a table whose configuration otherwise uses it.
+  bool by_score = false;
   int ground_truth_objects = 0;       // total GT instances across all frames
   int matched = 0;                    // GT instances an estimate was found for
   int missed = 0;                     // GT instances with no estimate
@@ -108,6 +130,8 @@ struct AblationRow {
   // diameter. Counting misses in the denominator keeps a configuration that
   // simply fails to see the object from scoring well on the few it does see.
   double recall_at_0p1_diameter = 0.0;
+  // The same, per class. One entry for a single-object scene.
+  std::map<std::string, AblationClassStats> by_class;
 };
 
 struct AblationResult {
@@ -118,7 +142,8 @@ struct AblationResult {
 };
 
 // Runs `frames` once per configuration with a fresh Fusion instance each time,
-// so no temporal state leaks between configurations. Eight rows: see above.
+// so no temporal state leaks between configurations. Eight rows, or ten when
+// the configuration uses depth evidence: see above.
 AblationResult RunOcclusionAblation(const std::vector<AblationFrame>& frames,
                                     const ExtrinsicsSet& extrinsics, const FusionConfig& cfg,
                                     const ExtentRegistry& extents, const ModelRegistry& models,

@@ -30,6 +30,36 @@ struct DisagreementGateConfig {
   double two_view_conflict_confidence_penalty = 0.5;
 };
 
+// What to do with PoseEstimate::depth_support / seen_through when the producer
+// supplied them. Loaded from fusion.yaml `view_evidence:`; the section is
+// optional and its absence means `enabled = false`, which is the gate as it
+// was before 2026-10-07.
+struct ViewEvidenceConfig {
+  bool enabled = false;
+  // An estimate another view sees through by at least this share of its
+  // silhouette is not fused at all. MEASURED on the 16 scored scenes of
+  // 2026-10-05..07, every estimate logged: the 10,843 within 30 mm of the
+  // truth reach 0.13 at most, the four the gate was getting wrong 0.46 at
+  // least (docs/OCTOBER_PLAN.md).
+  double max_seen_through = 1.0 / 3.0;
+  // In a two-view conflict the evidence decides only when the two estimates
+  // differ in it by at least this; closer than that and it is the score, as
+  // before. MEASURED on the scored scenes: the two views of the unoccluded
+  // bottle differ by up to 0.14 on some pair (and one estimate's own evidence
+  // moves by up to 0.10 from frame to frame), while the cases the rule exists
+  // for differ by 0.8 or more. Deciding inside that band flips the
+  // choice between frames: on t1_bottle_c, with no margin, the fused pose
+  // alternated between two views 170 deg apart and the EKF averaged them
+  // (5.73 mm against 3.37).
+  double min_gap = 0.15;
+  // Tolerances the PRODUCER of the two fields uses; carried here so one file
+  // describes the whole rule. A measured depth within agree_tol_m of the
+  // rendered surface supports the pose; one more than through_tol_m beyond it
+  // is free space.
+  double agree_tol_m = 0.020;
+  double through_tol_m = 0.040;
+};
+
 struct EkfConfig {
   double process_noise_position_m = 0.01;
   double process_noise_velocity_mps = 0.10;
@@ -90,9 +120,18 @@ struct FusionConfig {
   // which is the only comparison that isolates the policy.
   bool temporal_filter = true;
 
+  // Whether the gated policy may use the depth evidence carried by the
+  // estimates (view_evidence.enabled is the deployed setting; this is the
+  // harness's switch on top of it, also not read from fusion.yaml). The
+  // single-view arms turn it off: an estimate vetoed because the OTHER camera
+  // sees through it is not "what one view alone produces". kNaive never uses
+  // it -- believing every view is its definition.
+  bool use_view_evidence = true;
+
   CalibrationGateConfig calibration;
   AssociationConfig association;
   DisagreementGateConfig disagreement_gate;
+  ViewEvidenceConfig view_evidence;
   EkfConfig ekf;
   TrackingConfig tracking;
   // Index i is bit i of ObjectState::visible_views. Must match predicates.yaml.

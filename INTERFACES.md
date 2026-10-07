@@ -75,6 +75,12 @@ struct PoseEstimate {
                                 // orientation naively for symmetric objects
   Eigen::Vector3d extent;       // world-axis-aligned half-extents of the
                                 // bounding volume; zero means "not supplied"
+
+  // What the depth images say about this pose. ADDITIVE (2026-10-07).
+  double depth_support;         // own view: share of the silhouette the measured
+                                // depth agrees with; <0 = not supplied
+  double seen_through;          // other views: largest share of the silhouette
+                                // with a surface BEYOND the object; <0 = not supplied
 };
 ```
 
@@ -83,6 +89,30 @@ nothing upstream previously supplied. For a known class it is the CAD mesh AABB
 and may instead be looked up by class; for the `unknown_object` clustering path
 it is the cluster bounding volume, which exists only per-estimate and therefore
 has to travel on the estimate itself. Additive change — no existing field moved.
+
+**Depth evidence (additive, 2026-10-07; no existing field moved).** `score` is
+the estimator's opinion of its own answer, and on real data it does not rank
+the views: on the half-hidden bottle of 2026-10-06 the view 68 mm from the
+truth scored 0.99 and the view 3 mm from it 0.85. The two new fields are
+measurements — the object rendered at the estimated pose and compared with a
+depth image:
+
+- `depth_support`: in the estimate's **own** view, the share of its silhouette
+  where the measured depth agrees with the pose.
+- `seen_through`: over the **other** views, the largest share of its silhouette
+  where that view measures a surface *beyond* the object — a camera looking
+  through the place the object is claimed to occupy. A surface *in front* is an
+  occluder and counts for nothing either way; so does a pixel with no depth.
+
+Both are in [0, 1] and **negative when not supplied**, the same convention as
+`ObjectState`'s sigmas. `has_view_evidence(const PoseEstimate&)` is the check;
+an estimate with only one of the two is treated as having neither. They are
+filled by the runner after the pose stage, because one view's estimate needs
+the other view's depth (`runtime/view_evidence.hpp`) — the pose estimator
+itself still knows nothing about other cameras. What fusion does with them is
+configured in `fusion.yaml` `view_evidence:` and described in
+`SystemCode/fusion/README.md`; a producer that supplies nothing gets the gate
+as it was.
 
 Poses are emitted in the **camera optical frame**. Transformation to the world
 frame is the fusion module's job, using extrinsics from calibration — the pose
