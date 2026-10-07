@@ -99,8 +99,17 @@ the startup report warns that nothing from the run is a detection result.
    colour frame is first brightened up to a floor — the detector's copy only;
    see "Brightness floor" below.
 4. **Pose** per view via one `PoseAgent` per camera sharing one estimator.
-5. **Fuse** both views' estimates in one `Fusion::Process` call.
-6. **Static scene** from `config/scene.yaml` (the table) is injected —
+5. **Depth evidence** for every per-view estimate (`view_evidence.hpp`, when
+   `fusion.yaml` `view_evidence.enabled`): the object is rendered at the
+   estimated pose into its own view and into the other view, and compared with
+   the measured depth. Each estimate gets `depth_support` and `seen_through`
+   (`INTERFACES.md` §3). It runs once both views are through the pose stage,
+   because one view's estimate needs the other view's depth, and it uses the
+   corrected depth scale.
+6. **Fuse** both views' estimates in one `Fusion::Process` call. An estimate the
+   other camera sees through is dropped first; the status line counts them
+   (`refuted N`).
+7. **Static scene** from `config/scene.yaml` (the table) is injected —
    without it no object can be `on` anything — then `Annotate` + `EmitInit`.
    With the scene graph's support check on (`predicates.yaml`, shipped on), an
    object that rests on nothing is left out of the facts and named in
@@ -108,7 +117,7 @@ the startup report warns that nothing from the run is a detection result.
    counts it. In the console the scene-graph panel draws only what was
    reported; the world panel still draws everything fusion tracked. `check` refuses to start if the check is on and `scene.yaml` has
    nothing of a ground class to stand on.
-7. **Log** one transaction to `metrics.sqlite`; print a status line every N
+8. **Log** one transaction to `metrics.sqlite`; print a status line every N
    pairs and the `(:init ...)` block whenever the fact set changes.
 
 ## Recorded session format
@@ -135,12 +144,14 @@ not bitwise deterministic; use `provider: cpu` for parity work.
 `runs/runtime/<session_id>/metrics.sqlite`, schema version 1. Tables: `runs`
 (source, backends, active detector provider with CPU fallback flagged, config
 dir, git revision, per-camera K/serial JSON, startup report), `frames` (one per
-pair: stamps, skew, drops, per-stage ms, fusion diagnostics), `frame_views`
+pair: stamps, skew, drops, per-stage ms incl. `evidence_ms`, fusion
+diagnostics incl. `views_refuted`), `frame_views`
 (per camera per pair: detect/pose ms, counts, pose_agent diagnostics, and
 `brightness_gain` — the gain that view's frame was given before the detector;
 NULL in logs written before 2026-10-05, which gain the column on reopening),
 `detections`, `estimates` (full camera-frame `PoseEstimate`: t + unit
-quaternion, score, symmetric, extent, track id), `objects` (`ObjectState`
+quaternion, score, symmetric, extent, track id, and the depth evidence
+`depth_support` / `seen_through`, NULL when not supplied), `objects` (`ObjectState`
 after annotation, including sigmas and velocity, `is_static` for injected
 objects, and `supported` — 1 when the scene graph reported the object, 0 when
 its support check left it out, NULL when the check did not run or the log
@@ -379,17 +390,18 @@ it the provider cannot find cuDNN, the session falls back to CPU, and the run
 reports CPU latency while looking entirely healthy — so the path is baked into
 the binary rather than left to `LD_LIBRARY_PATH` at the call site.
 
-## Tests (`test_runtime`, 113, no hardware)
+## Tests (`test_runtime`, 120, no hardware)
 
 | suite | pins |
 |---|---|
 | `FramePairer` | nearest pairing with the −11 ms offset; a gap in one stream drops only unpairable frames and keeps stamps monotonic; late frames are stale; ring overflow counts; stall timeout; grabber failure propagates with the camera name; two jittered producer threads against a slow consumer never emit a pair outside max skew |
 | `RecorderReplay` | 5 random pairs round-trip bit-exact (rgb, depth incl. 0 and 65535, K, scale, serial, stamps, frame numbers); start/limit; refuses to overwrite; rejects a future `format_version`; a full queue drops and counts without blocking and the survivors replay in order |
 | `StaticScene` | the shipped `scene.yaml` injects `table_01` with all view bits and no uncertainty; a cube resting on it reads `(on red_cube_01 table_01)`; bad configs and id collisions throw |
-| `MetricsLog` | every table written; `LoadAblationFrames` reproduces the logged estimates to 1e-12; reopen keeps the schema; a foreign schema version is refused; the brightness gain is logged per view and `supported` per object (1 / 0 / NULL when the check did not run); a log from before those columns gains them, keeps its rows and still rebuilds |
+| `MetricsLog` | every table written; `LoadAblationFrames` reproduces the logged estimates to 1e-12; reopen keeps the schema; a foreign schema version is refused; the brightness gain is logged per view, `supported` per object (1 / 0 / NULL when the check did not run) and the depth evidence per estimate ("not supplied" survives as NULL); a log from before those columns gains them, keeps its rows and still rebuilds, and one no writer has reopened reads back without evidence |
 | `RuntimeConfig`, `Backends`, `StartupChecks` | strict loaders; factories; missing model names the export command; a dead pose socket names the server command; the shipped configs cross-reference; a swapped serial / view order / world frame is caught; the support check with no ground class in `scene.yaml` is refused |
 | `ReplayPipeline` | record a synthetic session → fixture detector → identity pose → real extrinsics/fusion/predicates/scene → `Pipeline` → `MetricsLog`, twice: identical facts, right row counts, ablation frames rebuild |
 | `MarkerTrays` | tray config loading and its refusals; Markley averaging and reported scatter; the outlier screen keeps a cluster shaped like the real stills whole, drops a ~120° flip listed first and a card in the wrong recess; ground truth round-trips through the log with pair, instance and source |
+| `ViewEvidence` | a cube on a table seen by two cameras placed like the rig's, depth rendered from the true geometry: a correct pose is supported and not seen through; a pose at the occluder's range is seen through by the other camera (> 0.9); an occluder in front is not free space; no depth is no opinion; one camera alone leaves `seen_through` unsupplied; no mesh, no frame, no calibration or a sliver of a silhouette is left alone; the corrected depth scale is the one used |
 | `PipelineBrightness` | through the real `Pipeline` with a spy detector and a spy estimator: the dark view reaches the detector at the floor and the bright one untouched, the result carries each view's gain, the pose estimator and the caller's frame keep the raw picture; `apply_to_pose` shares it; off changes nothing |
 | `Brightness` | luma weights on RGB order; the gain reaches the target, never darkens, stops at the cap, and is 1 when off; brightening saturates and never touches the caller's pixels; the config section is optional, strict when present |
 | `Visibility` | a face-on cube projects to exactly 45 × 45 px at the right depth; a tilted cube's depth matches an independent ray cast to 1e-6 m; occluder, tolerance, missing depth (unknown, not hidden), `behind`, erosion; OBJ face spellings, relative indices and refusals; the shipped meshes load and render |

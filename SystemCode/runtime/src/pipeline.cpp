@@ -142,6 +142,35 @@ PipelineResult Pipeline::Process(const FramePair& pair) {
     pose_.client->ClearWarnings();
   }
 
+  if (view_evidence_.enabled()) {
+    // Both views' depth is needed for one view's estimate, so this runs once
+    // every view has been through the pose stage. The logged per-view lists
+    // and the list fusion gets are the same estimates, evidence included.
+    double ms = 0.0;
+    {
+      ScopedTimer t(&ms);
+      std::map<std::string, EvidenceView> views;
+      for (const std::string& view : view_names_) {
+        const auto it = pair.frames.find(view);
+        if (it == pair.frames.end() || !it->second.valid()) continue;
+        EvidenceView v;
+        v.K = it->second.K;
+        v.depth_u16 = it->second.depth;
+        v.depth_scale_m = it->second.depth_scale_m * depth_correction_.For(view);
+        views.emplace(view, std::move(v));
+      }
+      all_estimates.clear();
+      for (const std::string& view : view_names_) {
+        const auto it = r.estimates.find(view);
+        if (it == r.estimates.end()) continue;
+        view_evidence_.Attach(views, &it->second);
+        all_estimates.insert(all_estimates.end(), it->second.begin(), it->second.end());
+      }
+    }
+    r.timings.evidence_ms = ms;
+    latency_["evidence"].Record(ms);
+  }
+
   {
     double ms = 0.0;
     {
@@ -183,7 +212,7 @@ std::string Pipeline::Summary() const {
     auto p = latency_.find("pose:" + v);
     if (p != latency_.end()) os << p->second.Format("pose_agent " + v + " (" + pose_.label + ")") << "\n";
   }
-  for (const char* stage : {"fusion", "scenegraph", "total"}) {
+  for (const char* stage : {"evidence", "fusion", "scenegraph", "total"}) {
     auto it = latency_.find(stage);
     if (it != latency_.end()) os << it->second.Format(stage) << "\n";
   }

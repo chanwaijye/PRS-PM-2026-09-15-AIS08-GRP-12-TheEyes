@@ -21,6 +21,7 @@
 #include "the_eyes/runtime/frame_pair.hpp"
 #include "the_eyes/runtime/pipeline_result.hpp"
 #include "the_eyes/runtime/static_scene.hpp"
+#include "the_eyes/runtime/view_evidence.hpp"
 #include "the_eyes/scenegraph/predicates.hpp"
 
 namespace the_eyes::runtime {
@@ -51,7 +52,13 @@ class Pipeline {
   void set_brightness(BrightnessConfig c) { brightness_ = c; }
   const BrightnessConfig& brightness() const { return brightness_; }
 
-  // Cumulative per-stage latency: "detect:<cam>", "pose:<cam>", "fusion",
+  // Depth evidence for every per-view estimate, measured after the pose stage
+  // and before fusion (view_evidence.hpp). Off until set: estimates then carry
+  // "not supplied" and fusion's gate falls back to the estimator's score.
+  void set_view_evidence(ViewEvidence e) { view_evidence_ = std::move(e); }
+  const ViewEvidence& view_evidence() const { return view_evidence_; }
+
+  // Cumulative per-stage latency: "detect:<cam>", "pose:<cam>", "evidence", "fusion",
   // "scenegraph", "total".
   const std::map<std::string, pose::LatencyStats>& latency() const { return latency_; }
   const DetectorHandle& detector() const { return detector_; }
@@ -71,6 +78,7 @@ class Pipeline {
   size_t detector_warnings_seen_ = 0;
   DepthCorrection depth_correction_;
   BrightnessConfig brightness_;
+  ViewEvidence view_evidence_;
 };
 
 }  // namespace the_eyes::runtime

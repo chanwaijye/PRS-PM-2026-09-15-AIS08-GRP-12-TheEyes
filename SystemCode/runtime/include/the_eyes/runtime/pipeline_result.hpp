@@ -22,6 +22,7 @@ namespace the_eyes::runtime {
 struct StageTimings {
   std::map<std::string, double> detect_ms;   // per camera
   std::map<std::string, double> pose_ms;     // per camera
+  double evidence_ms = 0.0;                  // view_evidence, all estimates; 0 when off
   double fusion_ms = 0.0;
   double scenegraph_ms = 0.0;
   double total_ms = 0.0;

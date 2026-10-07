@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS frames(
   n_objects INTEGER, n_facts INTEGER,
   views_rejected INTEGER, two_view_conflicts INTEGER,
   tracks_created INTEGER, tracks_retired INTEGER,
+  evidence_ms REAL, views_refuted INTEGER,
   PRIMARY KEY(run_id, pair_index));
 CREATE TABLE IF NOT EXISTS frame_views(
   run_id INTEGER NOT NULL, pair_index INTEGER NOT NULL, camera_id TEXT NOT NULL,
@@ -56,7 +57,8 @@ CREATE TABLE IF NOT EXISTS estimates(
   stamp_ns INTEGER NOT NULL, cls TEXT NOT NULL, track_id INTEGER NOT NULL,
   score REAL NOT NULL, symmetric INTEGER NOT NULL,
   tx REAL, ty REAL, tz REAL, qw REAL, qx REAL, qy REAL, qz REAL,
-  ex REAL, ey REAL, ez REAL);
+  ex REAL, ey REAL, ez REAL,
+  depth_support REAL, seen_through REAL);
 CREATE TABLE IF NOT EXISTS objects(
   run_id INTEGER NOT NULL, pair_index INTEGER NOT NULL, object_id TEXT NOT NULL,
   cls TEXT NOT NULL, visible_views INTEGER NOT NULL, confidence REAL NOT NULL,
@@ -230,6 +232,21 @@ MetricsLog::MetricsLog(const std::string& db_path) : path_(db_path), impl_(std::
   if (!HasColumn(db, "objects", "supported")) {
     Exec(db, "ALTER TABLE objects ADD COLUMN supported INTEGER;");
   }
+  // The depth evidence of 2026-10-07, likewise additive: per estimate the two
+  // measurements fusion decides on (NULL = not supplied, which is how they
+  // read back), per frame the stage's cost and how many estimates it led
+  // fusion to drop.
+  for (const char* column : {"depth_support", "seen_through"}) {
+    if (!HasColumn(db, "estimates", column)) {
+      Exec(db, (std::string("ALTER TABLE estimates ADD COLUMN ") + column + " REAL;").c_str());
+    }
+  }
+  if (!HasColumn(db, "frames", "evidence_ms")) {
+    Exec(db, "ALTER TABLE frames ADD COLUMN evidence_ms REAL;");
+  }
+  if (!HasColumn(db, "frames", "views_refuted")) {
+    Exec(db, "ALTER TABLE frames ADD COLUMN views_refuted INTEGER;");
+  }
 
   {
     Stmt v(db, "SELECT version FROM schema_version LIMIT 1");
@@ -254,7 +271,8 @@ MetricsLog::MetricsLog(const std::string& db_path) : path_(db_path), impl_(std::
   impl_->frame = Stmt(db,
       "INSERT INTO frames(run_id, pair_index, stamp_ns, skew_ms, frames_dropped_since_last, "
       "fusion_ms, scenegraph_ms, total_ms, n_objects, n_facts, views_rejected, "
-      "two_view_conflicts, tracks_created, tracks_retired) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+      "two_view_conflicts, tracks_created, tracks_retired, evidence_ms, views_refuted) "
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
   impl_->frame_view = Stmt(db,
       "INSERT INTO frame_views(run_id, pair_index, camera_id, stamp_ns, frame_number, detect_ms, "
       "pose_ms, n_detections, n_estimates, dropped_no_mesh, dropped_roi_too_small, "
@@ -265,8 +283,8 @@ MetricsLog::MetricsLog(const std::string& db_path) : path_(db_path), impl_(std::
       "x, y, w, h) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
   impl_->estimate = Stmt(db,
       "INSERT INTO estimates(run_id, pair_index, camera_id, stamp_ns, cls, track_id, score, "
-      "symmetric, tx, ty, tz, qw, qx, qy, qz, ex, ey, ez) "
-      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+      "symmetric, tx, ty, tz, qw, qx, qy, qz, ex, ey, ez, depth_support, seen_through) "
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
   impl_->object = Stmt(db,
       "INSERT INTO objects(run_id, pair_index, object_id, cls, visible_views, confidence, "
       "tx, ty, tz, qw, qx, qy, qz, ex, ey, ez, position_sigma_m, orientation_sigma_rad, "
@@ -311,6 +329,7 @@ void MetricsLog::WriteFrame(int64_t run_id, const PipelineResult& r) {
         .Bind(static_cast<int64_t>(r.pddl.facts.size()))
         .Bind(r.fusion_diag.views_rejected).Bind(r.fusion_diag.two_view_conflicts)
         .Bind(r.fusion_diag.tracks_created).Bind(r.fusion_diag.tracks_retired)
+        .Bind(r.timings.evidence_ms).Bind(r.fusion_diag.views_refuted)
         .Run();
 
     for (const auto& [camera_id, stamps] : r.view_stamps) {
@@ -355,8 +374,16 @@ void MetricsLog::WriteFrame(int64_t run_id, const PipelineResult& r) {
         s.estimate.Reset()
             .Bind(run_id).Bind(r.pair_index).Bind(e.camera_id).Bind(e.stamp_ns)
             .Bind(e.cls).Bind(e.track_id).Bind(e.score).Bind(e.symmetric ? 1 : 0)
-            .Bind(e.pose_cam).Bind(e.extent)
-            .Run();
+            .Bind(e.pose_cam).Bind(e.extent);
+        // Negative is "not supplied" in memory and NULL on disk.
+        for (const double v : {e.depth_support, e.seen_through}) {
+          if (v >= 0.0) {
+            s.estimate.Bind(v);
+          } else {
+            s.estimate.BindNull();
+          }
+        }
+        s.estimate.Run();
       }
     }
 
@@ -437,10 +464,16 @@ std::vector<fusion::AblationFrame> LoadAblationFrames(const std::string& db_path
       }
     }
     {
-      Stmt q(db,
-             "SELECT pair_index, camera_id, stamp_ns, cls, track_id, score, symmetric, "
-             "tx, ty, tz, qw, qx, qy, qz, ex, ey, ez FROM estimates WHERE run_id=? "
-             "ORDER BY pair_index, camera_id, cls, track_id");
+      // A log that was never reopened by a writer since 2026-10-07 has no
+      // evidence columns; it reads back as "not supplied", like a NULL.
+      const bool has_evidence = HasColumn(db, "estimates", "depth_support") &&
+                                HasColumn(db, "estimates", "seen_through");
+      const std::string sql =
+          std::string("SELECT pair_index, camera_id, stamp_ns, cls, track_id, score, symmetric, "
+                      "tx, ty, tz, qw, qx, qy, qz, ex, ey, ez, ") +
+          (has_evidence ? "depth_support, seen_through" : "NULL, NULL") +
+          " FROM estimates WHERE run_id=? ORDER BY pair_index, camera_id, cls, track_id";
+      Stmt q(db, sql.c_str());
       q.Reset().Bind(run_id);
       while (q.Row()) {
         auto it = index_of.find(static_cast<uint64_t>(q.Int(0)));
@@ -454,6 +487,8 @@ std::vector<fusion::AblationFrame> LoadAblationFrames(const std::string& db_path
         e.symmetric = q.Int(6) != 0;
         e.pose_cam = PoseFrom(q, 7);
         e.extent = Eigen::Vector3d(q.Dbl(14), q.Dbl(15), q.Dbl(16));
+        if (!q.IsNull(17)) e.depth_support = q.Dbl(17);
+        if (!q.IsNull(18)) e.seen_through = q.Dbl(18);
         frames[it->second].estimates.push_back(std::move(e));
       }
     }

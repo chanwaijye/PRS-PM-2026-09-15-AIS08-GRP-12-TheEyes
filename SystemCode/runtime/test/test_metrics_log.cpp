@@ -101,12 +101,18 @@ PipelineResult Result(uint64_t pair_index) {
   e1.score = 0.82;
   e1.symmetric = false;
   e1.extent = Eigen::Vector3d(0.048576, 0.033309, 0.095704);
+  // t3_bottle_over_b's clear view: well supported, not seen through.
+  e1.depth_support = 0.9;
+  e1.seen_through = 0.0;
   PoseEstimate e2 = e1;
   e2.camera_id = "cam_over";
   e2.cls = "bowl";
   e2.symmetric = true;
   e2.pose_cam = Pose(-0.05, 0.02, 0.8, -120.0);
   e2.extent = Eigen::Vector3d(0.080732, 0.080582, 0.027505);
+  // ...and an estimate nobody measured: "not supplied" has to survive the log.
+  e2.depth_support = -1.0;
+  e2.seen_through = -1.0;
   r.estimates = {{"cam_front", {e1}}, {"cam_over", {e2}}};
 
   ObjectState o1;
@@ -195,6 +201,11 @@ TEST(MetricsLog, WritesEveryTableAndReadsBackEstimatesExactly) {
       EXPECT_EQ(got.stamp_ns, want.stamp_ns);
       EXPECT_DOUBLE_EQ(got.score, want.score);
       EXPECT_EQ(got.symmetric, want.symmetric);
+      // The depth evidence is what the harness's gate decides on: it has to
+      // come back exactly, and "not supplied" has to come back as that.
+      EXPECT_DOUBLE_EQ(got.depth_support, want.depth_support) << got.camera_id;
+      EXPECT_DOUBLE_EQ(got.seen_through, want.seen_through) << got.camera_id;
+      EXPECT_EQ(has_view_evidence(got), got.camera_id == "cam_front");
       EXPECT_TRUE(got.extent.isApprox(want.extent, 0.0));
       EXPECT_TRUE(got.pose_cam.matrix().isApprox(want.pose_cam.matrix(), 1e-12))
           << got.camera_id << "\n" << got.pose_cam.matrix() << "\nvs\n" << want.pose_cam.matrix();
@@ -244,7 +255,22 @@ TEST(MetricsLog, ALogFromBeforeTheGainColumnGainsItAndKeepsItsRows) {
   ASSERT_EQ(sqlite3_exec(raw, "ALTER TABLE objects DROP COLUMN supported", nullptr, nullptr, nullptr),
             SQLITE_OK)
       << sqlite3_errmsg(raw);
+  // ...and before the estimates carried depth evidence (2026-10-07).
+  for (const char* sql : {"ALTER TABLE estimates DROP COLUMN depth_support",
+                          "ALTER TABLE estimates DROP COLUMN seen_through",
+                          "ALTER TABLE frames DROP COLUMN evidence_ms",
+                          "ALTER TABLE frames DROP COLUMN views_refuted"}) {
+    ASSERT_EQ(sqlite3_exec(raw, sql, nullptr, nullptr, nullptr), SQLITE_OK) << sqlite3_errmsg(raw);
+  }
   sqlite3_close(raw);
+
+  // Read back as it stands, by the harness, with no writer having reopened it:
+  // every estimate of the old run has no evidence, and nothing is refused.
+  {
+    const auto old_frames = LoadAblationFrames(db, first);
+    ASSERT_EQ(old_frames.size(), 1u);
+    for (const PoseEstimate& e : old_frames[0].estimates) EXPECT_FALSE(has_view_evidence(e));
+  }
 
   {
     MetricsLog log(db);
@@ -262,8 +288,16 @@ TEST(MetricsLog, ALogFromBeforeTheGainColumnGainsItAndKeepsItsRows) {
   EXPECT_DOUBLE_EQ(GainOf(db, "cam_over", 0), -1.0) << "written before the column: not recorded";
   EXPECT_DOUBLE_EQ(GainOf(db, "cam_over", 1), 45.0 / 23.0);
   EXPECT_EQ(SupportedOf(db, "table_01", first), -1) << "written before the column: not recorded";
-  // The older run still rebuilds for the ablation harness.
-  EXPECT_EQ(LoadAblationFrames(db, first).size(), 1u);
+  // The older run still rebuilds for the ablation harness, without evidence;
+  // the new one carries it.
+  const auto old_frames = LoadAblationFrames(db, first);
+  ASSERT_EQ(old_frames.size(), 1u);
+  for (const PoseEstimate& e : old_frames[0].estimates) EXPECT_FALSE(has_view_evidence(e));
+  const auto new_frames = LoadAblationFrames(db, first + 1);
+  ASSERT_EQ(new_frames.size(), 1u);
+  int with_evidence = 0;
+  for (const PoseEstimate& e : new_frames[0].estimates) with_evidence += has_view_evidence(e) ? 1 : 0;
+  EXPECT_EQ(with_evidence, 1);
 }
 
 TEST(MetricsLog, RecordsWhichObjectsTheSupportCheckLeftOut) {

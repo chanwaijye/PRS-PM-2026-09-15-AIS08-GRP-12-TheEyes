@@ -211,6 +211,7 @@ std::string StatusLine(const PipelineResult& r, double fps, uint64_t processed) 
      << std::setw(4) << r.timings.scenegraph_ms << "  total " << std::setw(6)
      << std::setprecision(1) << r.timings.total_ms << " ms  " << std::setw(5) << fps
      << " fps  obj " << r.scene.objects.size() << "  facts " << r.pddl.facts.size();
+  if (r.fusion_diag.views_refuted > 0) os << "  refuted " << r.fusion_diag.views_refuted;
   if (!r.unsupported_ids.empty()) os << "  unsupported " << r.unsupported_ids.size();
   if (!r.warnings.empty()) os << "  warn " << r.warnings.size();
   return os.str();
@@ -263,6 +264,21 @@ std::unique_ptr<Pipeline> BuildPipeline(const LoadedConfigs& c, StartupReport* r
     report->Info(os.str());
   }
   pipeline->set_brightness(c.runtime.brightness);
+  {
+    const fusion::ViewEvidenceConfig& ev = c.fusion.view_evidence;
+    std::ostringstream os;
+    if (ev.enabled) {
+      pipeline->set_view_evidence(
+          ViewEvidence(ev, c.extrinsics, LoadEvidenceMeshes(c.meshes, c.repo_root)));
+      os << "view evidence: on -- a pose another view sees through by " << ev.max_seen_through
+         << " or more is not fused; a two-view conflict is settled by depth support (agree within "
+         << ev.agree_tol_m * 1000.0 << " mm, free space beyond " << ev.through_tol_m * 1000.0
+         << " mm)";
+    } else {
+      os << "view evidence: off -- a two-view conflict is settled by the estimator's score";
+    }
+    report->Info(os.str());
+  }
   return pipeline;
 }
 
