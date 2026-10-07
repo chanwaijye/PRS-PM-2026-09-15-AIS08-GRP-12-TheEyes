@@ -372,31 +372,78 @@ Frame check at the end, against `t1_bottle_c`: cam_front 0.0–0.2 px through
 the clutter scene; cam_over crept +0.3 to +0.5 px (848 × 480; about 1 px on the
 stills, inside the 1.5 px limit) from `t4_bottle_over_b` onward. Stopped 23:42.
 
-## Next evening — clutter, ~40 min
+## The clutter set and the training layouts — shot Wed 7 Oct, 22:10–23:35
 
-- [x] `t1_bottle` — shot 5 Oct, usable with the brightness floor
-- [x] `t1_bottle_b`, `t4_bottle_over`, `t3_bottle_over` — shot 6 Oct (above)
-- [ ] Board check first, every time: the rig has not survived a night yet
-- [ ] Lamps on charge until the session starts; or shoot 17:15–18:30
-- [ ] `t2_clutter_a/b/c`: all three trays (460 × 370 mm shared view: bowl + cube
-      side by side, 380 × 210 mm, bottle tray 216 × 100 mm in front) plus the
-      eight distractors, rearranged each time. Each object on its own tray;
-      distractors on the bare table behind and beside the trays, never on one.
-      `t2_clutter_a` of 6 Oct was shot too dark and is to be redone
+Under the two LED lamps, which held this time (frame luma 80–91 / 48–61 all
+evening; no frame needed the brightness floor). `captures/scored/20261007/`,
+results `runs/scored/20261007/`; training layouts in
+`captures/scored/20261007_train/`.
 
-## The evening after — training layouts, ~50 min
+**The three T2 scenes.** Cube, bowl and bottle on their trays, four distractors
+on the bare table (a wooden block, a handset, a roll of tape, a card — not the
+proposal's eight), rearranged each time; 300 pairs each, none dropped; every
+view sees every object clear (the least is cam_over on the cube in A, 82%).
+Ground truth across cameras 0.3–0.4 mm for cube and bowl, 1.3–1.4 mm for the
+bottle. Pooled over the three objects, 900 object-pairs, each against its own
+0.1 d threshold — ADD-S in mm and the share inside:
 
-- [ ] 10–12 varied layouts with stills, ~90 pairs each, disjoint from the scored
-      scenes: five or six with the objects moved and turned, two with **empty
-      trays**, two with the card standing in view. Labels come later from the
-      ground-truth poses
+| scene | cam_front | cam_over | naive | gate | gate + EKF |
+|---|---|---|---|---|---|
+| `t2_clutter_a` | 3.07 · 100% | 4.34 · 95.8% | 11.69 · 66.9% | 3.53 · 100% | **3.34 · 100%** |
+| `t2_clutter_b` | 3.25 · 100% | 3.87 · 100% | 11.92 · 66.7% | 3.51 · 100% | **3.50 · 100%** |
+| `t2_clutter_c` | 2.68 · 76.9% | 6.41 · 66.7% | 6.94 · 66.7% | 5.33 · 71.2% | **5.33 · 66.8%** |
 
-One evening is used and two are needed, of the four left (6–9 Oct), so two can be lost.
+- **In C the cube fails and the other two pass.** cam_front detects the cube on
+  92 of 300 pairs (score 0.36); cam_over has it on all 300 with its centre
+  12 mm off and 54% of its silhouette without depth. The fused cube is 10.9 mm
+  from the truth, outside its 8.7 mm threshold. Nothing occludes it: this is a
+  small object far from one camera and beside another object in the other.
+- **Naive is at two-thirds inside in every scene** (66.7–66.9%), i.e. one
+  object's worth of pairs outside its threshold. The harness pools the three
+  objects and does not say which. `[VERIFY]` that it is the cube, whose
+  equivalent orientations the naive arm averages (22 mm on the cube alone,
+  5 Oct) — it needs a per-object breakdown in `ablation_from_log`.
+- **The scene graph on clutter, support check on:** the three real objects are
+  reported on 2,700 of 2,700 object-pairs. 19 false object-pairs (a
+  `mustard_bottle` the detector sees on the bedding, 1.8 m away) are tracked
+  and none is reported; 0 of 6,210 facts name an object that is not there. No
+  tray was taken for a bowl in these three scenes, and the false cube at table
+  height of 6 Oct's dark attempt did not recur.
+
+**These scenes are processed on a registration taken after them.** cam_over
+moved about 3 px on the stills when the board came off after the 22:14
+calibration — seen as 1.4–2.5 mm of cross-camera disagreement in the first
+stills, and confirmed on the frames. Both cameras were then still from 22:19 to
+the closing registration at 22:47 (0.0 px), and that registration is the one
+each scene carries; the 22:14 copies are kept beside them as
+`*.2214_stale.yaml`. Twelve minutes later cam_front had moved (2.4 mm), which
+the training layouts were re-registered for (22:59).
+
+**cam_front's USB link failed again** at the start, on a different port from
+6 Oct, and again only reseating the cable brought it back: the cable or the
+camera's connector, not the port.
+
+**Twelve training layouts**, 90 pairs and 10 + 10 stills each, tray poses
+measured in every one: six with all three objects (`train_01`–`06`), two with
+the three trays **empty** (`07`, `08` — the negatives for the tray-as-bowl false
+positive), two with the printed card standing in view (`09`, `10`), one with
+bowl and cube only (`11`), one with the bottle only (`12`). 1,080 pairs, 2,160
+frames. A first `train_09` with the card hiding the cube from cam_over is set
+aside.
+
+Two checks that cried wolf, and what they now look at: a whole-frame shift
+check on recorded frames follows the TV's reflection of the table, and a
+background check follows the pillow on the bed. The camera check that holds is
+on the 1080p stills, restricted to the rigid background.
+
+**The proposal's ten scored scenes are now all shot:** T1 ×5, T2 ×3, T3 ×4 (one
+uncertified), T4 ×4 across 5–7 Oct.
 
 ## Any evening, no rig needed — process while the rig is still there
 
-- [ ] `capture_day.sh process` on each day's scenes; every FAILED tier check or
-      refused ground truth is a reshoot for Saturday
+- [x] `capture_day.sh process` on each day's scenes — done through 7 Oct; the one
+      FAILED tier check is `t3_bottle_over` (6 Oct), superseded by
+      `t3_bottle_over_b`
 - [ ] `training/pose/registration_quality.py` on real captures (`STATUS.md` [VERIFY])
 - [ ] Remote access to the desktop: Tailscale or SSH; GRUB default = Ubuntu;
       BIOS restore-on-power-loss; suspend and automatic reboots off; tested from
