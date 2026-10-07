@@ -398,11 +398,11 @@ bottle. Pooled over the three objects, 900 object-pairs, each against its own
   12 mm off and 54% of its silhouette without depth. The fused cube is 10.9 mm
   from the truth, outside its 8.7 mm threshold. Nothing occludes it: this is a
   small object far from one camera and beside another object in the other.
-- **Naive is at two-thirds inside in every scene** (66.7–66.9%), i.e. one
-  object's worth of pairs outside its threshold. The harness pools the three
-  objects and does not say which. `[VERIFY]` that it is the cube, whose
-  equivalent orientations the naive arm averages (22 mm on the cube alone,
-  5 Oct) — it needs a per-object breakdown in `ablation_from_log`.
+- **Naive is at two-thirds inside in every scene** (66.7–66.9%): it is the cube
+  — 22.4 and 22.9 mm in A and B, 16.0 mm in C, 0–1% inside — whose equivalent
+  orientations the naive arm averages, as on the cube alone on 5 Oct. The
+  harness now prints a per-object table under the pooled one (8 Oct), which is
+  where this comes from; it had been a `[VERIFY]`.
 - **The scene graph on clutter, support check on:** the three real objects are
   reported on 2,700 of 2,700 object-pairs. 19 false object-pairs (a
   `mustard_bottle` the detector sees on the bedding, 1.8 m away) are tracked
@@ -438,6 +438,72 @@ on the 1080p stills, restricted to the rigid background.
 
 **The proposal's ten scored scenes are now all shot:** T1 ×5, T2 ×3, T3 ×4 (one
 uncertified), T4 ×4 across 5–7 Oct.
+
+## The fusion fix — depth evidence, 7–8 Oct (no rig)
+
+The half-hidden bottle showed the gate keeping the wrong view because it had
+the higher pose score. The fix does not touch the score: every per-view pose
+is now checked against the two depth images before it is fused
+(`runtime/view_evidence.hpp`, `fusion.yaml` `view_evidence:`,
+`SystemCode/fusion/README.md`).
+
+- **Free-space veto.** The object is rendered at the estimated pose into the
+  *other* camera. If that camera measures a surface *beyond* the object over a
+  third or more of its silhouette — it is looking through the place the object
+  is claimed to be — the estimate is not fused. A surface in front (an
+  occluder) or no depth is evidence of nothing, so a hidden object is never
+  vetoed by the camera that cannot see it.
+- **Arbitration.** A two-view conflict keeps the estimate better backed by
+  depth (its own view's agreement, discounted by what the other view sees
+  through) when the two differ by 0.15 or more; otherwise the score decides,
+  as before.
+
+What chose the numbers: a study on every fifth pair first
+(`scripts/view_evidence_study.py`), then the values the pipeline logged for
+every estimate of the 16 scored scenes. Of 10,843 estimates within 30 mm of the
+truth, the most any is seen through is 0.13; the four estimates the gate was
+getting wrong are seen through by 0.46–0.54, 0.69–0.76, 0.85–0.94 and
+0.96–1.00. The threshold of one third has none of either on the wrong side.
+The margin of 0.15 comes from the unoccluded bottle, whose two views differ in
+evidence by at most 0.14 on any pair; the views the rule is for differ by 0.8
+or more.
+
+All 20 processed scenes of 5–7 Oct, replayed with it. Gate + EKF, ADD-S and the
+share inside 0.1 d; "by score" is the gate as it was, run as its own arm on the
+same estimates:
+
+| scene | by score | with depth evidence |
+|---|---|---|
+| `t3_bottle_over` | 90.21 mm · 0% | **3.15 mm · 100%** |
+| `t3_bottle_over_b` | 33.99 mm · 0.3% | **3.10 mm · 100%** |
+| the other 18 scenes | — | identical to 0.01 mm |
+
+- The single-view and naive arms are the same in every scene, as they must be:
+  they never see the evidence.
+- The veto fired on the four estimates it was built for — the bottle and the
+  cube at the occluder's range, the cube on the occluder's print: 300, 291, 300
+  and 255 pairs — and on 3 pairs of a tray taken for a bowl. On no correct
+  estimate, in 4,800 pairs.
+- **In the scene graph:** the real bottle is reported on 300 of 300 pairs in
+  both half-hidden scenes (it was 28 and 0, the fused pose having floated); the
+  second cube of `t3_cube_over` and the cube on the card in `t3_cube_front` are
+  no longer tracked at all, where before they were tracked and left to the
+  support check.
+- **Cost:** 3–11 ms a pair (1.1–2.4 ms an estimate), logged per pair.
+
+What it does not fix, measured on the same replay:
+
+- **The bottle read back to front** (`t1_bottle_b`, `t1_bottle_c`): both views
+  are backed about equally, the margin leaves it to the score, and the fused
+  orientation is still cam_front's flipped one. With no margin the choice
+  alternated between frames and the result was worse (5.73 mm against 3.37),
+  which is what the margin is for.
+- **The cube in `t2_clutter_c`** (fused 11.3 mm, 0.3% inside): the two views are
+  12 mm apart, which is not a conflict, so they are averaged, score-weighted.
+  cam_front has it to 4.4 mm on the 92 pairs it detects it at all.
+- **A tray taken for a bowl at table height** is still in the scene graph of
+  `t3_bottle_over` on 300 pairs: it is neither floating nor seen through. That
+  one is the detector's, and the empty-tray layouts of 7 Oct are for it.
 
 ## Any evening, no rig needed — process while the rig is still there
 
