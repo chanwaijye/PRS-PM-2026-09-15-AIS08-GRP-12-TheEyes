@@ -8,14 +8,14 @@ fitted_from: "/home/wjchan/projects/PRS-PM-2026-09-15-AIS08-GRP-12-TheEyes/captu
 region_half_extent_m: [0.23, 0.185]
 cameras:
   cam_front:
-    scale: 1.0105
-    fitted_scale: 1.0105
-    table_height_before_mm: 4.12
-    table_height_after_mm: 0.01
-    held_out_pixels: 278674
+    scale: 1.0110
+    fitted_scale: 1.0110
+    table_height_before_mm: 4.28
+    table_height_after_mm: -0.01
+    held_out_pixels: 278314
   cam_over:
     scale: 1.0000
-    fitted_scale: 0.9965
-    table_height_before_mm: -0.86
-    table_height_after_mm: -0.86
-    held_out_pixels: 266231
+    fitted_scale: 0.9973
+    table_height_before_mm: -0.56
+    table_height_after_mm: -0.56
+    held_out_pixels: 266772
