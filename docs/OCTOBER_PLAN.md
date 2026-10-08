@@ -68,7 +68,7 @@ and the 300-pair recording are about a minute of machine time).
 | **Bottle** — alone; half hidden | 2 | 15 min |
 | **Clutter (T2)** — three trays + 8 distractors, ~10 min each to arrange | 3 | 30–35 min |
 | **Training layouts** for the detector, including empty trays (finding 3) | 10–12 | 35–40 min |
-| **Demo footage** for the video | — | 30 min |
+| **Demo footage** for the video | — | 30 min (re-estimated 8 Oct at 90 min: `VIDEO_PLAN.md` §5) |
 | Start and end of each session (board on, re-register, empty table; final check) | per session | 12 min |
 
 The first three rows are the proposal's ten scored scenes (T1 ×2, T2 ×3, T3 ×3,
@@ -519,8 +519,14 @@ What it does not fix, measured on the same replay:
 ## Sat 10 Oct — reshoots, demo footage, slack
 
 - [ ] Reshoot what the week's checks rejected (new scene names)
-- [ ] Demo run (`CAPTURE_PROTOCOL.md` §7): `the_eyes_run live --record demo --show=console`,
-      a screen recording, phone video of the rig — ~30 min
+- [ ] Demo footage for the video — the shoot is `docs/VIDEO_PLAN.md` §5, and it
+      is about 90 min, not 30: two live takes with a screen recording and the
+      phone, recording-only copies of both, phone footage of the rig, and one
+      static scene with the cube in the bowl (no recording yet holds a true
+      `in`). The live command is
+      `the_eyes_run live --pose foundationpose --record demo_live_a --show=console`.
+      Until 8 Oct this line had no `--pose`, and `config/pose.yaml` ships the
+      mock estimator: it would have filmed mock poses.
 - [ ] Anything an evening did not reach
 - [ ] Final backup; cover the rig
 
@@ -528,7 +534,9 @@ What it does not fix, measured on the same replay:
 
 Detector fine-tune and replay; real-capture mAP from ground-truth boxes;
 predicate accuracy against the photos; bootstrap CIs by scene (proposal §7.1);
-report draft, figures, video script.
+report draft, figures; the video's rough cut (`VIDEO_PLAN.md` §8) — its
+narration is drafted in `ProjectReport/presentation/video_script.txt` and its
+numbers are checked against the report's tables as they settle.
 
 ## 25–31 Oct
 
