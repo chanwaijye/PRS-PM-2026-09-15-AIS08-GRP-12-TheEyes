@@ -28,14 +28,14 @@ Scene 2. Title.
 
 ON SCREEN: Title card: The Eyes - Multi-View Perception and Scene Understanding for Robot Manipulation. Chan Wai Jye, Group 12. Then the photo of the rig.
 
-Hi, I'm Wai Jye from Group 12, working solo. My project is called The Eyes. It is the perception part for a tabletop robot. Two depth cameras detect the objects, estimate each one's six D-O-F pose, combine the two views into one answer, and turn that answer into facts a planner can use. The code was built with Claude Code, under my design and review.
+Hi, I'm Wai Jye from Group 12, this is a solo project called The Eyes. It is the perception part for a tabletop robot. Two depth cameras detect the objects, estimate each one's six D-O-F pose, combine the two views into one answer, and turn that answer into facts a planner can use. The code was built with Claude Code, under my design and review.
 
 
 Scene 3. Why one camera is not enough.
 
 ON SCREEN: Slide: one camera, an object hidden behind another. Then two cameras and two estimates that do not meet. Then the three questions.
 
-A planner does not work with pixels. It works with statements, like "the cube is on the table". In my earlier project, The Planner, those statements came from a simulator, which always knows the truth. A real robot has to get them from cameras.
+A planner does not work with pixels. It works with statements, like "the cube is on the table". In my earlier practice module, The Planner, those statements came from a simulator, which always knows the truth. A real robot has to get them from cameras.
 
 With one camera, anything hidden behind something else simply disappears. A second camera can see it again, but now every object has two estimates that never quite agree. So there are three questions. Which estimates are the same object? When two views disagree, which one is wrong? And how do poses become facts reliable enough to plan with?
 
