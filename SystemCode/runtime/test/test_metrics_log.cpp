@@ -31,12 +31,26 @@ int64_t Count(const std::string& db_path, const std::string& table) {
   return n;
 }
 
+// One integer column of objects for one object of one pair; -1 where it is NULL.
+int ObjectColumnOf(const std::string& db_path, const std::string& column,
+                   const std::string& object_id, int64_t run_id);
+
 // objects.supported for one object of one pair; -1 where it is NULL.
 int SupportedOf(const std::string& db_path, const std::string& object_id, int64_t run_id) {
+  return ObjectColumnOf(db_path, "supported", object_id, run_id);
+}
+
+// objects.observed_views, likewise.
+int ObservedOf(const std::string& db_path, const std::string& object_id, int64_t run_id) {
+  return ObjectColumnOf(db_path, "observed_views", object_id, run_id);
+}
+
+int ObjectColumnOf(const std::string& db_path, const std::string& column,
+                   const std::string& object_id, int64_t run_id) {
   sqlite3* db = nullptr;
   EXPECT_EQ(sqlite3_open(db_path.c_str(), &db), SQLITE_OK);
   sqlite3_stmt* stmt = nullptr;
-  const std::string sql = "SELECT supported FROM objects WHERE object_id = '" + object_id +
+  const std::string sql = "SELECT " + column + " FROM objects WHERE object_id = '" + object_id +
                           "' AND run_id = " + std::to_string(run_id);
   EXPECT_EQ(sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr), SQLITE_OK);
   EXPECT_EQ(sqlite3_step(stmt), SQLITE_ROW);
@@ -121,6 +135,7 @@ PipelineResult Result(uint64_t pair_index) {
   o1.pose_w = Pose(0.3, 0.1, 0.09, 10.0);
   o1.confidence = 0.82;
   o1.visible_views = 0b01;
+  o1.observed_views = 0b11;  // cam_over saw it and was gated out
   o1.extent = e1.extent;
   o1.stamp_ns = r.stamp_ns;
   o1.position_sigma_m = 0.004;
@@ -131,13 +146,15 @@ PipelineResult Result(uint64_t pair_index) {
   table.cls = "table";
   table.confidence = 1.0;
   table.visible_views = 0b11;
+  table.observed_views = 0b11;
   table.extent = Eigen::Vector3d(0.4, 0.3, 0.01);
   table.stamp_ns = r.stamp_ns;
   r.scene.stamp_ns = r.stamp_ns;
   r.scene.objects = {o1, table};
   r.static_ids = {"table_01"};
-  r.pddl.facts = {"(clear mustard_bottle_01)", "(on mustard_bottle_01 table_01)",
-                  "(occluded_from mustard_bottle_01 cam_over)"};
+  // No occluded_from: cam_over saw the bottle (observed_views above), it was
+  // only gated out of the fuse.
+  r.pddl.facts = {"(clear mustard_bottle_01)", "(on mustard_bottle_01 table_01)"};
   r.pddl.init_block = "(:init ...)";
   r.timings.detect_ms = {{"cam_front", 6.5}, {"cam_over", 6.1}};
   r.timings.pose_ms = {{"cam_front", 12.0}, {"cam_over", 11.0}};
@@ -179,13 +196,15 @@ TEST(MetricsLog, WritesEveryTableAndReadsBackEstimatesExactly) {
   EXPECT_EQ(Count(db, "detections"), 6);
   EXPECT_EQ(Count(db, "estimates"), 4);
   EXPECT_EQ(Count(db, "objects"), 4);
-  EXPECT_EQ(Count(db, "facts"), 6);
+  EXPECT_EQ(Count(db, "facts"), 4);
   EXPECT_EQ(Count(db, "warnings"), 2);
   EXPECT_EQ(Count(db, "ground_truth"), 0);
   EXPECT_EQ(LatestRunId(db), run_id);
   // What the detector was shown is part of the record, per view and per pair.
   EXPECT_DOUBLE_EQ(GainOf(db, "cam_front", 1), 1.0);
   EXPECT_DOUBLE_EQ(GainOf(db, "cam_over", 1), 45.0 / 23.0);
+  // Which views saw the object is logged beside which views were fused.
+  EXPECT_EQ(ObservedOf(db, "mustard_bottle_01", run_id), 0b11);
 
   const std::vector<fusion::AblationFrame> frames = LoadAblationFrames(db, run_id);
   ASSERT_EQ(frames.size(), 2u);
@@ -256,10 +275,12 @@ TEST(MetricsLog, ALogFromBeforeTheGainColumnGainsItAndKeepsItsRows) {
             SQLITE_OK)
       << sqlite3_errmsg(raw);
   // ...and before the estimates carried depth evidence (2026-10-07).
+  // ...and before objects recorded which views saw them (2026-10-11).
   for (const char* sql : {"ALTER TABLE estimates DROP COLUMN depth_support",
                           "ALTER TABLE estimates DROP COLUMN seen_through",
                           "ALTER TABLE frames DROP COLUMN evidence_ms",
-                          "ALTER TABLE frames DROP COLUMN views_refuted"}) {
+                          "ALTER TABLE frames DROP COLUMN views_refuted",
+                          "ALTER TABLE objects DROP COLUMN observed_views"}) {
     ASSERT_EQ(sqlite3_exec(raw, sql, nullptr, nullptr, nullptr), SQLITE_OK) << sqlite3_errmsg(raw);
   }
   sqlite3_close(raw);
@@ -288,6 +309,8 @@ TEST(MetricsLog, ALogFromBeforeTheGainColumnGainsItAndKeepsItsRows) {
   EXPECT_DOUBLE_EQ(GainOf(db, "cam_over", 0), -1.0) << "written before the column: not recorded";
   EXPECT_DOUBLE_EQ(GainOf(db, "cam_over", 1), 45.0 / 23.0);
   EXPECT_EQ(SupportedOf(db, "table_01", first), -1) << "written before the column: not recorded";
+  EXPECT_EQ(ObservedOf(db, "table_01", first), -1) << "written before the column: not recorded";
+  EXPECT_EQ(ObservedOf(db, "table_01", first + 1), 0b11);
   // The older run still rebuilds for the ablation harness, without evidence;
   // the new one carries it.
   const auto old_frames = LoadAblationFrames(db, first);

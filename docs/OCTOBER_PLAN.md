@@ -570,10 +570,8 @@ camera that estimated it on every pair:
 | `t2_clutter_a`, `t2_clutter_b` | `(occluded_from mustard_bottle_01 cam_front)` | 300 of 300 |
 | `t2_clutter_c` | `(occluded_from red_cube_01 cam_front)` | 208 (cam_front detects the cube on 92: undetected, not hidden) |
 
-It is the bottle read back to front showing through as a fact. **Not fixed.**
-Replay-side: decide whether the fact means "not fused" or "not visible" before
-predicate accuracy is computed; a field may be added to `ObjectState`, none
-re-typed.
+It is the bottle read back to front showing through as a fact. **Fixed on
+11 Oct**, below.
 
 **Three calibrations in one day,** each with its depth fit on an empty table
 (cam_front ×1.0089, ×1.0097, ×1.0096; cam_over's error is not a scale and stays
@@ -685,6 +683,64 @@ the console on the monitor, 22 photos). The console on the monitor is a replay
 of `demo_live_a` (7.8 pairs a second with the window at 4K) and is not a live
 shot.
 
+## The `occluded_from` fix — 11 Oct (no rig)
+
+The author's decision: the fact means **"this camera has no estimate of the
+object"**, not "this camera's estimate was not used". Fusion already knew which
+views the disagreement gate dropped (`FusedObservation::rejected_views`) and
+did not pass it on. Now it does:
+
+- `ObjectState` gains **`observed_views`** — every view with an estimate
+  associated to the object in that frame, fused or gated out. `visible_views`
+  is unchanged and still means the views that went into the pose. An estimate
+  the depth evidence refuses is in neither: another camera sees through the
+  place it claims. Zero means not supplied, and `observed_from()` then falls
+  back to `visible_views` (`types.hpp`, `INTERFACES.md` §5).
+- The scene graph reads `occluded_from` from `observed_views`; the metrics log
+  records it beside `visible_views`.
+
+All 22 scenes of 5–10 Oct replayed with it. Every other fact on every pair is
+the same, and every object position is the same to 0.0000 mm: the replay is
+bit-exact and the change touches nothing else. Pairs the fact is on:
+
+| scene | fact | before | after |
+|---|---|---|---|
+| `t1_bottle_b` | `(occluded_from mustard_bottle_01 cam_over)` | 300 | **0** |
+| `t1_bottle_c` | `(occluded_from mustard_bottle_01 cam_over)` | 300 | **0** |
+| `t2_clutter_a` (7 Oct) | `(occluded_from mustard_bottle_01 cam_front)` | 300 | **0** |
+| `t2_clutter_b` | `(occluded_from mustard_bottle_01 cam_front)` | 300 | **0** |
+| `t2_clutter_a` (6 Oct, the dark attempt) | `(occluded_from red_cube_01 cam_over)` | 191 | 175 |
+| the four fully hidden scenes | the hidden object, from the blocked camera | 300 | 300 |
+| every other scene | | | unchanged |
+
+- **The live take, replayed:** `(occluded_from mustard_bottle_01 cam_front)`
+  goes from 500 pairs to 1 on the recording of `demo_live_a`; the facts for the
+  cube and the bowl behind the card are unchanged (116 and 144 pairs), and so
+  is every `on`, `in` and `clear`. The console file of the take itself was
+  written before the fix and keeps the wrong fact.
+- **What it does not fix: a camera whose detector misses the object.** It has
+  no estimate either, so it reads as hidden: the cube of `t2_clutter_c` from
+  cam_front (208 pairs; detected on 92), the cube of `dim_t1_cube` from
+  cam_over (299 pairs; the frame is too dark). Telling the two apart needs the
+  depth image — whether that camera measures the object's surface where the
+  fused pose puts it — which the evidence stage could supply. Not built.
+- **Facts about objects that are not there** are as before: the false cube of
+  `t2_in_a` still carries its `occluded_from` on 232 pairs.
+- **The half-hidden scenes** keep the fact on 300 pairs. Whether a half-hidden
+  object is "occluded" is for the labels of the predicate-accuracy check to
+  say.
+
+How it was checked: the replays went into databases of their own
+(`runs/occluded_from_check/`), compared with each scene's latest run; the
+scored logs are untouched. `capture_day.sh process --force` on each day puts
+the result into them once the change is committed.
+
+Found on the way: one unit test has failed since the 17:16 registration of
+10 Oct, `GroundTruthChain.TablePlaneSolveBeatsTheFreeSolveOnTheSameCorners`.
+It renders markers through the shipped extrinsics and bounded the plane fit at
+0.5 mm; it reads 0.54 mm on the two calibrations since. The bound is now 1 mm,
+as its neighbours were loosened for the same reason.
+
 ## 11–24 Oct — Taiwan (offline, or remote to the desktop)
 
 Detector fine-tune and replay; real-capture mAP from ground-truth boxes;
@@ -693,8 +749,8 @@ report draft, figures; the video's rough cut (`VIDEO_PLAN.md` §8) — its
 narration is drafted in `ProjectReport/presentation/video_script.txt` and its
 numbers are checked against the report's tables as they settle.
 
-Added 10 Oct: settle what `occluded_from` means and fix it on replay, before
-predicate accuracy; retime the live console clips from `frames.stamp_ns`
+Added 10 Oct: ~~settle what `occluded_from` means and fix it on replay, before
+predicate accuracy~~ (done 11 Oct); retime the live console clips from `frames.stamp_ns`
 (`VIDEO_PLAN.md` §7). The video plan and script are merged and follow the kept
 takes (`VIDEO_PLAN.md` §5.0).
 

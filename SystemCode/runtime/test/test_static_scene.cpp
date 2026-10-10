@@ -37,6 +37,7 @@ TEST(StaticScene, LoadsTheShippedConfigAndInjectsATable) {
   ASSERT_EQ(state.objects.size(), 1u);
   const ObjectState& t = state.objects[0];
   EXPECT_EQ(t.visible_views, 0b11u);
+  EXPECT_EQ(t.observed_views, 0b11u) << "a fixed object is hidden from no camera";
   EXPECT_DOUBLE_EQ(t.confidence, 1.0);
   EXPECT_EQ(t.stamp_ns, 123u);
   EXPECT_FALSE(has_uncertainty(t)) << "a static object has no estimator, so no sigma";

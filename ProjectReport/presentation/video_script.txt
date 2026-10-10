@@ -68,7 +68,7 @@ The last stage turns geometry into four kinds of fact: on, in, clear, and occlud
 
 Scene 6. Live on the rig.
 
-ON SCREEN: One continuous live take. The console fills the frame; the phone's picture of the table and my hands sits in a corner, in step with it. Caption for the whole scene: LIVE on the rig, 10 Oct 2026, one take, not replayed. The measured speed of the take stays on screen as a caption: 12.1 frame pairs a second over the take, 10 with three objects. Three more captions, each at its moment. When the bottle's facts appear: "The third fact is wrong: nothing hides the bottle. See: What it still gets wrong." At the first freeze: "Freeze: the pose estimator is finding a new object, about 1 second." When the card stands before the front camera: "The boxes on the card are false cubes, from its red print. The depth check refuses them."
+ON SCREEN: One continuous live take. The console fills the frame; the phone's picture of the table and my hands sits in a corner, in step with it. Caption for the whole scene: LIVE on the rig, 10 Oct 2026, one take, not replayed. The measured speed of the take stays on screen as a caption: 12.1 frame pairs a second over the take, 10 with three objects. Three more captions, each at its moment. When the bottle's facts appear: "The third fact is wrong: nothing hides the bottle. Fixed the next day. See: What it still gets wrong." At the first freeze: "Freeze: the pose estimator is finding a new object, about 1 second." When the card stands before the front camera: "The boxes on the card are false cubes, from its red print. The depth check refuses them."
 
 NOTE: the take is demo_live_a (10 Oct 2026, 21:33), and the words follow it beat by beat; the time of each beat is in docs/OCTOBER_PLAN.md, 10 Oct. The console file holds one frame for each processed pair, so it is retimed before the voice is cut to it (docs/VIDEO_PLAN.md, section 7).
 
@@ -153,7 +153,7 @@ The bottle is sometimes read back to front, half a turn from the truth. The dept
 
 In one of the three clutter scenes the cube, small and far from one camera, lands outside its threshold. The other two objects in that scene are fine.
 
-In the live run, the occluded-from fact was wrong about the bottle. It is built from which views the fusion used, not from which cameras can see it. [VERIFY: say here whether this is fixed at the final cut. The live take was recorded before any fix, so its picture keeps the wrong fact either way.]
+In the live run, the occluded-from fact was wrong about the bottle. That is fixed now; the take is from the day before. But a camera whose detector misses an object still reports it as hidden.
 
 And on synthetic data the depth channel did not help the detector: the M-A-P is 0.957 with it and 0.957 without.
 
@@ -250,5 +250,10 @@ Scene 11
   one clutter scene of three    t2_clutter_c, 66.8% inside (Reprocess).
   occluded-from was wrong       as scene 6; also on 300 of 300 pairs in four
                                 scored scenes, docs/OCTOBER_PLAN.md, 10 Oct.
+  fixed now                     2026-10-11: 300 -> 0 pairs in those four
+                                scenes, 500 -> 1 on a replay of the take;
+                                docs/OCTOBER_PLAN.md, "The occluded_from fix".
+  misses ... reports as hidden  t2_clutter_c, the cube from cam_front on 208
+                                pairs; the same section.
   0.957 and 0.957               mAP@0.5:0.95, 0.95738 with depth and 0.95662
                                 without, docs/STATUS.md.

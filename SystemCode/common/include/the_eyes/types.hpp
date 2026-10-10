@@ -113,6 +113,25 @@ struct ObjectState {
   // Zero for a static object, which is the common tabletop case -- so unlike
   // the sigmas, zero is a meaningful value here and needs no sentinel.
   Eigen::Vector3d velocity_w = Eigen::Vector3d::Zero();
+
+  // --- Which views saw it. ADDITIVE extension to INTERFACES.md §5, 2026-10-11 -
+  //
+  // `visible_views` above is the views whose estimate went INTO pose_w. A view
+  // the disagreement gate dropped is not in it, though that view saw the
+  // object and estimated it: it was outvoted about where the object is, not
+  // blind to it. Reading a missing `visible_views` bit as "hidden from that
+  // camera" reported an unoccluded bottle as occluded on 300 of 300 pairs in
+  // four scored scenes (docs/OCTOBER_PLAN.md, 10 Oct).
+  //
+  // This is every view with an estimate associated to this object in this
+  // frame, fused or gated out: a superset of `visible_views`. An estimate
+  // refused by the depth evidence is NOT in it -- another camera sees through
+  // the place it claims, so it is not an estimate of this object.
+  //
+  // ZERO means "not supplied" (a valid object has at least its fused view
+  // here). Use observed_from() below, which then falls back to
+  // `visible_views`, the only answer there was before this field.
+  uint32_t observed_views = 0;
 };
 
 struct SceneState {
@@ -156,6 +175,15 @@ inline bool is_invalid(const ObjectState& o) { return o.visible_views == 0; }
 
 inline bool visible_from(const ObjectState& o, uint32_t view_bit) {
   return (o.visible_views & view_bit) != 0u;
+}
+
+// True when `view_bit`'s camera had an estimate of this object in this frame,
+// whether or not fusion used it. This, not visible_from(), is what "the camera
+// can see it" means. Falls back to visible_views when the producer predates
+// `observed_views`.
+inline bool observed_from(const ObjectState& o, uint32_t view_bit) {
+  const uint32_t views = (o.observed_views != 0u) ? o.observed_views : o.visible_views;
+  return (views & view_bit) != 0u;
 }
 
 // True when the producer filled in the uncertainty fields. A consumer that

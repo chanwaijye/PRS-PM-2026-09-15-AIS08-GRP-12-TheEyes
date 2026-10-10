@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS objects(
   position_sigma_m REAL, orientation_sigma_rad REAL, vx REAL, vy REAL, vz REAL,
   stamp_ns INTEGER NOT NULL, is_static INTEGER NOT NULL DEFAULT 0,
   supported INTEGER,
+  observed_views INTEGER,
   PRIMARY KEY(run_id, pair_index, object_id));
 CREATE TABLE IF NOT EXISTS facts(
   run_id INTEGER NOT NULL, pair_index INTEGER NOT NULL, fact TEXT NOT NULL);
@@ -232,6 +233,12 @@ MetricsLog::MetricsLog(const std::string& db_path) : path_(db_path), impl_(std::
   if (!HasColumn(db, "objects", "supported")) {
     Exec(db, "ALTER TABLE objects ADD COLUMN supported INTEGER;");
   }
+  // objects.observed_views, 2026-10-11, same terms: the views that had an
+  // estimate of the object, fused or gated out (ObjectState). NULL in a row
+  // from before it, where visible_views was the only answer.
+  if (!HasColumn(db, "objects", "observed_views")) {
+    Exec(db, "ALTER TABLE objects ADD COLUMN observed_views INTEGER;");
+  }
   // The depth evidence of 2026-10-07, likewise additive: per estimate the two
   // measurements fusion decides on (NULL = not supplied, which is how they
   // read back), per frame the stage's cost and how many estimates it led
@@ -288,8 +295,8 @@ MetricsLog::MetricsLog(const std::string& db_path) : path_(db_path), impl_(std::
   impl_->object = Stmt(db,
       "INSERT INTO objects(run_id, pair_index, object_id, cls, visible_views, confidence, "
       "tx, ty, tz, qw, qx, qy, qz, ex, ey, ez, position_sigma_m, orientation_sigma_rad, "
-      "vx, vy, vz, stamp_ns, is_static, supported) "
-      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+      "vx, vy, vz, stamp_ns, is_static, supported, observed_views) "
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
   impl_->fact = Stmt(db, "INSERT INTO facts(run_id, pair_index, fact) VALUES (?,?,?)");
   impl_->warning = Stmt(db,
       "INSERT INTO warnings(run_id, pair_index, stage, message) VALUES (?,?,?,?)");
@@ -403,6 +410,7 @@ void MetricsLog::WriteFrame(int64_t run_id, const PipelineResult& r) {
       } else {
         s.object.BindNull();
       }
+      s.object.Bind(o.observed_views);
       s.object.Run();
     }
 

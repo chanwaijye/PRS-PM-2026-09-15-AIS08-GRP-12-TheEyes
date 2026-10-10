@@ -464,6 +464,9 @@ SceneState Fusion::Process(const std::vector<PoseEstimate>& estimates, uint64_t 
     o.cls = obs.cls;
     o.confidence = obs.confidence;
     o.visible_views = obs.visible_views;
+    // A gated-out view saw the object and was outvoted; a refuted one never
+    // reached the cluster, so it is in neither mask. See ObjectState.
+    o.observed_views = obs.visible_views | obs.rejected_views;
     o.extent = it->extent;
     o.stamp_ns = stamp_ns;
     // relations stays empty: it is the scenegraph module's field to fill.

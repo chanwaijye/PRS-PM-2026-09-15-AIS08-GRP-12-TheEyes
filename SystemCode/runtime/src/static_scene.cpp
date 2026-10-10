@@ -94,6 +94,7 @@ void StaticScene::Inject(SceneState& state, const std::vector<std::string>& view
     o.pose_w = s.pose_w;
     o.confidence = 1.0;
     o.visible_views = all_views;
+    o.observed_views = all_views;
     o.extent = s.extent;
     o.stamp_ns = state.stamp_ns;
     // position_sigma_m / orientation_sigma_rad stay at their -1 default.

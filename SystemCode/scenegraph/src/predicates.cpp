@@ -356,12 +356,14 @@ PredicateResult Extract(const SceneState& scene, const PredicateConfig& cfg) {
     if (supporting.count(a->id) == 0) {
       result.facts.push_back("(clear " + a->id + ")");
     }
-    // occluded_from is read straight off the fusion visibility bitmask rather
-    // than re-derived geometrically — fusion already knows which views
-    // contributed, and re-deriving it here would be a second, disagreeing
-    // source of truth.
+    // occluded_from is read straight off fusion's bitmask of the views that
+    // had an estimate of the object, rather than re-derived geometrically —
+    // fusion already knows which views saw it, and re-deriving it here would
+    // be a second, disagreeing source of truth. NOT visible_views: a view the
+    // disagreement gate dropped saw the object, and reading its missing bit as
+    // "hidden" reported unoccluded objects as occluded (ObjectState).
     for (size_t i = 0; i < cfg.view_names.size(); ++i) {
-      if (!visible_from(*a, 1u << i)) {
+      if (!observed_from(*a, 1u << i)) {
         result.facts.push_back("(occluded_from " + a->id + " " + cfg.view_names[i] + ")");
       }
     }

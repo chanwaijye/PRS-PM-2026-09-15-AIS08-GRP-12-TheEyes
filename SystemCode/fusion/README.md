@@ -266,10 +266,17 @@ so in its own output.
   point distance forgives exactly this. It is an estimator ambiguity that
   wants either the bottle's near-symmetry declared, as the cube's symmetry is,
   or an ADD column for objects that are not symmetric.
-- **A view the gate rejects reads as "occluded".** `visible_views` carries the
-  surviving views only, and the scene graph reads a missing bit as
-  `(occluded_from ...)`. True when the view was vetoed for seeing an occluder's
-  depth; not true when it was merely outvoted, as with the bottle above.
+- **A view the gate rejects no longer reads as "occluded"** (2026-10-11).
+  `visible_views` carries the surviving views only, and the scene graph read a
+  missing bit as `(occluded_from ...)`: true when the view was vetoed for
+  seeing an occluder's depth, not true when it was merely outvoted, as with the
+  bottle above. `ObjectState::observed_views` now carries the gated-out views
+  too (`visible_views | rejected_views`), and the fact is read from that. On a
+  replay of the 22 scenes of 5–10 Oct the fact goes from 300 pairs to 0 in the
+  four scenes where the bottle was outvoted, and no other fact and no pose
+  changes. What is left: a view whose detector misses the object has no
+  estimate of it and still reads as occluded (the cube of `t2_clutter_c`, 208
+  pairs).
 - **The evidence stage costs about 10 ms a pair** on the scored scenes (two to
   six estimates, each rendered into two views at full resolution). It is
   logged per pair (`frames.evidence_ms`). Nothing has been done to make it

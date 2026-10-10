@@ -74,7 +74,7 @@ Code under the author's design and review, never as hand-written.
 
 ## 3. Storyboard
 
-Lengths are the script's spoken words (1,569 after the shoot, counted per
+Lengths are the script's spoken words (1,577 after the shoot, counted per
 scene; 1,489 before it) at 130 words a minute, plus the time the picture runs
 without a voice (about 110 s, half of it the pauses of scene 6). At 115 words a
 minute the same script is about 15 min 30 s, and **below about 120 it passes
@@ -93,9 +93,9 @@ longer than their word count: time a read-through before trusting either figure.
 | 8 | A hidden object is still found | 154 | 1:15 | `t4_cube_over`, `t4_cube_front` beside their rows; the T4 table; the cube-alone rows | REPLAY + table |
 | 9 | When fusion believed the wrong camera | 182 | 1:30 | `t3_bottle_over_b` under the old rule, a line-of-sight diagram, the same scene under the new rule | REPLAY + diagram |
 | 10 | Objects that are not there | 127 | 1:00 | A frame with a false object boxed in a camera view; the count before and after | REPLAY + table |
-| 11 | What it still gets wrong | 142 | 1:20 | Dim frame; the bottle with its axes reversed; `t2_clutter_c`; the live take's wrong `occluded_from`; detector table | REPLAY + table |
+| 11 | What it still gets wrong | 150 | 1:20 | Dim frame; the bottle with its axes reversed; `t2_clutter_c`; the live take's wrong `occluded_from`; detector table | REPLAY + table |
 | 12 | Close | 96 | 0:50 | The `(:init ...)` block full screen; `ObjectState` fields; last card with the Claude Code line | still |
-| | **Total** | **1,569** | **14:00** | | |
+| | **Total** | **1,577** | **14:00** | | |
 
 Kinds, and the label each carries on screen for as long as it is shown:
 
@@ -449,14 +449,16 @@ result, and the fusion module at work.
 - ~~The detector on objects without trays.~~ Tried 10 Oct; it finds them.
 - **The kept live take shows a fact that is wrong:**
   `(occluded_from mustard_bottle_01 cam_front)` with nothing hiding the bottle
-  (`OCTOBER_PLAN.md`, 10 Oct). The script says so by caption in scene 6 and in
-  words in scene 11. A fix on replay does not change the live picture; the
-  script's `[VERIFY]` in scene 11 is where the final state is said.
+  (`OCTOBER_PLAN.md`, 10 Oct). Fixed on 11 Oct: on a replay of the take the
+  fact is on 1 pair, not 500. The live picture was written before the fix and
+  keeps it; the script says so by caption in scene 6 and in words in scene 11.
+  If the edit would rather show the corrected facts, a REPLAY of the take's
+  own recording (`captures/runtime/20261010_213321_demo_live_a`) has them.
 - `--show-record` on a live run (§1, item 2): used on 10 Oct, so the retiming
   of §7 is now needed. Giving the live recorder the clock is still a small
   change to `runtime`, but it would not help takes already made.
 - The script is over 15 minutes below about 120 words a minute (§3); it was
-  113 before the shoot added 80 words.
+  113 before the shoot added 88 words.
 - Scenes 10 and 11 describe the detector as it is now. If fine-tuning on the
   7 Oct layouts removes the tray-as-bowl, the script's `[VERIFY]` in scene 11
   is where that is said, and the clips of scene 10 are then the detector before

@@ -160,6 +160,9 @@ struct ObjectState {
   double position_sigma_m;         // 1-sigma RMS position uncertainty; <0 = absent
   double orientation_sigma_rad;    // 1-sigma RMS orientation uncertainty; <0 = absent
   Eigen::Vector3d velocity_w;      // world-frame linear velocity, m/s
+
+  // Which views saw it. ADDITIVE, 2026-10-11 — see below.
+  uint32_t observed_views;         // bitmask as visible_views; 0 = absent
 };
 
 struct SceneState {
@@ -172,6 +175,8 @@ Semantics that matter:
 - `visible_views == 0` is invalid — drop the object rather than emit it.
 - A single-view object is still emitted, with the corresponding single bit set.
   Downstream consumers use `visible_views` to reason about pose uncertainty.
+- `visible_views` is the views whose estimate went **into** `pose_w`. It is not
+  the views that can see the object: for that, use `observed_views` (below).
 - `cls == "unknown_object"` means the DBSCAN path produced it: `pose_w`
   translation is the cluster centroid, rotation is identity and **meaningless**,
   `extent` is the cluster bounding volume.
@@ -198,6 +203,22 @@ computed these every frame and discarded them; these fields carry them.
   built — the fields are supplied first so the contract is stable before
   anything depends on it.
 
+**`observed_views` (additive, 2026-10-11, no existing field moved).** Every view
+that had an estimate associated with this object in this frame, whether fusion
+used it or the disagreement gate dropped it: a superset of `visible_views`. A
+gated-out view saw the object and was outvoted about where it is; reading its
+missing `visible_views` bit as "hidden from that camera" reported an unoccluded
+bottle as occluded on 300 of 300 pairs in four scored scenes
+(`docs/OCTOBER_PLAN.md`, 10 Oct), which is why the two are now separate.
+
+- An estimate refused by the depth evidence is **not** in it: another camera
+  sees through the place it claims, so it is not an estimate of this object.
+- **Zero means not supplied** — a valid object always has at least its fused
+  view here. `observed_from(const ObjectState&, bit)` in `types.hpp` is the
+  accessor; it falls back to `visible_views` for a producer predating the field.
+- What it cannot tell: a view whose **detector missed** the object has no
+  estimate of it and reads the same as a view the object is hidden from.
+
 ---
 
 ## 6. Scene Graph → PDDL / consumers
@@ -220,7 +241,7 @@ consumer-specific encoding belongs in a bridge rather than in this contract.
 | `(on ?a ?b)` | a rests on b | a's base within tolerance of b's top surface AND horizontal overlap |
 | `(in ?a ?b)` | a inside container b | b's class is declared in `in.container_classes` AND a's centroid within b's interior volume |
 | `(clear ?a)` | nothing on top of a | no object satisfies `(on ?x ?a)` |
-| `(occluded_from ?a ?view)` | a not visible from view | corresponding `visible_views` bit unset |
+| `(occluded_from ?a ?view)` | view has no estimate of a | corresponding `observed_views` bit unset (`visible_views` when `observed_views` is absent) |
 
 Tolerances live in `config/predicates.yaml` — never hard-coded. Predicate
 extraction must be deterministic: same `SceneState` in, same fact set out.

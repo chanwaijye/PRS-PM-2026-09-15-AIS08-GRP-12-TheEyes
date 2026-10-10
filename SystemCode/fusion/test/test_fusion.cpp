@@ -221,6 +221,25 @@ TEST(Fusion, NaiveModeBelievesAViewTheGateWouldReject) {
   EXPECT_LT(gated_error, naive_error);
   // The gate must also SAY it dropped a view, not silently improve.
   EXPECT_EQ(gated.objects[0].visible_views, kViewCamFront);
+  // ...and say that the dropped view SAW the object. It was outvoted about
+  // where the cube is, not blind to it: reading its missing visible_views bit
+  // as "occluded from cam_over" was wrong on 300 of 300 pairs of four scored
+  // scenes. The naive arm fuses both, so there the two masks are the same.
+  EXPECT_EQ(gated.objects[0].observed_views, kViewCamFront | kViewCamOver);
+  EXPECT_EQ(naive.objects[0].observed_views, naive.objects[0].visible_views);
+}
+
+TEST(Fusion, ObservedViewsOfASingleViewObjectIsThatView) {
+  // The object only cam_front has an estimate of is not observed by cam_over,
+  // which is the case occluded_from is for.
+  const ExtrinsicsSet ex = Rig();
+  const SceneState scene = Fusion(Cfg(), ex).Process(
+      {Observe(ex, "cam_front", "cube", Pose({0.10, 0.05, 0.03}), 0.9)}, 1'000'000'000ULL);
+  ASSERT_EQ(scene.objects.size(), 1u);
+  EXPECT_EQ(scene.objects[0].visible_views, kViewCamFront);
+  EXPECT_EQ(scene.objects[0].observed_views, kViewCamFront);
+  EXPECT_TRUE(observed_from(scene.objects[0], kViewCamFront));
+  EXPECT_FALSE(observed_from(scene.objects[0], kViewCamOver));
 }
 
 TEST(Fusion, RefusesToConstructOnBadCalibration) {

@@ -37,7 +37,7 @@ safe to reason about, and it is asserted by
 | `(on a b)` | `a`'s base within `on.surface_tol_m` of `b`'s top, AND ≥ `on.min_overlap_ratio` of `a`'s footprint over `b`, AND not `(in a b)` |
 | `(in a b)` | `a`'s centroid inside `b`'s AABB inset by `in.containment_margin_m`, AND `vol(a) ≤ in.max_volume_ratio · vol(b)` |
 | `(clear a)` | no `x` satisfies `(on x a)` |
-| `(occluded_from a v)` | bit for `v` unset in `a.visible_views` |
+| `(occluded_from a v)` | bit for `v` unset in `a.observed_views` (in `a.visible_views` when a producer does not supply it) |
 
 Two decisions worth knowing about:
 
@@ -48,9 +48,14 @@ Two decisions worth knowing about:
   rule applied by `Extract`, so the pairwise `IsOn(a, b)` can return true for a
   pair that produces no fact. Found by the end-to-end pipeline test, not by the
   module's own fixtures.
-- **`occluded_from` is read off the visibility bitmask, not re-derived
-  geometrically.** Fusion already knows which views contributed; re-deriving it
-  here would create a second source of truth that can disagree with the first.
+- **`occluded_from` is read off fusion's bitmask of the views that saw the
+  object, not re-derived geometrically.** Fusion already knows which views had
+  an estimate of it; re-deriving it here would create a second source of truth
+  that can disagree with the first. The mask is `observed_views`, not
+  `visible_views` (2026-10-11): a view the disagreement gate dropped saw the
+  object, and reading its missing `visible_views` bit as "hidden" reported
+  unoccluded objects as occluded. What it still cannot tell apart is a view
+  the object is hidden from and a view whose detector missed it.
 
 Tolerances come from `config/predicates.yaml` and are never hard-coded — a
 missing or out-of-range value throws rather than falling back to a default,

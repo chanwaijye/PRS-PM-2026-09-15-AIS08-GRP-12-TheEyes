@@ -189,6 +189,47 @@ TEST(Predicates, ObjectOccludedFromExactlyOneView) {
   EXPECT_TRUE(Has(r, "(on red_cube_01 table_01)"));
 }
 
+TEST(Predicates, AViewThatSawTheObjectButWasGatedOutIsNotOccluded) {
+  // The bottle of t1_bottle_b: both cameras estimate it on every pair, the
+  // disagreement gate keeps cam_front's estimate, and nothing hides the bottle
+  // from cam_over. visible_views says which view was fused; observed_views
+  // says which views saw it, and occluded_from is about seeing.
+  ObjectState bottle =
+      Make("mustard_bottle_01", "bottle", {0.0, 0.0, 0.095}, {0.03, 0.05, 0.095}, kViewCamFront);
+  bottle.observed_views = kViewCamFront | kViewCamOver;
+  SceneState scene;
+  scene.objects = {Table(), bottle};
+
+  const PredicateResult r = Extract(scene, Cfg());
+  EXPECT_FALSE(Has(r, "(occluded_from mustard_bottle_01 cam_over)"));
+  EXPECT_FALSE(Has(r, "(occluded_from mustard_bottle_01 cam_front)"));
+  EXPECT_TRUE(Has(r, "(on mustard_bottle_01 table_01)"));
+}
+
+TEST(Predicates, OccludedFromFollowsObservedViewsWhenSupplied) {
+  // Fused from both, seen by both: nothing. Fused from one and seen by one:
+  // the other camera has no estimate of it, which is what the fact reports.
+  ObjectState cube =
+      Make("red_cube_01", "cube", {0.0, 0.0, 0.025}, {0.025, 0.025, 0.025}, kViewCamFront);
+  cube.observed_views = kViewCamFront;
+  SceneState scene;
+  scene.objects = {Table(), cube};
+  const PredicateResult r = Extract(scene, Cfg());
+  EXPECT_TRUE(Has(r, "(occluded_from red_cube_01 cam_over)"));
+  EXPECT_FALSE(Has(r, "(occluded_from red_cube_01 cam_front)"));
+}
+
+TEST(Predicates, OccludedFromFallsBackToVisibleViewsWhenObservedIsNotSupplied) {
+  // A SceneState from a producer older than observed_views (0 = not supplied)
+  // means what it meant: the missing visible_views bit. ObjectOccludedFrom-
+  // ExactlyOneView above is that case; this one pins the helper.
+  ObjectState cube =
+      Make("red_cube_01", "cube", {0.0, 0.0, 0.025}, {0.025, 0.025, 0.025}, kViewCamFront);
+  ASSERT_EQ(cube.observed_views, 0u);
+  EXPECT_TRUE(observed_from(cube, kViewCamFront));
+  EXPECT_FALSE(observed_from(cube, kViewCamOver));
+}
+
 TEST(Predicates, UnknownObjectParticipatesUsingCentroidAndExtentOnly) {
   SceneState scene;
   ObjectState unknown =
