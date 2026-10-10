@@ -68,7 +68,7 @@ and the 300-pair recording are about a minute of machine time).
 | **Bottle** — alone; half hidden | 2 | 15 min |
 | **Clutter (T2)** — three trays + 8 distractors, ~10 min each to arrange | 3 | 30–35 min |
 | **Training layouts** for the detector, including empty trays (finding 3) | 10–12 | 35–40 min |
-| **Demo footage** for the video | — | 30 min |
+| **Demo footage** for the video | — | 30 min (re-estimated 8 Oct at 90 min: `VIDEO_PLAN.md` §5) |
 | Start and end of each session (board on, re-register, empty table; final check) | per session | 12 min |
 
 The first three rows are the proposal's ten scored scenes (T1 ×2, T2 ×3, T3 ×3,
@@ -675,7 +675,7 @@ The author is not sure when it was disconnected — likely on 7 Oct. So 5 and
 recorded can settle it, and the report should say that rather than claim sync
 for the scored set. Nothing on the table moves during a scored
 scene, so no accuracy number depends on it; the video script's "to about a
-millisecond" does, and has to change.
+millisecond" did, and draft 2 of the script no longer says it.
 
 **Rendered and collected for the video:** eleven replay clips of the scored
 scenes, 300 frames each (`runs/scored/helpers/render_clips.sh`), among them the
@@ -689,12 +689,14 @@ shot.
 
 Detector fine-tune and replay; real-capture mAP from ground-truth boxes;
 predicate accuracy against the photos; bootstrap CIs by scene (proposal §7.1);
-report draft, figures, video script.
+report draft, figures; the video's rough cut (`VIDEO_PLAN.md` §8) — its
+narration is drafted in `ProjectReport/presentation/video_script.txt` and its
+numbers are checked against the report's tables as they settle.
 
 Added 10 Oct: settle what `occluded_from` means and fix it on replay, before
-predicate accuracy; retime the live console clips from `frames.stamp_ns`; in
-the video script, the sync sentence, the measured speed and the `in` scene;
-merge the video plan (branch `worktree-video-plan`).
+predicate accuracy; retime the live console clips from `frames.stamp_ns`
+(`VIDEO_PLAN.md` §7). The video plan and script are merged and follow the kept
+takes (`VIDEO_PLAN.md` §5.0).
 
 ## 25–31 Oct
 
