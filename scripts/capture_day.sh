@@ -47,7 +47,9 @@
 #   captures/scored/<day>/<scene>/{notes.yaml, gt_stills/, gt_check.log,
 #                                  record.log, session -> recorded session}
 #   runs/scored/<day>/<scene>/{metrics.sqlite, *.log, visibility.csv,
-#                              visibility_overlay/}
+#                              visibility_overlay/, boxes.csv}
+#   boxes.csv is each object's 2D box per pair and view, from the same render
+#   as the visibility: the labels training/detector/real_dataset.py reads.
 #
 # Examples:
 #   scripts/capture_day.sh begin
@@ -579,7 +581,8 @@ cmd_process() {
     fi
     grep -E "cross-camera|REFUSED|rejected" "$out/gt.log" || true
     "$VIS" "$session" "$out/metrics.sqlite" --config-dir "$out/config_recording" --repo-root "$REPO" \
-      --csv "$out/visibility.csv" --overlay "$out/visibility_overlay" > "$out/visibility.log" 2>&1 ||
+      --csv "$out/visibility.csv" --overlay "$out/visibility_overlay" --boxes "$out/boxes.csv" \
+      > "$out/visibility.log" 2>&1 ||
       { tail -10 "$out/visibility.log"; summary+=("$name: VISIBILITY FAILED"); continue; }
     sed -n '/^view \/ object/,/^$/p;/^WARNING/,$p' "$out/visibility.log"
     local tc; tc=$(tier_check "$n" "$out/visibility.csv"); echo "$tc"

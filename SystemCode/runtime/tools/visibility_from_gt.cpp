@@ -26,6 +26,10 @@
 //                     40 mm, 98%. The cube and bottle read 91-100% at 20 mm
 //                     already. The cost: an occluder must stand more than
 //                     ~40 mm in front of the surface it hides to be counted.
+//     --boxes FILE    also write each object's 2D box per pair and view: the
+//                     whole rendered silhouette, and the part nothing nearer
+//                     hides. For detector labels and real-capture mAP
+//                     (training/detector/real_dataset.py).
 //     --erode-px E    shrink each silhouette first (default 2), so a pixel or
 //                     two of ground-truth error at the rim is not scored
 //     --max-pairs N   stop after N pairs that have ground truth
@@ -77,13 +81,34 @@ struct Options {
   uint64_t max_pairs = 0;
   std::string csv;
   std::string overlay;
+  std::string boxes;
 };
+
+// Inclusive pixel bounds of the set pixels of a CV_8UC1 mask; x0 = -1 when none.
+struct Box {
+  int x0 = -1, y0 = -1, x1 = -1, y1 = -1;
+};
+
+Box BoundsOf(const cv::Mat& mask) {
+  Box b;
+  for (int y = 0; y < mask.rows; ++y) {
+    const uint8_t* row = mask.ptr<uint8_t>(y);
+    for (int x = 0; x < mask.cols; ++x) {
+      if (!row[x]) continue;
+      if (b.x0 < 0) b = {x, y, x, y};
+      b.x0 = std::min(b.x0, x);
+      b.x1 = std::max(b.x1, x);
+      b.y1 = y;
+    }
+  }
+  return b;
+}
 
 int Usage() {
   std::cerr << "usage: visibility_from_gt <session_dir> <metrics.sqlite> [--run N]\n"
                "         [--config-dir DIR] [--repo-root DIR] [--tol-mm T] [--erode-px E]\n"
                "         [--max-pairs N]\n"
-               "         [--csv FILE] [--overlay DIR]\n";
+               "         [--csv FILE] [--overlay DIR] [--boxes FILE]\n";
   return 2;
 }
 
@@ -139,6 +164,7 @@ int main(int argc, char** argv) {
       else if (a == "--max-pairs") o.max_pairs = std::stoull(next());
       else if (a == "--csv") o.csv = next();
       else if (a == "--overlay") o.overlay = next();
+      else if (a == "--boxes") o.boxes = next();
       else if (a.rfind("--", 0) == 0) return Usage();
       else pos.push_back(a);
     } catch (const std::exception& e) {
@@ -208,6 +234,18 @@ int main(int argc, char** argv) {
     csv << "pair_index,camera_id,cls,instance,silhouette_px,invalid_px,occluded_px,"
            "consistent_px,behind_px,visible_fraction,depth_fraction\n";
 
+    // The 2D boxes a detector is trained and scored on, from the same render:
+    // the whole silhouette, and the part of it nothing nearer hides. NOT
+    // eroded, unlike the counts above -- a box is wanted at the object's own
+    // edge. A pixel with no depth counts as seen: the colour image shows it.
+    std::ofstream boxes;
+    if (!o.boxes.empty()) {
+      boxes.open(o.boxes);
+      if (!boxes) throw std::runtime_error("cannot write " + o.boxes);
+      boxes << "pair_index,camera_id,cls,instance,width,height,visible_fraction,"
+               "full_x0,full_y0,full_x1,full_y1,seen_x0,seen_y0,seen_x1,seen_y1\n";
+    }
+
     std::map<std::string, Series> series;  // "<camera>  <cls>#<instance>"
     ReplayFrameSource src(o.session);
     uint64_t scored = 0, no_gt = 0;
@@ -254,6 +292,20 @@ int main(int argc, char** argv) {
               << vc.silhouette << "," << vc.invalid << "," << vc.occluded << "," << vc.consistent
               << "," << vc.behind << "," << std::setprecision(6) << vc.visible_fraction() << ","
               << vc.depth_fraction() << "\n";
+
+          if (boxes.is_open()) {
+            cv::Mat raw_labels;
+            MeasureVisibility(c.rendered, frame.depth, frame.depth_scale_m * depth_fix.For(cam_id),
+                              o.tol_mm / 1000.0, 0, &raw_labels);
+            const Box full = BoundsOf(raw_labels != static_cast<uint8_t>(VisLabel::kNone));
+            const Box seen = BoundsOf((raw_labels != static_cast<uint8_t>(VisLabel::kNone)) &
+                                      (raw_labels != static_cast<uint8_t>(VisLabel::kOccluded)));
+            boxes << pair->pair_index << "," << cam_id << "," << row->cls << "," << row->instance
+                  << "," << frame.depth.cols << "," << frame.depth.rows << ","
+                  << std::setprecision(6) << vc.visible_fraction() << "," << full.x0 << ","
+                  << full.y0 << "," << full.x1 << "," << full.y1 << "," << seen.x0 << "," << seen.y0
+                  << "," << seen.x1 << "," << seen.y1 << "\n";
+          }
 
           if (!overlay_written) {
             for (int y = 0; y < labels.rows; ++y) {

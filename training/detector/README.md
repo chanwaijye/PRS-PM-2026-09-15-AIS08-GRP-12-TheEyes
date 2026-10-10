@@ -82,6 +82,26 @@ size with evaluation noise.
 supervised-learning methodology evidence, justifying the final dataset size
 empirically rather than by assertion.
 
+## Real captures: labels, mAP and the fine-tune (2026-10-11)
+
+```bash
+# labels: capture_day.sh process writes runs/scored/<day>/<scene>/boxes.csv
+python real_dataset.py --out /opt/the-eyes-data/real_v1 --every 5 --test-every 10 \
+    --train 20261007_train/train_01 ... --val 20261007_train/train_06 20261007_train/train_08 \
+    --test 20261005/t1_cube ...                      # the 16 scored scenes
+python evaluate.py --weights best.pt --data /opt/the-eyes-data/real_v1/data.yaml --split test
+
+# fine-tune: real frames beside a sample of the synthetic ones
+python mixed_data.py --real /opt/the-eyes-data/real_v1 --synth /opt/the-eyes-data/synth50k_v2
+python train.py --data /opt/the-eyes-data/real_v1/data_mixed.yaml --no-inflate-stem \
+    --model runs/detector/rgbd_50k_v2/weights/best.pt --epochs 30 --batch 32 --name rgbd_ft_real_v1
+```
+
+`--no-inflate-stem` because the checkpoint is already four-channel. This
+ultralytics writes to `runs/detect/<project>/<name>`; the run was moved to
+`runs/detector/rgbd_ft_real_v1` beside the others. The numbers are in
+`docs/OCTOBER_PLAN.md`, "The detector on real captures".
+
 ## Results so far
 
 | Run | Data | mAP@0.5 | mAP@0.5:0.95 | Reportable? |

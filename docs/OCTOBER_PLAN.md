@@ -730,16 +730,111 @@ bit-exact and the change touches nothing else. Pairs the fact is on:
   object is "occluded" is for the labels of the predicate-accuracy check to
   say.
 
-How it was checked: the replays went into databases of their own
-(`runs/occluded_from_check/`), compared with each scene's latest run; the
-scored logs are untouched. `capture_day.sh process --force` on each day puts
-the result into them once the change is committed.
+How it was checked: the replays first went into databases of their own,
+compared with each scene's latest run. After the commit (`14da5fe`) every day
+was reprocessed (`capture_day.sh process --force`): each scored log's latest
+run is now at that revision, its facts are the ones checked, and every line of
+every ablation table is the same as before.
 
 Found on the way: one unit test has failed since the 17:16 registration of
 10 Oct, `GroundTruthChain.TablePlaneSolveBeatsTheFreeSolveOnTheSameCorners`.
 It renders markers through the shipped extrinsics and bounded the plane fit at
 0.5 mm; it reads 0.54 mm on the two calibrations since. The bound is now 1 mm,
 as its neighbours were loosened for the same reason.
+
+## The detector on real captures — 11 Oct (no rig)
+
+**Labels without drawing a box.** Each object's pose is measured from its tray,
+its mesh is rendered into each camera at that pose, and the part of the
+silhouette nothing nearer hides gives the box — the visible extent, which is
+what the synthetic set's labels are. `visibility_from_gt --boxes` writes them
+(now part of `capture_day.sh process`); `training/detector/real_dataset.py`
+turns scenes into a dataset in the synthetic set's format, the frame as the
+runtime's detector is given it (brightness floor, depth scale, depth
+encoding). An object under 25% visible gets no box; a tray without its object
+gets none; a still scene is labelled with its median box.
+
+| set | scenes | frames | boxes |
+|---|---|---|---|
+| train | 10 of the 7 Oct layouts (`train_01`–`05`, `07`, `09`–`12`), every 5th pair | 360 | 864 |
+| val | `train_06` (three objects), `train_08` (empty trays) | 72 | 108 |
+| **test** | **the 16 scored scenes** of 5–7 Oct, every 10th pair | 960 | 1,200 (120 hidden objects unboxed) |
+| test, dim | `dim_t1_cube`, `dim_t1_bottle_gain128`, `dim_t3_bottle_over`, `t2_clutter_a` of 6 Oct | 240 | 360 |
+
+No test scene is in training. All of it is one table, one room and one pair of
+cameras, and the three clutter scenes were shot the same evening as the
+layouts: this measures the detector on this rig, not on another.
+
+**The synthetic-only detector, measured on real frames for the first time**
+(`rgbd_50k_v2`, the shipped model; `rgb_only_50k_v2`, the ablation):
+
+| model | synthetic val mAP@0.5:0.95 | 16 real scenes mAP@0.5 | mAP@0.5:0.95 | precision | recall |
+|---|---|---|---|---|---|
+| RGB only | 0.957 | 0.664 | 0.501 | 0.662 | 0.625 |
+| **RGB-D** | 0.957 | **0.941** | **0.670** | 0.719 | 0.889 |
+
+- **The depth channel, worth nothing on synthetic data, is what finds the cube
+  on real frames.** RGB only: the cube's AP@0.5 is 0.099 and its recall 0.12.
+  RGB-D: 0.905 and 0.79. Bottle and bowl are found by both (0.92 / 0.98 against
+  0.97 / 0.95).
+- **The gap from synthetic to real is in the box, not in the finding:**
+  mAP@0.5 falls 0.994 → 0.941, mAP@0.5:0.95 falls 0.957 → 0.670. The bottle is
+  the loosest (0.455).
+- **Precision 0.72** is the tray taken for a bowl and the other objects that
+  are not there.
+- On the four dim scenes the same model is at 0.683 / 0.510, recall 0.63.
+
+**Fine-tuned on the real layouts** (`runs/detector/rgbd_ft_real_v1`, from the
+shipped weights): each epoch the 360 real frames three times over and 2,000
+synthetic frames beside them (`mixed_data.py`), ultralytics defaults, batch 32.
+The two validation layouts saturate at once (mAP@0.5:0.95 0.86–0.90 from the
+second epoch) and stop it at epoch 17; the weights kept are the validation's
+best, epoch 2. They were not chosen on the test scenes; the last epoch scores
+0.964 / 0.937 there.
+
+| on | synthetic only | fine-tuned |
+|---|---|---|
+| 16 real scenes, mAP@0.5 / @0.5:0.95 | 0.941 / 0.670 | **0.994 / 0.934** |
+| precision / recall | 0.719 / 0.889 | 0.983 / 0.978 |
+| 5 Oct scenes, mAP@0.5:0.95 | 0.647 | 0.920 |
+| 6 Oct scenes | 0.540 | 0.868 |
+| 7 Oct scenes | 0.658 | 0.964 |
+| alone (T1) / clutter (T2) | 0.653 / 0.658 | 0.945 / 0.964 |
+| half hidden (T3) / the open camera of fully hidden (T4) | 0.516 / 0.712 | 0.727 / 0.974 |
+| four dim scenes, mAP@0.5 / @0.5:0.95 | 0.683 / 0.510 | 0.995 / 0.921 |
+| synthetic val, mAP@0.5:0.95 | 0.957 | 0.945 |
+
+**The whole pipeline with it**, every scene of 5–10 Oct replayed into databases
+of its own (`runs/detector_real/replay/`; the scored logs still hold the
+shipped detector). Over the 22 scenes, 9,600 ground-truth object-pairs:
+
+| | shipped | fine-tuned |
+|---|---|---|
+| real objects reported | 9,588 | 9,600 |
+| false objects reported in the scene graph | 731 | **0** |
+| false objects tracked and left out by the support check | 6,747 | 480 |
+| per-view pose estimates run | 27,684 | 19,872 |
+| a second object reported on a real one | 0 | 56 |
+
+- **Every false object the scene graph reported is gone:** the tray as a bowl
+  in `t3_bottle_over` (300 pairs), the handset as a cube in `t2_in_a` (232),
+  the dark clutter attempt of 6 Oct (196).
+- **Fused ADD-S, gate + EKF:** all 22 scenes at 100% inside 0.1 d except
+  `t2_clutter_c`, 66.8% → 75.7% (5.33 → 4.33 mm; cam_front now finds the cube
+  on every pair, cam_over's estimate is still 6 mm off). Better where a camera
+  had been blind — `dim_t1_cube` 2.79 → 1.16 mm, `dim_t3_bottle_over` 8.26 →
+  2.92, `t1_bottle_b` 4.96 → 2.81 — and within a millimetre elsewhere, either
+  way (`t1_bottle` 2.51 → 3.07, `t2_in_b` 3.10 → 3.84).
+- **Faster,** since a false detection is a pose registration: the mean pair of
+  `t1_bottle` goes from 92 to 45 ms on replay.
+- **New with it:** in `dim_t3_bottle_over` two bottles are reported on the one
+  real bottle on 56 pairs — cam_front now finds it and the two views' estimates
+  are not always matched. Not examined.
+
+**Not decided: whether it replaces the shipped model.** It would change every
+number in the scored tables, and the detector would no longer be
+"synthetic-only". The model file is `assets/models/yolov8_the_eyes_ft_real_v1.onnx`;
+`config/detector.yaml` still names the shipped one.
 
 ## 11–24 Oct — Taiwan (offline, or remote to the desktop)
 

@@ -9,6 +9,9 @@ than by assertion.
     # single model
     python evaluate.py --weights best.pt --data <dataset>/data.yaml
 
+    # the same model on real captures (labels from tray ground truth)
+    python evaluate.py --weights best.pt --data <real set>/data.yaml --split test
+
     # modality ablation: RGB-only vs RGB-D on the SAME data and split
     python evaluate.py --modality --data <dataset>/data.yaml --epochs 25
 
@@ -27,10 +30,11 @@ import shutil
 from pathlib import Path
 
 
-def evaluate_one(weights: Path, data: Path, imgsz: int, device: str) -> dict:
+def evaluate_one(weights: Path, data: Path, imgsz: int, device: str, split: str = "val") -> dict:
     from ultralytics import YOLO
 
-    metrics = YOLO(str(weights)).val(data=str(data), imgsz=imgsz, device=device, verbose=False)
+    metrics = YOLO(str(weights)).val(data=str(data), imgsz=imgsz, device=device, verbose=False,
+                                     split=split)
     box = metrics.box
     return {
         "mAP50": float(box.map50),
@@ -215,6 +219,9 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=20260820)
     parser.add_argument("--work", type=Path, default=Path("runs/ablation"))
     parser.add_argument("--out", type=Path, default=Path("runs/detector_metrics.json"))
+    parser.add_argument("--split", default="val",
+                        help="which split of the dataset a single model is scored on; "
+                             "'test' for the real-capture set of real_dataset.py")
     args = parser.parse_args()
 
     if args.modality:
@@ -227,7 +234,10 @@ def main() -> int:
     else:
         if args.weights is None:
             parser.error("--weights is required unless --ablation is given")
-        report = evaluate_one(args.weights, args.data, args.imgsz, args.device)
+        report = evaluate_one(args.weights, args.data, args.imgsz, args.device, args.split)
+        report["weights"] = str(args.weights)
+        report["data"] = str(args.data)
+        report["split"] = args.split
         print(json.dumps(report, indent=2))
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
