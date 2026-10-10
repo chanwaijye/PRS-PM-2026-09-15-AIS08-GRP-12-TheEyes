@@ -670,8 +670,10 @@ with it as without. On 6–10 Sep, cable connected, a run's mean offset is
 run (145 s) drifts −0.023 ms/s. On 10 Oct the seven takes' mean offsets are
 2.9–12.3 ms, wandering by 1.9–3.8 ms, and the two 185 s takes drift −0.007 and
 −0.014 ms/s.
-Whether 5–7 Oct was shot with hardware sync is `[VERIFY]` — asked of the
-author. Nothing on the table moves during a scored
+The author is not sure when it was disconnected — likely on 7 Oct. So 5 and
+6 Oct were probably shot with hardware sync and 7 Oct is uncertain; nothing
+recorded can settle it, and the report should say that rather than claim sync
+for the scored set. Nothing on the table moves during a scored
 scene, so no accuracy number depends on it; the video script's "to about a
 millisecond" does, and has to change.
 
