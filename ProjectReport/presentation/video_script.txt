@@ -1,4 +1,4 @@
-The Eyes - Project video - narration script (draft 1, 2026-10-08)
+The Eyes - Project video - narration script (draft 2, 2026-10-10, after the shoot)
 
 How to read this file.
   ON SCREEN:   what the picture shows while you speak. Do not read it out.
@@ -14,6 +14,8 @@ again after the detector is fine-tuned.
 Scene 1. One camera loses the cube.
 
 ON SCREEN: Live take, before any title. The phone's picture of the table beside the console. One cube on the table. A card slides in between the cube and one camera.
+
+NOTE: the take is demo_cold_d (10 Oct 2026, 21:50).
 
 This is a red cube on a table, with two depth cameras looking at it.
 
@@ -42,9 +44,9 @@ With one camera, anything hidden behind something else simply disappears. A seco
 
 Scene 4. The rig.
 
-ON SCREEN: Phone footage of the rig: the wide shot, each camera close up, the sync cable, the calibration board on the table, the three printed objects, the marker trays. Caption over the camera close-ups: each camera is selected by serial number, never by the order it was plugged in.
+ON SCREEN: Phone footage of the rig: the wide shot, each camera close up, the calibration board on the table, the three printed objects, the marker trays. Caption over the camera close-ups: each camera is selected by serial number, never by the order it was plugged in.
 
-This is the rig. Two Intel RealSense D four-three-five i cameras on tripods, about 0.74 metres apart, with about 80 degrees between their views. A sync cable makes them capture at the same moment, to about a millisecond.
+This is the rig. Two Intel RealSense D four-three-five i cameras on tripods, about 0.74 metres apart, with about 80 degrees between their views. The software pairs their frames by timestamp, never more than 17 milliseconds apart.
 
 The cameras are calibrated against this board, to about 0.3 pixels, and registered again at the start of every session, because the rig drifts even when nobody touches it.
 
@@ -66,9 +68,9 @@ The last stage turns geometry into four kinds of fact: on, in, clear, and occlud
 
 Scene 6. Live on the rig.
 
-ON SCREEN: One continuous live take. The console fills the frame; the phone's picture of the table and my hands sits in a corner, in step with it. Caption for the whole scene: LIVE on the rig, [date of the take], one take, not replayed. The measured speed of the take stays on screen as a caption.
+ON SCREEN: One continuous live take. The console fills the frame; the phone's picture of the table and my hands sits in a corner, in step with it. Caption for the whole scene: LIVE on the rig, 10 Oct 2026, one take, not replayed. The measured speed of the take stays on screen as a caption: 12.1 frame pairs a second over the take, 10 with three objects. Three more captions, each at its moment. When the bottle's facts appear: "The third fact is wrong: nothing hides the bottle. See: What it still gets wrong." At the first freeze: "Freeze: the pose estimator is finding a new object, about 1 second." When the card stands before the front camera: "The boxes on the card are false cubes, from its red print. The depth check refuses them."
 
-NOTE: this scene is written before the take exists. Keep the words that match the take that is used, and cut the rest. If the detector flickers or a pose drifts while a hand is over it, leave it in the picture and say so in one sentence.
+NOTE: the take is demo_live_a (10 Oct 2026, 21:33), and the words follow it beat by beat; the time of each beat is in docs/OCTOBER_PLAN.md, 10 Oct. The console file holds one frame for each processed pair, so it is retimed before the voice is cut to it (docs/VIDEO_PLAN.md, section 7).
 
 Now a live run. The small picture is my phone, filming the table at the same moment as the screen. Nothing here is replayed.
 
@@ -78,26 +80,26 @@ I put down the bottle. (pause) Both cameras detect it, and a moment later the fa
 
 The bowl. (pause) And the cube. (pause) Three objects, each on the table.
 
-[VERIFY: keep the next two sentences only if the take shows it.] Now the cube goes into the bowl. (pause) The fact changes from "on the table" to "in the bowl".
+Now the cube goes into the bowl. (pause) The fact changes from "on the table" to "in the bowl". I take it out, (pause) and it is on the table again.
 
-Watch the three counters at the bottom left: the front camera alone, the other camera alone, and the fused result. I cover one camera with my hand. (pause) Its count drops. The fused count does not, and a new fact says which camera cannot see the object. (pause)
+Watch the three counters at the bottom left: the front camera alone, the other camera alone, and the fused result. I stand a card between the cube and one camera. (pause) Its count drops. The fused count does not, and a new fact says which camera cannot see the cube. (pause)
 
-Now the other camera. (pause) The same.
+Now the other camera. (pause) Its count goes to zero, and the fused count is still three. (pause)
 
 I take the bottle away, (pause) and its facts go with it.
 
-This is running at [VERIFY: pairs per second with three objects, from this take's metrics.sqlite] frame pairs a second, and nearly all of that time is the pose estimator.
+With three objects on the table this runs at 10 frame pairs a second, and about four fifths of that time is the pose estimator.
 
 
 Scene 7. How it is measured.
 
-ON SCREEN: A ground-truth still with the tray markers outlined. Then the sixteen scenes laid out by level. Then one line: 16 scenes, 300 frame pairs each, recorded once, replayed for every comparison.
+ON SCREEN: A ground-truth still with the tray markers outlined. Then the sixteen scenes laid out by level. Then one line: 16 scenes, 300 frame pairs each, recorded once, replayed for every comparison. Then the photo of the cube in the bowl, from above.
 
 A demo is not a measurement, so this is how I measured it.
 
 Each object sits in a printed tray that carries markers. The markers give the true pose, and the two cameras agree on it to within a millimetre and a half.
 
-I recorded 16 scenes at four levels: an object alone, three objects among clutter, an object half hidden from one camera, and an object fully hidden from one camera. Each is 300 frame pairs, recorded once, and every method is replayed on exactly the same frames.
+I recorded 16 scenes at four levels: an object alone, three objects among clutter, an object half hidden from one camera, and an object fully hidden from one camera. Each is 300 frame pairs, recorded once, and every method is replayed on exactly the same frames. Two more recordings have the cube inside the bowl. In both, the "in" fact is reported on all 300 frame pairs.
 
 The score is A-D-D-S, the distance between the estimated surface and the true one. A frame counts as correct when that is within 10 percent of the object's diameter: for the cube, under 9 millimetres.
 
@@ -143,13 +145,15 @@ So the scene graph now reports an object only if something supports it. That too
 
 Scene 11. What it still gets wrong.
 
-ON SCREEN: The heading "What it still gets wrong" stays up for the whole scene. One picture for each item: the dim frame; the bottle with its axes pointing the wrong way; the third clutter scene; the detector table with and without depth.
+ON SCREEN: The heading "What it still gets wrong" stays up for the whole scene. One picture for each item: the dim frame; the bottle with its axes pointing the wrong way; the third clutter scene; the live take's frame with the wrong fact outlined; the detector table with and without depth.
 
 The real room is darker than the synthetic training images. Below a certain brightness one camera loses the cube completely, so every session starts with a light check.
 
 The bottle is sometimes read back to front, half a turn from the truth. The depth check cannot catch that, because a bottle turned around fills almost the same space, and the A-D-D-S score barely shows it.
 
 In one of the three clutter scenes the cube, small and far from one camera, lands outside its threshold. The other two objects in that scene are fine.
+
+In the live run, the occluded-from fact was wrong about the bottle. It is built from which views the fusion used, not from which cameras can see it. [VERIFY: say here whether this is fixed at the final cut. The live take was recorded before any fix, so its picture keeps the wrong fact either way.]
 
 And on synthetic data the depth channel did not help the detector: the M-A-P is 0.957 with it and 0.957 without.
 
@@ -178,8 +182,12 @@ Scene 4
   0.74 metres, 80 degrees       config/extrinsics.yaml as registered 2026-10-07
                                 22:59: 739.4 mm, 80.4 degrees. Changes a little
                                 with every registration.
-  about a millisecond           hardware-sync jitter 0.14 to 1.1 ms sigma,
-                                docs/STATUS.md (live runner).
+  17 milliseconds               the two frames of a pair are at most 16.7 ms
+                                apart in every scored scene and every take
+                                (frames.skew_ms), half a frame at 30 a second.
+                                The sync cable is NOT claimed: it was not
+                                connected on 2026-10-10 and the author is not
+                                sure of 2026-10-07; docs/OCTOBER_PLAN.md, 10 Oct.
   about 0.3 pixels              reprojection RMSE 0.289 / 0.334 px, the same
                                 file; printed by `the_eyes_run check`.
 Scene 5
@@ -187,14 +195,24 @@ Scene 5
                                 validation), docs/STATUS.md.
   50 millimetres, 30 degrees    config/fusion.yaml disagreement_gate.
 Scene 6
-  pairs per second              [VERIFY] not measured live with three objects
-                                and the depth check on. Take it from the kept
-                                take's metrics.sqlite and show it as a caption.
-  nearly all of that time       per-stage p50 on a 60-pair replay of
-                                t2_clutter_a, 2026-10-08: detector 3.7 ms a
-                                view, pose 34 to 35 ms a view, depth check
-                                11 ms, fusion 0.03 ms, scene graph 0.02 ms, of
-                                87 ms in all. Re-read from the kept take.
+  10 pairs a second             demo_live_a, 2026-10-10: 90.7 ms a pair (p50)
+                                on the 281 pairs with three objects tracked in
+                                each view, which is every third camera frame.
+                                Caption: 12.1 pairs a second over the whole
+                                take, 2,231 pairs in 184.9 s.
+  about four fifths             the same pairs, between pauses: pose 36.6 +
+                                35.1 ms of 90.7 ms (79%); detector 3.8 + 4.0,
+                                depth check 10.7, fusion 0.03, scene graph 0.02.
+  about a second                FoundationPose registration, median 1.09 s
+                                over the take's 29 pose calls above 0.5 s.
+  count goes to zero            card before cam_front, 73 to 88 s of the take:
+                                cam_front 0, fused 3. The detector boxes red
+                                marks on the card's print as cubes; all 165 of
+                                cam_front's estimates there are refused by the
+                                depth check.
+  the wrong fact                (occluded_from mustard_bottle_01 cam_front) on
+                                500 pairs of the take; docs/OCTOBER_PLAN.md,
+                                10 Oct.
 Scene 7
   a millimetre and a half       ground truth across cameras: 0.6 mm cube set,
                                 0.6 to 0.7 mm bottle set, 0.3 to 1.4 mm clutter
@@ -203,6 +221,7 @@ Scene 7
                                 tier), T4 x4, docs/OCTOBER_PLAN.md.
   under 9 millimetres           8.7 mm, 10% of the cube's 86.6 mm diameter,
                                 config/meshes.yaml.
+  "in" on all 300               t2_in_a and t2_in_b, 2026-10-10 (Reprocess).
 Scene 8 (Reprocess)
   zero out of 300, all 300      t4_cube_over, t4_cube_front, t4_bottle_over,
                                 t4_bottle_over_b; the blocked camera sees 0%,
@@ -229,5 +248,7 @@ Scene 11
                                 cube on 0 of 300 pairs; at 85, on 45 of 45.
   half a turn                   171 to 178 degrees in two of three placements.
   one clutter scene of three    t2_clutter_c, 66.8% inside (Reprocess).
+  occluded-from was wrong       as scene 6; also on 300 of 300 pairs in four
+                                scored scenes, docs/OCTOBER_PLAN.md, 10 Oct.
   0.957 and 0.957               mAP@0.5:0.95, 0.95738 with depth and 0.95662
                                 without, docs/STATUS.md.

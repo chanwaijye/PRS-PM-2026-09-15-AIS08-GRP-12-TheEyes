@@ -1,6 +1,7 @@
 # Project video — plan
 
-Written 2026-10-08. The words are in
+Written 2026-10-08; **brought up to date on 2026-10-10, after the shoot** (§5.0
+says what was shot and where the day departed from this plan). The words are in
 `ProjectReport/presentation/video_script.txt`; this file is the pictures, the
 shoot and the schedule. Numbers quoted here are from `docs/OCTOBER_PLAN.md`,
 `docs/STATUS.md`, a config file or a log named at the point of use. This plan
@@ -38,6 +39,10 @@ reserve. Every other picture is made from files already on disk (§6).
    On a replay of a 30 pairs/s recording the same file is in true time (§6).
    So the live picture comes from a **screen recording**, which keeps the
    clock, and `--show-record` is for replays only.
+   **10 Oct: it was used for the live takes after all.** The monitor is in both
+   cameras' pictures and has to stay dark, so no window could be shown or
+   recorded. The kept long take is 2,231 frames for 184.9 s of table time: it
+   plays 2.5 times too fast and is retimed in the edit (§7).
 3. **No recording holds a true `(in a b)`, or one object resting on another.**
    Counted over every `runs/scored/*/*/metrics.sqlite` (32 logs): no `in` fact
    at all, and every object-on-object `on` fact is a false one — an object
@@ -45,6 +50,8 @@ reserve. Every other picture is made from files already on disk (§6).
    alone in its tray. The cube going into the bowl is therefore
    new on Saturday (§5.3), and if the report is to give an accuracy for `in`,
    the recording it is scored on has to be shot the same day (§5.2, step 9).
+   **10 Oct: shot.** `t2_in_a` and `t2_in_b` hold `(in cube bowl)` on 300 of
+   300 pairs.
 
 ---
 
@@ -67,32 +74,33 @@ Code under the author's design and review, never as hand-written.
 
 ## 3. Storyboard
 
-Lengths are the script's spoken words (1,489, counted per scene) at 130 words a
-minute, plus the time the picture runs without a voice (about 100 s, half of it
-the pauses of scene 6). At 115 words a minute the same script is about
-14 min 50 s, which is why §8 names what to cut first. Spoken numbers take
+Lengths are the script's spoken words (1,569 after the shoot, counted per
+scene; 1,489 before it) at 130 words a minute, plus the time the picture runs
+without a voice (about 110 s, half of it the pauses of scene 6). At 115 words a
+minute the same script is about 15 min 30 s, and **below about 120 it passes
+15 minutes**, which is why §8 names what to cut first. Spoken numbers take
 longer than their word count: time a read-through before trusting either figure.
 
 | # | Scene | Words | Length | Picture | Kind |
 |---|---|---|---|---|---|
-| 1 | One camera loses the cube | 70 | 0:40 | Phone beside console; a card hides the cube from one camera | LIVE |
+| 1 | One camera loses the cube | 70 | 0:40 | Phone beside console; a card hides the cube from one camera (`demo_cold_d`) | LIVE |
 | 2 | Title | 65 | 0:35 | Title card, rig photo (`assets/photos/rig_overview_20260929.jpg`) | still |
-| 3 | Why one camera is not enough | 102 | 0:50 | Three simple slides (First Presentation slide 2 redrawn) | slide |
-| 4 | The rig | 97 | 0:50 | Phone footage: rig, cameras, sync cable, board, objects, trays | phone |
+| 3 | Why one camera is not enough | 103 | 0:50 | Three simple slides (First Presentation slide 2 redrawn) | slide |
+| 4 | The rig | 96 | 0:50 | Phone footage: rig, cameras, board, objects, trays | phone |
 | 5 | The pipeline | 181 | 1:30 | System diagram (First Presentation slide 8), then the console on `t2_clutter_a` with its panels labelled | slide + REPLAY |
-| 6 | Live on the rig | 177 | 2:15 | One continuous take, console full frame, phone in a corner | LIVE |
-| 7 | How it is measured | 124 | 1:00 | A ground-truth still with markers outlined; the 16 scenes by level | still |
+| 6 | Live on the rig | 208 | 2:30 | One continuous take (`demo_live_a`), console full frame, phone in a corner, four captions | LIVE |
+| 7 | How it is measured | 145 | 1:10 | A ground-truth still with markers outlined; the 16 scenes by level; the cube in the bowl from above | still |
 | 8 | A hidden object is still found | 154 | 1:15 | `t4_cube_over`, `t4_cube_front` beside their rows; the T4 table; the cube-alone rows | REPLAY + table |
 | 9 | When fusion believed the wrong camera | 182 | 1:30 | `t3_bottle_over_b` under the old rule, a line-of-sight diagram, the same scene under the new rule | REPLAY + diagram |
 | 10 | Objects that are not there | 127 | 1:00 | A frame with a false object boxed in a camera view; the count before and after | REPLAY + table |
-| 11 | What it still gets wrong | 114 | 1:05 | Dim frame; the bottle with its axes reversed; `t2_clutter_c`; detector table | REPLAY + table |
+| 11 | What it still gets wrong | 142 | 1:20 | Dim frame; the bottle with its axes reversed; `t2_clutter_c`; the live take's wrong `occluded_from`; detector table | REPLAY + table |
 | 12 | Close | 96 | 0:50 | The `(:init ...)` block full screen; `ObjectState` fields; last card with the Claude Code line | still |
-| | **Total** | **1,489** | **13:20** | | |
+| | **Total** | **1,569** | **14:00** | | |
 
 Kinds, and the label each carries on screen for as long as it is shown:
 
-- **LIVE** — "LIVE on the rig, 10 Oct 2026, one take". Screen recording and
-  phone, same moment.
+- **LIVE** — "LIVE on the rig, 10 Oct 2026, one take". The console as the
+  runner wrote it during the take, and the phone, same moment.
 - **REPLAY** — "REPLAY of a recorded scene". The console rendered from a
   recording, by the same code.
 - Slides, stills and tables carry their source in small print.
@@ -119,9 +127,9 @@ reachable:
 | 10 | `20261006/t3_bottle_over_b` (a cloth boxed as a bowl, a cube at the table edge), `20261005/t3_cube_front` (a cube on the card's print) | as processed |
 | 11 | `20261005/dim_t1_cube`, `20261006/t1_bottle_b`, `20261007/t2_clutter_c` | as processed |
 
-**Shot at the rig, Sat 10 Oct** (§5): the cold-open take, the long live take,
-clean copies of both for a later replay, phone footage of the rig, and one
-static scene with the cube in the bowl.
+**Shot at the rig, Sat 10 Oct** (§5.0): the cold-open take, the long live take,
+a clean copy of the long one for a later replay, phone footage of the rig, and
+two scored scenes with the cube in the bowl.
 
 **Drawn:** the three slides of scene 3, the line-of-sight diagram of scene 9,
 the tables, the title and closing cards.
@@ -129,6 +137,44 @@ the tables, the title and closing cards.
 ---
 
 ## 5. Sat 10 Oct — the shoot
+
+### 5.0 What was shot (written 10 Oct, after it)
+
+The record, with every number, is `docs/OCTOBER_PLAN.md`, "Sat 10 Oct". For the
+edit:
+
+| Use | Take | Files |
+|---|---|---|
+| Scene 1 | **`demo_cold_d`** — the cube alone, the card with its plain back to cam_over. 1,048 pairs, 21.0 pairs/s | `runs/video/demo_cold_d.avi`, phone `PXL_20261010_135050089.mp4` |
+| Scene 6 | **`demo_live_a`** — the whole sequence of §5.3. 2,231 pairs in 184.9 s, 12.1 pairs/s | `runs/video/demo_live_a.avi`, phone `PXL_20261010_133258777.mp4` |
+| A later replay | **`demo_clean_a`** — the same sequence, recording only, 4,200 pairs, none dropped | `captures/runtime/20261010_214147_demo_clean_a`, phone `PXL_20261010_134121078.mp4` |
+| Spares | `demo_cold_a`, `_b`, `_c`; `demo_live_b` | `runs/video/` |
+| Scene 4 | eight rig clips, 22 photos; the console on the monitor (a replay, not a live shot) | `runs/video/phone/` |
+
+Each live take's recording is `captures/runtime/<stamp>_<take>/` and its log
+`runs/runtime/<stamp>_<take>/metrics.sqlite`. None of this is in git.
+
+Where the day departed from the plan below, which is left as it was written:
+
+- **No screen recording and no window.** The monitor could not be moved out of
+  both cameras' pictures, so it stayed dark and the runner wrote the console
+  file itself: `env -u DISPLAY the_eyes_run live --pose foundationpose --record
+  NAME --show-record runs/video/NAME.avi` under
+  `runs/scored/helpers/with_blank.sh`. The file needs retiming (§7).
+- **A card on a stand, not a hand, and its plain dark back to the camera.**
+  Skin is read as a `red_cube`, and so is the red in the card's print; each
+  false detection costs a pose registration of about a second.
+- **No trays** in the takes. The detector found the three objects on the bare
+  table (scores 0.86–0.94 in `demo_live_a`).
+- **The cube-in-bowl beat stayed**: `(in red_cube_04 bowl_04)` on 57 pairs.
+- **The runner starts about 10 s after the monitor goes dark**: count to twelve
+  before the first tap.
+- **The sync cable was not connected** (broken, then lost), so it is in no
+  phone shot and the script no longer claims it.
+- **Three calibrations**, both cameras' USB links having dropped during the
+  day; no closing board registration; no backup, by the author's decision.
+
+### 5.0a The plan as written on 8 Oct
 
 About 90 minutes at the rig (the steps of §5.2 sum to 88). `OCTOBER_PLAN.md`
 allowed 30, which was one take and no checks.
@@ -244,16 +290,19 @@ table up to a camera.
 
 ### 5.5 Before the rig is covered
 
-- [ ] Every screen recording plays, shows the whole window, and its text reads
-      at full screen.
-- [ ] The phone clips are on the desktop's disk, not only on the phone.
-- [ ] Each take's log says what ran. In its `metrics.sqlite`, table `runs`:
-      `source` is `live` and `pose_backend` is `foundationpose`.
-- [ ] The speed for scene 6 is read from the kept take: `pairs_processed` over
-      the run's duration, and the per-stage timings in `frames`. This closes
-      the `[VERIFY]` in `STATUS.md` on speed with three objects.
-- [ ] The name of the kept take is written into `OCTOBER_PLAN.md`.
-- [ ] Recordings, logs, screen recordings and phone clips are in the backup.
+- [x] Every console file decodes to its last frame and holds one frame for
+      each processed pair (six live takes counted). Text at full screen: not
+      yet judged on a player.
+- [x] The phone clips are on the desktop's disk: `runs/video/phone/`, 38 files,
+      each opened to its last frame.
+- [x] Each take's log says what ran: `source` is `live` and `pose_backend` is
+      `foundationpose` in all seven.
+- [x] The speed for scene 6 is read from the kept take: 12.1 pairs a second
+      over it; per pair 34 / 64 / 91 ms with one / two / three objects tracked.
+      `STATUS.md` still carries its `[VERIFY]`; this is the number for it.
+- [x] The names of the kept takes are in `OCTOBER_PLAN.md`.
+- [ ] Recordings, logs, console files and phone clips are in the backup — not
+      done, by decision: they stay on the desktop's disk.
 
 ### 5.6 What has gone wrong before
 
@@ -272,8 +321,13 @@ mkdir -p runs/video
 day=20261005; scene=t4_cube_over
 build/runtime/the_eyes_run replay captures/scored/$day/$scene/session \
     --pose foundationpose --config-dir runs/scored/$day/$scene/config_recording \
-    --no-log --show-record runs/video/$scene.avi
+    --repo-root "$PWD" \
+    --no-log --show-record runs/video/replay_${day}_$scene.avi
 ```
+
+`--repo-root` is needed whenever `--config-dir` points at a scene's copy:
+without it the meshes are looked for under `runs/scored/…/assets/` and the
+replay stops (found 10 Oct; the tests of 8 Oct below predate the copies' use).
 
 Each scene is rendered on the calibration it was shot on, which is what
 `config_recording` holds. `--no-log` keeps the render out of the scene's
@@ -317,6 +371,12 @@ left the server running.
 rough cut can then be made in Taiwan with no access to the desktop. They are
 rendered again in the last week on whatever the final detector and config are.
 
+**Done 10 Oct:** eleven clips, 300 frames each, 481 MB, in `runs/video/` as
+`replay_<day>_<scene>.avi` — the nine of the table in §4 (the half-hidden
+bottle twice, the second as `…_byscore`) and the two `in` scenes. The pair for
+scene 9 ends on `(clear table_01)` alone under the old rule and on the bottle's
+three true facts under the new one.
+
 ---
 
 ## 7. Edit and export
@@ -334,6 +394,11 @@ rendered again in the last week on whatever the final detector and config are.
 - **Voice.** Recorded scene by scene, the picture cut to the voice. Scene 6 is
   the other way round: the voice follows the take.
 - **Sync of phone and screen** in the live scenes: the two taps of beat 0.
+- **Retiming the live console files.** Each holds one frame for each processed
+  pair in a file stamped 30 fps. Give every frame the time of its pair,
+  `frames.stamp_ns` in the take's `metrics.sqlite`, before anything is cut to
+  it; the pauses of about a second, where the pose estimator registers a new
+  object, are then held frames and belong in the picture.
 - **Rehearsal track.** A spoken guide can be generated from the script, as the
   First Presentation tracks were, to time the rough cut before the real voice
   exists. It never goes into the submitted video.
@@ -347,7 +412,7 @@ rendered again in the last week on whatever the final detector and config are.
 | When | What |
 |---|---|
 | Fri 9 Oct, evening | §5.1 |
-| Sat 10 Oct | The shoot (§5.2). That night: render every replay clip (§6), back everything up, copy the footage to the laptop |
+| Sat 10 Oct | The shoot — **done** (§5.0), and every replay clip rendered (§6). Not backed up and not copied to the laptop: the footage is on the desktop, reached by AnyDesk |
 | 11–24 Oct, Taiwan | Slides, diagram and tables; rough cut from Saturday's footage; the script checked against the report's tables as they settle |
 | 25–31 Oct | Replays rendered again on the final detector; the live take reshot only if the detector changed what it shows; the voice recorded; final cut; export; link in `README.md` §4; submit Sat 31 Oct |
 
@@ -377,17 +442,21 @@ result, and the fusion module at work.
 ## 10. Open
 
 - `[VERIFY]` the Canvas brief (§2).
-- Speed with three objects and the depth check on, live: unmeasured until
-  Saturday. On a 60-pair replay of `t2_clutter_a` (8 Oct) the per-pair p50 was
-  87 ms: the detector 3.7 ms a view, FoundationPose 34–35 ms a view, the depth
-  check 11 ms, fusion 0.03 ms, the scene graph 0.02 ms.
-- `in` on the printed objects has never been produced on the rig. If it does
-  not appear in rehearsal, the beat is cut and the fact is a finding for the
-  report, not something to stage around.
-- The detector on objects without trays: untried.
-- `--show-record` on a live run (§1, item 2): left as it is. Giving the live
-  recorder the clock is a small change to `runtime`, and nothing in this plan
-  needs it.
+- ~~Speed with three objects and the depth check on, live.~~ Measured 10 Oct
+  on `demo_live_a`: 90.7 ms a pair (p50), 10 pairs a second; pose 36.6 + 35.1 ms
+  of it, the detector 3.8 + 4.0, the depth check 10.7.
+- ~~`in` on the printed objects.~~ Produced 10 Oct, scored and live.
+- ~~The detector on objects without trays.~~ Tried 10 Oct; it finds them.
+- **The kept live take shows a fact that is wrong:**
+  `(occluded_from mustard_bottle_01 cam_front)` with nothing hiding the bottle
+  (`OCTOBER_PLAN.md`, 10 Oct). The script says so by caption in scene 6 and in
+  words in scene 11. A fix on replay does not change the live picture; the
+  script's `[VERIFY]` in scene 11 is where the final state is said.
+- `--show-record` on a live run (§1, item 2): used on 10 Oct, so the retiming
+  of §7 is now needed. Giving the live recorder the clock is still a small
+  change to `runtime`, but it would not help takes already made.
+- The script is over 15 minutes below about 120 words a minute (§3); it was
+  113 before the shoot added 80 words.
 - Scenes 10 and 11 describe the detector as it is now. If fine-tuning on the
   7 Oct layouts removes the tray-as-bowl, the script's `[VERIFY]` in scene 11
   is where that is said, and the clips of scene 10 are then the detector before
