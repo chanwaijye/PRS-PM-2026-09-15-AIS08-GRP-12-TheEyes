@@ -511,24 +511,188 @@ What it does not fix, measured on the same replay:
       FAILED tier check is `t3_bottle_over` (6 Oct), superseded by
       `t3_bottle_over_b`
 - [ ] `training/pose/registration_quality.py` on real captures (`STATUS.md` [VERIFY])
-- [ ] Remote access to the desktop: Tailscale or SSH; GRUB default = Ubuntu;
-      BIOS restore-on-power-loss; suspend and automatic reboots off; tested from
-      a phone hotspot
-- [ ] Back up `captures/`, `runs/` and the ONNX model to a drive and to cloud
+- [x] Remote access to the desktop: AnyDesk (settled 10 Oct). Checked on the
+      box: its service starts at boot, the session logs in by itself, suspend
+      and automatic reboots are off, GRUB's default is Ubuntu. A Wi-Fi smart
+      plug is to be fitted in case the machine hangs; BIOS restore-on-power-loss
+      is not confirmed from here
+- [ ] Back up `captures/`, `runs/` and the ONNX model to a drive and to cloud —
+      **not done, by decision (10 Oct):** everything stays on the desktop's disk
 
-## Sat 10 Oct — reshoots, demo footage, slack
+## Sat 10 Oct — the `in` scenes and the video takes (16:24–22:40)
 
-- [ ] Reshoot what the week's checks rejected (new scene names)
-- [ ] Demo run (`CAPTURE_PROTOCOL.md` §7): `the_eyes_run live --record demo --show=console`,
-      a screen recording, phone video of the rig — ~30 min
-- [ ] Anything an evening did not reach
-- [ ] Final backup; cover the rig
+Under the two LED lamps and the room light. `captures/scored/20261010/`
+(`day.log` has every step), results `runs/scored/20261010/`, video material
+`runs/video/`. The scored scenes of 5–7 Oct were checked on disk first and none
+needed a reshoot.
+
+- [x] Reshoot what the week's checks rejected — nothing was rejected; the gap
+      found was a missing predicate, below
+- [x] Demo run, console recording, phone video of the rig
+- [ ] Cover the rig — the author's, after the phone shots. No final backup
+      (see above)
+
+**Two scenes with the cube in the bowl.** No scored scene held a true
+`(in a b)`, which the proposal's predicate list needs. Bowl and bottle on their
+trays, the cube loose inside the bowl (so it has no ground-truth pose), four
+distractors on the table; 300 pairs each. Bowl and bottle pooled, 600
+object-pairs, ADD-S in mm, all 100% inside 0.1 d:
+
+| scene | cam_front | cam_over | naive | gate | `in` fact |
+|---|---|---|---|---|---|
+| `t2_in_a` (16:45) | 3.00 | 4.50 | 2.82 | 2.90 | `(in red_cube_02 bowl_01)` 300 of 300 |
+| `t2_in_b` (17:22) | 2.80 | 4.55 | 3.13 | 3.11 | `(in red_cube_01 bowl_01)` 300 of 300 |
+
+- **`t2_in_b` is the clean one:** six facts, each on 300 of 300 pairs, and
+  nothing else — `in` for the cube, `on` the table for bowl and bottle, three
+  `clear`.
+- **`t2_in_a` also reports a cube that is not there**, on 232 pairs: cam_front
+  reads the handset, half hidden behind the bottle, as a `red_cube` (0.34) and
+  FoundationPose fits a cube at table height, so the support check keeps it.
+- **Both fail the T2 tier check** (cam_front sees 75% and 74% of the bowl): the
+  hidden quarter is the cube inside it. Expected, not a reshoot.
+- **`(clear bowl_01)` is emitted with the cube in the bowl:** `clear` is defined
+  on `on`, not on `in`.
+- Ground truth across cameras 0.35 / 0.61 mm for the bowl, 1.09 / 1.19 mm for
+  the bottle. `t2_in_a` is on the 16:33 calibration, `t2_in_b` on the 17:16
+  registration; `t2_in_b`'s recording against the empty table before it reads
+  0.01 px in both cameras.
+
+**`occluded_from` fires for objects that nothing hides** — found the same day,
+on the scored set. The fact is derived from `ObjectState::visible_views`, which
+fusion sets for the views it *fused*, not the views that see the object. When
+the gate drops a view in a conflict, the object is reported as occluded from a
+camera that estimated it on every pair:
+
+| scene | fact | pairs |
+|---|---|---|
+| `t1_bottle_b`, `t1_bottle_c` | `(occluded_from mustard_bottle_01 cam_over)` | 300 of 300 |
+| `t2_clutter_a`, `t2_clutter_b` | `(occluded_from mustard_bottle_01 cam_front)` | 300 of 300 |
+| `t2_clutter_c` | `(occluded_from red_cube_01 cam_front)` | 208 (cam_front detects the cube on 92: undetected, not hidden) |
+
+It is the bottle read back to front showing through as a fact. **Not fixed.**
+Replay-side: decide whether the fact means "not fused" or "not visible" before
+predicate accuracy is computed; a field may be added to `ObjectState`, none
+re-typed.
+
+**Three calibrations in one day,** each with its depth fit on an empty table
+(cam_front ×1.0089, ×1.0097, ×1.0096; cam_over's error is not a scale and stays
+at 1.0):
+
+| time | why | result |
+|---|---|---|
+| 16:33 | three days off USB; baseline 2.77 mm / 0.58° against 7 Oct, re-registration refused | full calibration, 0.275 / 0.324 px |
+| 17:16 | cam_front's USB link died after `t2_in_a`; reseating its cable moved it 1.7 px (at 848×480) | re-registration, rig intact, 0.255 / 0.308 px |
+| 20:46 | cam_over dropped off USB at 17:40 while idle and was plugged back at 20:40; baseline 3.93 mm / 0.10° against 17:16 | full calibration, 0.285 / 0.315 px, 49 shared corners |
+
+- **Both cameras' USB links have now failed** — cam_front on 6, 7 and 10 Oct,
+  cam_over for the first time on 10 Oct. A librealsense hardware reset and a
+  sysfs de-authorise / re-authorise did not bring cam_front back; the cable did.
+- **A lamp shining at a lens costs corners.** A board pair at 20:41, with the
+  lamps put back after charging, found 38 corners in cam_over (0.379 px) and
+  was not used; with the lamps turned, 49.
+- **cam_over's mount has play:** 4.7 px from its afternoon position at 20:41,
+  back within 0.2 px of it at 20:46. From 20:46 to the last take at 21:56
+  neither camera moved (0.02 / 0.04 px). No closing board registration was
+  taken; the takes carry no accuracy numbers.
+
+**The video takes** (21:00–21:59). The monitor is in both cameras' pictures, so
+it stays dark and nothing is shown on it: the runner writes the console to a
+file itself (`--show-record`), one frame per processed pair, to be retimed from
+`frames.stamp_ns` in the edit. Driven with `runs/scored/helpers/demo_take.sh`;
+console files and logs in `runs/video/`, recordings in `captures/runtime/`,
+metrics in `runs/runtime/`. Every live take logs `source = live`,
+`pose_backend = foundationpose`, on commit `7a81269`.
+
+| take | kind | pairs | pairs/s | what it is |
+|---|---|---|---|---|
+| `demo_cold_a` | live | 402 | 13.4 | cube alone, a hand on cam_over's lens: the picture goes black |
+| `demo_cold_b` | live | 581 | 11.9 | a hand in front of cam_over; stutters |
+| `demo_cold_c` | live | 1,199 | 24.0 | the card, printed side to cam_over: a ghost cube in the plan view |
+| **`demo_cold_d`** | live | 1,048 | 21.0 | **kept.** The card, plain back to cam_over |
+| **`demo_live_a`** | live | 2,231 | 12.1 | **kept.** The long sequence, 184.9 s |
+| `demo_live_b` | live | 2,195 | 11.9 | the long sequence again; spare |
+| **`demo_clean_a`** | recording only | 4,200 | 30 | **kept.** The long sequence, every pair, none dropped (6.1 GB) |
+
+- **`demo_cold_d`:** with the card in, cam_over's count is 0 and the fused
+  count 1; `(on red_cube_01 table_01)` holds on all 1,048 pairs and
+  `(occluded_from red_cube_01 cam_over)` is on for 287, then clears.
+- **`demo_live_a`, by the take's own clock:** empty table to 6 s; the bottle
+  from 7 s; the bowl from 20 s; the cube on the table 32–37 s;
+  `(in red_cube_04 bowl_04)` on 57 pairs, 40–47 s; out again from 48 s; the
+  card before cam_over 60–71 s, `(occluded_from red_cube_05 cam_over)` on 116
+  pairs with the fused count held at 3; the card before cam_front 72–88 s,
+  cam_front at 0 objects, fused 3; the bottle lifted away at about 102 s.
+- **It shows the finding above:** `(occluded_from mustard_bottle_01 cam_front)`
+  on 500 pairs with nothing hiding the bottle. The video has to say so.
+- **An object moved by hand gets a new name:** the cube is `red_cube_01`, `02`,
+  `04`, `05` over the take.
+
+**Live speed, measured** (`demo_live_a`; the cube alone from `demo_cold_d`). The
+`[VERIFY]` in `STATUS.md` on speed with three objects per view can be closed
+with this:
+
+| objects tracked in each view | pairs | per pair, p50 | processed between pauses |
+|---|---|---|---|
+| 0 | 162 | 7.5 ms | 30 a second |
+| 1 (cube) | 767 | 34.0 ms | 30 a second |
+| 2 | 1,308 | 63.8 ms | 15 a second |
+| 3 | 281 | 90.7 ms | 10 a second |
+
+Over the whole take, 12.1 pairs a second, because **every new detection costs
+a FoundationPose registration of about 1.1 s in that view, and nothing is
+processed meanwhile:** 23 pauses, 37.5 s of the 184.9. The rate between pauses
+steps in whole camera frames, which is why it reads 30, 15 and 10.
+
+**What a false detection costs live.** A registration each time it appears:
+
+- The lamp's streak at the right edge of cam_front's picture was read as a
+  `mustard_bottle` (0.25–0.43) on 33 pairs of `demo_cold_b`; 14 of that take's
+  19 pauses are cam_front registering it.
+- Skin is read as a `red_cube` (0.27–0.46), and so is a red mark on the card's
+  print. The support check kept every one of them out of the facts; they still
+  cost the time. A plain dark card does neither.
+- The runner starts about 10 s after the monitor goes dark, so the first tap of
+  the first take was not recorded.
+
+**Light:** 86 / 53 on the empty table at 20:49, 78 / 45 at the end of the last
+take. The brightness floor came in on cam_over only while a hand or the dark
+card filled its picture (18–73 pairs a take in the cold opens); in the two long
+takes, never.
+
+**The sync cable was not connected.** Reported after the shoot: it was broken
+(by the cats) and then lost. `config/cameras.yaml` still sets master and slave,
+and both cameras delivered frames all day. What the logs say: every pair in
+every scored scene and every take is within 16.7 ms, half a frame. What they
+cannot say is when the cable stopped working: `frames.skew_ms` reads the same
+with it as without. On 6–10 Sep, cable connected, a run's mean offset is
+3.4–14.5 ms, wandering by 0.3–2.4 ms within the run (15 runs), and the one long
+run (145 s) drifts −0.023 ms/s. On 10 Oct the seven takes' mean offsets are
+2.9–12.3 ms, wandering by 1.9–3.8 ms, and the two 185 s takes drift −0.007 and
+−0.014 ms/s.
+Whether 5–7 Oct was shot with hardware sync is `[VERIFY]` — asked of the
+author. Nothing on the table moves during a scored
+scene, so no accuracy number depends on it; the video script's "to about a
+millisecond" does, and has to change.
+
+**Rendered and collected for the video:** eleven replay clips of the scored
+scenes, 300 frames each (`runs/scored/helpers/render_clips.sh`), among them the
+half-hidden bottle under the old rule and the new; the phone material in
+`runs/video/phone/` (38 files: a table-top clip of each take, eight rig clips,
+the console on the monitor, 22 photos). The console on the monitor is a replay
+of `demo_live_a` (7.8 pairs a second with the window at 4K) and is not a live
+shot.
 
 ## 11–24 Oct — Taiwan (offline, or remote to the desktop)
 
 Detector fine-tune and replay; real-capture mAP from ground-truth boxes;
 predicate accuracy against the photos; bootstrap CIs by scene (proposal §7.1);
 report draft, figures, video script.
+
+Added 10 Oct: settle what `occluded_from` means and fix it on replay, before
+predicate accuracy; retime the live console clips from `frames.stamp_ns`; in
+the video script, the sync sentence, the measured speed and the `in` scene;
+merge the video plan (branch `worktree-video-plan`).
 
 ## 25–31 Oct
 
