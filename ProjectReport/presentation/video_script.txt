@@ -1,4 +1,4 @@
-The Eyes - Project video - narration script (draft 2, 2026-10-10, after the shoot)
+The Eyes - Project video - narration script (draft 3, 2026-10-17, numbers from the fine-tuned detector)
 
 How to read this file.
   ON SCREEN:   what the picture shows while you speak. Do not read it out.
@@ -7,8 +7,7 @@ How to read this file.
                the source named, or cut the sentence. Never guess it.
 The plan this script belongs to is docs/VIDEO_PLAN.md. Every number spoken here
 is listed at the end with the place it comes from: check that list against the
-final report's tables before recording, because the scenes will be processed
-again after the detector is fine-tuned.
+final report's tables before recording.
 
 
 Scene 1. One camera loses the cube.
@@ -59,7 +58,7 @@ ON SCREEN: The system diagram, one block lit at a time. At the last paragraph, t
 
 Here is the whole system: one C plus plus process.
 
-The top row runs once for each camera. A detector finds the objects: YOLO v8 nano with a four-channel input, colour plus depth, trained in this project on about 40,000 synthetic frames from Isaac Sim. Then FoundationPose, pretrained and frozen, estimates each object's six D-O-F pose from its CAD mesh.
+The top row runs once for each camera. A detector finds the objects: YOLO v8 nano with a four-channel input, colour plus depth, trained in this project on about 40,000 synthetic frames from Isaac Sim, then fine-tuned on real ones. Then FoundationPose, pretrained and frozen, estimates each object's six D-O-F pose from its CAD mesh.
 
 The bottom row runs once for each pair of frames. These are the project's core modules, written from first principles in C plus plus, with no fusion or scene-graph library. Every pose is moved into one shared table frame and checked against what the two depth images actually measured. Estimates of the same object are matched across the views. If the two views disagree by more than 50 millimetres or 30 degrees, they are not averaged: one is kept. Otherwise they are combined, weighted by confidence, and smoothed over time with a Kalman filter for each object.
 
@@ -68,7 +67,7 @@ The last stage turns geometry into four kinds of fact: on, in, clear, and occlud
 
 Scene 6. Live on the rig.
 
-ON SCREEN: One continuous live take. The console fills the frame; the phone's picture of the table and my hands sits in a corner, in step with it. Caption for the whole scene: LIVE on the rig, 10 Oct 2026, one take, not replayed. The measured speed of the take stays on screen as a caption: 12.1 frame pairs a second over the take, 10 with three objects. Three more captions, each at its moment. When the bottle's facts appear: "The third fact is wrong: nothing hides the bottle. Fixed the next day. See: What it still gets wrong." At the first freeze: "Freeze: the pose estimator is finding a new object, about 1 second." When the card stands before the front camera: "The boxes on the card are false cubes, from its red print. The depth check refuses them."
+ON SCREEN: One continuous live take. The console fills the frame; the phone's picture of the table and my hands sits in a corner, in step with it. Caption for the whole scene: LIVE on the rig, 10 Oct 2026, one take, not replayed, the detector before fine-tuning. The measured speed of the take stays on screen as a caption: 12.1 frame pairs a second over the take, 10 with three objects. Three more captions, each at its moment. When the bottle's facts appear: "The third fact is wrong: nothing hides the bottle. Fixed the next day. See: What it still gets wrong." At the first freeze: "Freeze: the pose estimator is finding a new object, about 1 second." When the card stands before the front camera: "The boxes on the card are false cubes, from its red print. The depth check refuses them."
 
 NOTE: the take is demo_live_a (10 Oct 2026, 21:33), and the words follow it beat by beat; the time of each beat is in docs/OCTOBER_PLAN.md, 10 Oct. The console file holds one frame for each processed pair, so it is retimed before the voice is cut to it (docs/VIDEO_PLAN.md, section 7).
 
@@ -106,59 +105,49 @@ The score is A-D-D-S, the distance between the estimated surface and the true on
 
 Scene 8. The result: a hidden object is still found.
 
-ON SCREEN: Replays of two fully hidden scenes, one blocked from each side, each beside its row of the table. Caption: REPLAY of a recorded scene. Then the table of all four fully hidden scenes, with the share of the object the blocked camera sees in each: 0%, 0%, 6% and 2%. Then the cube-alone rows, with the plain-average row beside them.
+ON SCREEN: Replays of two fully hidden scenes, one blocked from each side, each beside its row of the table. Caption: REPLAY of a recorded scene. Then the table of all four fully hidden scenes, with the share of the object the blocked camera sees in each: 0%, 0%, 6% and 2%. Then the cube-alone rows, with the plain-average row beside them. Then one line: all 16 scenes, fused 2.8 mm, best single camera 3.2 mm, difference not resolvable.
 
-The main result. In four scenes the object is fully hidden from one camera. In every one, the blocked camera finds it on zero frames out of 300. The fused output has it on all 300, within 2 to 4 millimetres of the truth.
+The main result. In four scenes the object is fully hidden from one camera. In every one, the blocked camera finds it on zero frames out of 300. The fused output has it on all 300, within 4 millimetres of the truth.
 
-A single camera does as well only when it happens to be the one that is not blocked, and across these scenes that changes. No single camera covers all four. The fused system does.
+A single camera does as well only when it is the one not blocked. No single camera covers all four scenes; the fused system does.
 
-With nothing hidden, two views are also more accurate than one. On the cube alone, each camera by itself is about 3 millimetres off. Fused, it is 1.7.
+With nothing hidden, two views can also beat one. On the cube alone, each camera by itself is about 3 millimetres off; fused, 1.5 to 1.7. Over all 16 scenes, though, fused and the better camera differ by less than the sensor's own noise.
 
-But how you combine them matters. Simply averaging the two poses gives 22 millimetres on the same cube, worse than either camera, because a cube looks the same from several directions and the two cameras pick different ones. The fusion module compares orientations with that symmetry taken out.
-
+How you combine them matters. Simply averaging the two poses gives 7 to 26 millimetres on the same cube, worse than either camera, because a cube looks the same from several directions and the cameras pick different ones. The fusion module compares orientations with that symmetry taken out.
 
 Scene 9. When fusion believed the wrong camera.
 
-ON SCREEN: Replay of the half-hidden bottle under the old rule: the fused bottle standing at the cover. Then a diagram: the other camera's line of sight passing through the place the bottle was claimed to be. Then the same scene under the new rule. Small print: the occlusion level of the 90 millimetre recording is not certified by the visibility tool; the 34 millimetre one is.
+ON SCREEN: Replay of the half-hidden bottle under the old rule: the fused bottle standing at the cover. Then a diagram: the other camera's line of sight passing through the place the bottle was claimed to be. Then the same scene under the new rule. Small print: the occlusion level of the 84 millimetre recording is not certified by the visibility tool; the 71 millimetre one is.
 
 Now the part that failed first, and taught me the most.
 
-Here the bottle is half hidden from one camera. That camera sees only a strip of it and places the whole bottle at the cover, 7 to 12 centimetres from the truth. And the pose estimator scores that wrong pose higher than the correct one from the other camera.
+Here the bottle is half hidden from one camera. That camera sees only a strip of it and places the whole bottle at the cover, 7 to 9 centimetres from the truth. And the pose estimator scores that wrong pose higher than the correct one from the other camera.
 
-The first rule for a disagreement was to keep the higher score. So fusion believed the wrong camera: 34 millimetres of error in one recording and 90 in another, when the good camera alone was at 3. Fusion made the answer worse.
+The first rule for a disagreement was to keep the higher score. So fusion believed the wrong camera: 71 millimetres of error in one recording and 84 in another, when the good camera alone was at 3. Fusion made the answer worse.
 
 The fix does not use the score. It uses the other camera's depth image. If the bottle really were where the first camera says, the other camera could not see through that space. If it measures a surface behind it, the estimate is thrown out.
 
-With that check, the two recordings go from 34 and 90 millimetres to 3.1 and 3.2. The other 18 recordings do not change, and in 4,800 frame pairs the check never rejected a correct estimate.
-
+With that check, the two recordings go from 71 and 84 millimetres to 3.0 and 3.1. Of about a thousand estimates it threw out, only one was right.
 
 Scene 10. Objects that are not there.
 
-ON SCREEN: A console frame with a false object boxed in a camera view: the tray labelled as a bowl, a cube on the printed card. Then the count before and after.
+ON SCREEN: A console frame from the first detector with a false object boxed in a camera view: the tray labelled as a bowl, a cube on the printed card. Caption: synthetic-only detector. Then the same scene with the fine-tuned detector. Then the counts: 2,771 to 1, and 731 to 0.
 
-The second surprise was objects that are not there. The detector has only seen synthetic images, and on the real table it takes a grey tray for a bowl, or the red print on a card for a cube. The pose estimator then fits a model to it, with a high score.
+The second surprise was objects that are not there. The first detector had only seen synthetic images, and on the real table it took a grey tray for a bowl, or the red print on a card for a cube. The pose estimator then fitted a model to it, with a high score.
 
-In the first seven scenes, false objects were reported 2,771 times. They had one thing in common: none of them rests on anything. They float, or sit under the table.
+None of these false objects rested on anything. So the scene graph now reports an object only if something supports it. In the first seven scenes, that took 2,771 false reports down to 1, without losing a real one.
 
-So the scene graph now reports an object only if something supports it. That took 2,771 false reports down to 1, without losing a real one. And in the three clutter scenes, recorded afterwards, none of 6,210 facts names an object that is not there.
-
+The other fix was at the source. I fine-tuned the detector on ten arrangements of this table, recorded for that and never scored. On the sixteen scored scenes its mean average precision rose from 0.67 to 0.93, and across all 22 recordings the false objects in the scene graph went from 731 to none.
 
 Scene 11. What it still gets wrong.
 
-ON SCREEN: The heading "What it still gets wrong" stays up for the whole scene. One picture for each item: the dim frame; the bottle with its axes pointing the wrong way; the third clutter scene; the live take's frame with the wrong fact outlined; the detector table with and without depth.
+ON SCREEN: The heading "What it still gets wrong" stays up for the whole scene. One picture for each item: the third clutter scene with the cube's box; the live take's frame with the wrong fact outlined, then the predicate table; the detector table, real recordings, with and without depth.
 
-The real room is darker than the synthetic training images. Below a certain brightness one camera loses the cube completely, so every session starts with a light check.
+In one of the three clutter scenes the cube, small and far from one camera, is still outside its threshold on a quarter of the frames.
 
-The bottle is sometimes read back to front, half a turn from the truth. The depth check cannot catch that, because a bottle turned around fills almost the same space, and the A-D-D-S score barely shows it.
+The occluded-from fact is the weakest. Its error in the live run is fixed, though the take predates the fix. But a half-hidden object is still reported as hidden from the camera whose estimate was thrown out, and by the definition I fixed in advance, it is not. Against hand labels, on, in and clear are 99 to 100 percent right. Occluded-from, 56 percent.
 
-In one of the three clutter scenes the cube, small and far from one camera, lands outside its threshold. The other two objects in that scene are fine.
-
-In the live run, the occluded-from fact was wrong about the bottle. That is fixed now; the take is from the day before. But a camera whose detector misses an object still reports it as hidden.
-
-And on synthetic data the depth channel did not help the detector: the M-A-P is 0.957 with it and 0.957 without.
-
-[VERIFY: one or two sentences on the detector after it is fine-tuned on the real layouts, with the real-capture M-A-P, once those numbers exist. If they do not exist at the final cut, say instead: "Fine-tuning the detector on real frames is the next step, and the layouts for it are recorded."]
-
+One result surprised me. On synthetic data the depth channel did not help the detector: 0.957 with it, 0.957 without. On the real recordings, without depth the cube is found one time in eight. Depth is what finds it.
 
 Scene 12. Close.
 
@@ -174,9 +163,10 @@ The code was built with Claude Code, under my design and review. Thank you for w
 ----------------------------------------------------------------------------
 Numbers spoken in this script, and where each one comes from
 ----------------------------------------------------------------------------
-Check each against the final report's tables before recording. "Reprocess"
-marks a number that can move when the scored scenes are replayed with a
-fine-tuned detector; the rest do not depend on the detector.
+Check each against the final report's tables before recording. Scenes 7 to 11
+are the scored scenes as replayed on 17 Oct with the fine-tuned detector
+(config/detector.yaml). Scenes 1 and 6 are the live takes of 10 Oct, which ran
+the synthetic-only detector and cannot be run again.
 
 Scene 4
   0.74 metres, 80 degrees       config/extrinsics.yaml as registered 2026-10-07
@@ -221,39 +211,61 @@ Scene 7
                                 tier), T4 x4, docs/OCTOBER_PLAN.md.
   under 9 millimetres           8.7 mm, 10% of the cube's 86.6 mm diameter,
                                 config/meshes.yaml.
-  "in" on all 300               t2_in_a and t2_in_b, 2026-10-10 (Reprocess).
-Scene 8 (Reprocess)
+  "in" on all 300               t2_in_a and t2_in_b, 2026-10-10; 300 of 300 in
+                                both again on 17 Oct.
+Scene 8 (the 17 Oct runs: fine-tuned detector, abf5045)
   zero out of 300, all 300      t4_cube_over, t4_cube_front, t4_bottle_over,
                                 t4_bottle_over_b; the blocked camera sees 0%,
-                                0%, 6% and 2% of the object.
-  2 to 4 millimetres            fused 2.97, 1.88, 3.95, 2.89 mm, all 100% inside.
-  about 3, then 1.7             t1_cube 2.78 / 3.32 -> 1.68 mm; t1_cube_b
-                                3.13 / 2.74 -> 1.70 mm.
-  22 millimetres                plain average, 22.34 and 22.13 mm on the same
-                                two scenes.
-Scene 9 (Reprocess)
-  7 to 12 centimetres           the hidden view is 68 to 125 mm from the truth,
-                                SystemCode/fusion/README.md.
-  34 and 90, good camera at 3   t3_bottle_over_b 33.99 mm, t3_bottle_over
-                                90.21 mm; cam_front alone 3.13 and 3.17 mm.
-  3.1 and 3.2                   3.10 and 3.15 mm, both 100% inside.
-  other 18 unchanged, 4,800     docs/OCTOBER_PLAN.md, "The fusion fix".
-Scene 10 (Reprocess)
-  seven scenes, 2,771 to 1      docs/OCTOBER_PLAN.md, "The objects that are not
+                                0%, 6% and 2% of the object and matches it on
+                                0 of 300 pairs in each.
+  within 4 millimetres          fused 3.08, 1.65, 3.91, 2.85 mm, all 100% inside.
+  about 3, then 1.5 to 1.7      t1_cube 2.70 / 3.18 -> 1.54 mm; t1_cube_b
+                                3.39 / 2.55 -> 1.72 mm.
+  less than the sensor's noise  all 16 scenes: fused 2.76 mm, cam_front + EKF
+                                3.19 mm; paired difference -0.36 mm [-0.83,
+                                0.08], under the 2-4 mm floor.
+                                scripts/ablation_ci.py, docs/results/ablation_ci.json.
+  7 to 26 millimetres           plain average + EKF, 26.19 (t1_cube) and 7.46 mm
+                                (t1_cube_b).
+Scene 9 (the 17 Oct runs)
+  7 to 9 centimetres            the half-hidden view alone: 70.07 mm
+                                (t3_bottle_over_b), 85.90 mm (t3_bottle_over).
+  71 and 84, good camera at 3   the gate by score, + EKF: 70.75 and 83.72 mm;
+                                cam_front alone 3.06 and 3.14 mm.
+  3.0 and 3.1                   with the depth check: 3.03 and 3.12 mm, both
+                                100% inside.
+  a thousand, one right         all 22 scenes: 1,035 estimates refused (seen
+                                through by a third or more); 1 of them within
+                                30 mm of the truth, of 17,121 that were.
+                                docs/OCTOBER_PLAN.md, 17 Oct.
+Scene 10
+  seven scenes, 2,771 to 1      synthetic-only detector, 5 Oct:
+                                docs/OCTOBER_PLAN.md, "The objects that are not
                                 there"; the real object is reported on 2,100
                                 of 2,100 object-pairs before and after.
-  none of 6,210 facts           the three clutter scenes of 2026-10-07.
+  ten arrangements, never scored train_01-05, 07, 09-12 of 7 Oct (06, 08 for
+                                validation); docs/OCTOBER_PLAN.md, "The
+                                detector on real captures".
+  0.67 to 0.93                  mAP@0.5:0.95 on the 16 scored scenes, 0.670 ->
+                                0.934.
+  731 to none                   false objects reported in the scene graph over
+                                the 22 scenes, synthetic-only -> fine-tuned.
 Scene 11
-  loses the cube when dim       dim_t1_cube: frame mean 28, cam_over finds the
-                                cube on 0 of 300 pairs; at 85, on 45 of 45.
-  half a turn                   171 to 178 degrees in two of three placements.
-  one clutter scene of three    t2_clutter_c, 66.8% inside (Reprocess).
-  occluded-from was wrong       as scene 6; also on 300 of 300 pairs in four
-                                scored scenes, docs/OCTOBER_PLAN.md, 10 Oct.
-  fixed now                     2026-10-11: 300 -> 0 pairs in those four
-                                scenes, 500 -> 1 on a replay of the take;
+  a quarter of the frames       t2_clutter_c, fused 75.7% inside 0.1 d.
+  fixed now                     2026-10-11: 300 -> 0 pairs in four scored
+                                scenes, 500 -> 1 on a replay of the live take;
                                 docs/OCTOBER_PLAN.md, "The occluded_from fix".
-  misses ... reports as hidden  t2_clutter_c, the cube from cam_front on 208
-                                pairs; the same section.
-  0.957 and 0.957               mAP@0.5:0.95, 0.95738 with depth and 0.95662
-                                without, docs/STATUS.md.
+  half-hidden reported hidden   t3_cube_over, t3_bottle_over(_b): the fact on
+                                about 300 pairs each; under 25% visible is the
+                                definition (proposal 7.1), these are 44-88%.
+  99 to 100, 56 percent         precision against the checked hand labels:
+                                on 0.994, clear 0.995, in 1.000, occluded_from
+                                0.557; recall 1.000 for all four.
+                                scripts/predicate_accuracy.py.
+  0.957 and 0.957               mAP@0.5:0.95 on synthetic validation, 0.95738
+                                with depth and 0.95662 without, docs/STATUS.md.
+  one time in eight             the same two synthetic-only models on the 16
+                                real scored scenes: red_cube recall 0.123
+                                without depth (AP@0.5 0.099), 0.790 with it
+                                (AP@0.5 0.905). docs/OCTOBER_PLAN.md, "The
+                                detector on real captures".

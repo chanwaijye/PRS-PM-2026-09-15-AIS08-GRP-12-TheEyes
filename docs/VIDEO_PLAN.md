@@ -74,9 +74,9 @@ Code under the author's design and review, never as hand-written.
 
 ## 3. Storyboard
 
-Lengths are the script's spoken words (1,577 after the shoot, counted per
-scene; 1,489 before it) at 130 words a minute, plus the time the picture runs
-without a voice (about 110 s, half of it the pauses of scene 6). At 115 words a
+Lengths are the script's spoken words (1,578 in draft 3 of 17 Oct, counted
+per scene; 1,577 after the shoot, 1,489 before it) at 130 words a minute, plus
+the time the picture runs without a voice (about 110 s, half of it the pauses of scene 6). At 115 words a
 minute the same script is about 15 min 30 s, and **below about 120 it passes
 15 minutes**, which is why §8 names what to cut first. Spoken numbers take
 longer than their word count: time a read-through before trusting either figure.
@@ -87,15 +87,15 @@ longer than their word count: time a read-through before trusting either figure.
 | 2 | Title | 65 | 0:35 | Title card, rig photo (`assets/photos/rig_overview_20260929.jpg`) | still |
 | 3 | Why one camera is not enough | 103 | 0:50 | Three simple slides (First Presentation slide 2 redrawn) | slide |
 | 4 | The rig | 96 | 0:50 | Phone footage: rig, cameras, board, objects, trays | phone |
-| 5 | The pipeline | 181 | 1:30 | System diagram (First Presentation slide 8), then the console on `t2_clutter_a` with its panels labelled | slide + REPLAY |
+| 5 | The pipeline | 186 | 1:30 | System diagram (First Presentation slide 8), then the console on `t2_clutter_a` with its panels labelled | slide + REPLAY |
 | 6 | Live on the rig | 208 | 2:30 | One continuous take (`demo_live_a`), console full frame, phone in a corner, four captions | LIVE |
 | 7 | How it is measured | 145 | 1:10 | A ground-truth still with markers outlined; the 16 scenes by level; the cube in the bowl from above | still |
-| 8 | A hidden object is still found | 154 | 1:15 | `t4_cube_over`, `t4_cube_front` beside their rows; the T4 table; the cube-alone rows | REPLAY + table |
-| 9 | When fusion believed the wrong camera | 182 | 1:30 | `t3_bottle_over_b` under the old rule, a line-of-sight diagram, the same scene under the new rule | REPLAY + diagram |
-| 10 | Objects that are not there | 127 | 1:00 | A frame with a false object boxed in a camera view; the count before and after | REPLAY + table |
-| 11 | What it still gets wrong | 150 | 1:20 | Dim frame; the bottle with its axes reversed; `t2_clutter_c`; the live take's wrong `occluded_from`; detector table | REPLAY + table |
+| 8 | A hidden object is still found | 159 | 1:15 | `t4_cube_over`, `t4_cube_front` beside their rows; the T4 table; the cube-alone rows; the all-16 line | REPLAY + table |
+| 9 | When fusion believed the wrong camera | 175 | 1:25 | `t3_bottle_over_b` under the old rule, a line-of-sight diagram, the same scene under the new rule | REPLAY + diagram |
+| 10 | Objects that are not there | 146 | 1:10 | A false object boxed by the synthetic-only detector, then the same scene fine-tuned; the counts before and after | REPLAY + table |
+| 11 | What it still gets wrong | 129 | 1:10 | `t2_clutter_c`; the live take's wrong `occluded_from`, then the predicate table; detector table on the real scenes | REPLAY + table |
 | 12 | Close | 96 | 0:50 | The `(:init ...)` block full screen; `ObjectState` fields; last card with the Claude Code line | still |
-| | **Total** | **1,577** | **14:00** | | |
+| | **Total** | **1,578** | **14:00** | | |
 
 Kinds, and the label each carries on screen for as long as it is shown:
 
@@ -356,10 +356,14 @@ What the renders show that the edit must not hide or misread:
   from the live take only.
 - **The strip reads `GT: none`.** The console never sees ground truth. Numbers
   beside a clip come from `ablation_from_log`.
-- **The camera panels draw objects the scene graph refuses.** In
-  `t4_cube_over` the tray is boxed as `bowl 0.49` and drawn as `bowl_01`; in
-  the bottle scene a cloth is a bowl and there is a cube at the table's edge.
-  None is in the facts. Scene 10 uses this. Elsewhere, let it be seen.
+- **The camera panels draw objects the scene graph refuses.** In the clips of
+  the synthetic-only detector (`runs/video/synthetic_detector/`), `t4_cube_over`
+  boxes the tray as `bowl 0.49` and draws it as `bowl_01`; in the bottle scene
+  a cloth is a bowl and there is a cube at the table's edge. None is in the
+  facts. Scene 10 uses these clips. With the fine-tuned detector no false
+  object is reported in the 22 scenes and false tracks fell from 6,747 to 480,
+  but its clips in `runs/video/` have not been watched frame by frame for boxes
+  like these: where one shows, let it be seen.
 - **A scored clip is ten seconds of a still scene.** Loop or hold it in the
   edit; a loop is still a REPLAY.
 
@@ -414,12 +418,14 @@ three true facts under the new one.
 | Fri 9 Oct, evening | §5.1 |
 | Sat 10 Oct | The shoot — **done** (§5.0), and every replay clip rendered (§6). Not backed up and not copied to the laptop: the footage is on the desktop, reached by AnyDesk |
 | 11–24 Oct, Taiwan | Slides, diagram and tables; rough cut from Saturday's footage; the script checked against the report's tables as they settle |
-| 25–31 Oct | Replays rendered again on the final detector; the live take reshot only if the detector changed what it shows; the voice recorded; final cut; export; link in `README.md` §4; submit Sat 31 Oct |
+| 25–31 Oct | Replays already rendered on the final detector (17 Oct); the live take reshot only if the detector changed what it shows; the voice recorded; final cut; export; link in `README.md` §4; submit Sat 31 Oct |
 
-If the cut runs long, shorten in this order: scene 10 down to its last
-paragraph; the detector sentence of scene 11; scene 3 down to its second
-paragraph. Scenes 6, 8 and 9 are not shortened: they are the live run, the
-result, and the fusion module at work.
+If the cut runs long, shorten in this order: scene 10's first paragraph down
+to its first sentence (the picture shows the false objects); scene 3 down to its
+second paragraph. Scenes 6, 8 and 9 are not shortened: they are the live run,
+the result, and the fusion module at work. Nor is the last paragraph of scene
+11 any longer: on the real recordings it is the evidence for the depth
+channel.
 
 ---
 
@@ -458,8 +464,13 @@ result, and the fusion module at work.
   of §7 is now needed. Giving the live recorder the clock is still a small
   change to `runtime`, but it would not help takes already made.
 - The script is over 15 minutes below about 120 words a minute (§3); it was
-  113 before the shoot added 88 words.
-- Scenes 10 and 11 describe the detector as it is now. If fine-tuning on the
-  7 Oct layouts removes the tray-as-bowl, the script's `[VERIFY]` in scene 11
-  is where that is said, and the clips of scene 10 are then the detector before
-  fine-tuning and are captioned so.
+  113 before the shoot added 88 words. Draft 3 (17 Oct) is one word longer.
+- ~~Scenes 10 and 11 describe the detector as it is now.~~ The fine-tuned
+  detector was adopted on 17 Oct and every scored scene replayed with it
+  (`OCTOBER_PLAN.md`, 17 Oct); draft 3 of the script carries its numbers, and
+  scene 11's `[VERIFY]` is gone. Scene 10 now says the false objects were the
+  first detector's, so its clip of the tray-as-bowl comes from
+  `runs/video/synthetic_detector/` and is captioned "synthetic-only detector";
+  the other replay clips in `runs/video/` were rendered again with the
+  fine-tuned one. The live takes (scenes 1 and 6) ran the first detector, and
+  scene 6's caption says so.
