@@ -93,9 +93,12 @@ rs-enumerate-devices -s
 # 3. Record camera serial numbers into the launch config
 #    config/cameras.yaml  — devices are selected by serial, never by /dev/video*
 
-# 4. Build the C++ system
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$(nproc)
+# 4. Build the C++ system -- the CMake project is SystemCode/; build/ sits at the
+#    repo root, which is where every command below expects it. The ONNX Runtime
+#    root is the GPU (CUDA) build; leave the option out for a CPU-only detector.
+cmake -S SystemCode -B build -DCMAKE_BUILD_TYPE=Release \
+      -DTHE_EYES_ONNXRUNTIME_ROOT=$HOME/opt/onnxruntime-linux-x64-gpu_cuda13-1.29.0
+cmake --build build -j$(nproc) && (cd build && ctest)
 
 # 5. Calibrate (after final rigid mounting)
 build/calibration/calibrate run config/calibration.yaml \

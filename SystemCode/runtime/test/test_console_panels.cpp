@@ -295,7 +295,7 @@ TEST(ConsolePanels, ArmsAreComputedPerViewAndAnEmptyViewStillCounts) {
   r.estimates["cam_over"] = {};   // occluded
 
   fusion::ExtrinsicsSet ex;
-  for (const std::string& id : {"cam_front", "cam_over"}) {
+  for (const char* id : {"cam_front", "cam_over"}) {
     CameraExtrinsics c;
     c.camera_id = id;
     c.T_world_cam = Eigen::Isometry3d::Identity();
