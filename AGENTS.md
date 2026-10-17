@@ -223,7 +223,7 @@ sets — a pure unit-test target, zero hardware, zero models.
 
 ---
 
-### 7. `cluster_agent` — unknown-object segmentation *(above MVP)*
+### 7. `cluster_agent` — unknown-object segmentation *(above MVP — CUT 2026-10-17, never built)*
 
 **Owns:** `SystemCode/clustering/`
 

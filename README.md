@@ -23,7 +23,7 @@ The system covers all four PRS technique groups:
 
 | Technique Group | Implementation |
 | --- | --- |
-| Supervised / unsupervised learning | RGB-D YOLOv8 fine-tuned on synthetic labelled data; DBSCAN clustering for unknown-object segmentation |
+| Supervised / unsupervised learning | RGB-D YOLOv8 fine-tuned on synthetic labelled data (supervised). The unsupervised DBSCAN unknown-object path was cut and not built |
 | Machine learning / deep learning | Multimodal RGB-D YOLOv8 detector (4-channel early-fusion stem); FoundationPose transformer pose estimator; ONNX Runtime / TensorRT deployment |
 | Hybrid / ensemble approach | Object-level multi-view fusion of two independent estimators; learned frontend + classical EKF backend |
 | Intelligent sensing / sense making | Dual RGB-D sensing with extrinsic calibration; poses → relational predicates; cross-view occlusion reasoning |
@@ -158,8 +158,7 @@ Every module has a mock mode and can be run without hardware — see `AGENTS.md`
 Camera 1 (front) ──► YOLOv8 ──► FoundationPose ──┐
                                                   ├──► Multi-View Fusion ★ ──► Scene-Graph Bridge ★ ──► /scene_state
 Camera 2 (overhead) ─► YOLOv8 ──► FoundationPose ─┘    (C++, EKF, gating)      (C++, predicates)      └► PDDL init facts
-                                                  │                                                       → world model (PM4)
-Residual point cloud ──► DBSCAN unknown objects ──┘
+                                                                                                          → world model (PM4)
 ```
 
 ★ = written from first principles in C++; the project's technical contribution.

@@ -114,7 +114,8 @@ Must ship:
 
 Cut order under schedule pressure:
 1. Jetson deployment test
-2. Unknown-object DBSCAN path
+2. Unknown-object DBSCAN path — **CUT 2026-10-17.** Never built; the final
+   report says so.
 3. Live PM1 integration demo — **CUT 2026-09-08.** Studied, then dropped;
    `docs/PM1_INTEGRATION.md` holds the decision and the logged output that
    discharges it. Do not re-plan this.
@@ -131,7 +132,7 @@ this one covers all four:
 
 | # | Category | Where |
 |---|---|---|
-| ① | Supervised / unsupervised | RGB-D YOLOv8 fine-tune (supervised); DBSCAN unknown-object segmentation (unsupervised) |
+| ① | Supervised / unsupervised | RGB-D YOLOv8 fine-tune (supervised). The unsupervised half, DBSCAN unknown-object segmentation, was cut and is not claimed |
 | ② | ML / DL techniques | **Multimodal RGB-D YOLOv8** (4-channel early-fusion stem, COCO stem inflation); FoundationPose transformer; ONNX/TensorRT deployment |
 | ③ | Hybrid / ensemble | Two per-view estimators fused with confidence weighting + disagreement gating; learned frontend + classical EKF backend |
 | ④ | Intelligent sensing / sense-making | Dual RGB-D + calibration; poses → relational predicates |

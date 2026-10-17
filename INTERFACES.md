@@ -177,7 +177,8 @@ Semantics that matter:
   Downstream consumers use `visible_views` to reason about pose uncertainty.
 - `visible_views` is the views whose estimate went **into** `pose_w`. It is not
   the views that can see the object: for that, use `observed_views` (below).
-- `cls == "unknown_object"` means the DBSCAN path produced it: `pose_w`
+- `cls == "unknown_object"` is reserved for the DBSCAN path, which was cut and
+  never built, so nothing emits it. Were it built, it would mean: `pose_w`
   translation is the cluster centroid, rotation is identity and **meaningless**,
   `extent` is the cluster bounding volume.
 
