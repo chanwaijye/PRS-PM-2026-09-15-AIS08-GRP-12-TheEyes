@@ -57,9 +57,14 @@ struct PoseBackendConfig {
   std::string backend = "mock";   // "mock" | "foundationpose"
   std::string socket_path = "/tmp/the_eyes_foundationpose.sock";
   int request_timeout_ms = 5000;
+  double reregister_area_ratio = 0.0;     // 0 = off; see FoundationPoseClientConfig
+  double reregister_min_box_cover = 0.0;  // 0 = off; the same
+  int reregister_after_off_box = 0;       // 0 = off; the same
 };
 
-// Reads estimator.backend / socket_path / request_timeout_ms from pose.yaml.
+// Reads estimator.backend / socket_path / request_timeout_ms /
+// reregister_area_ratio / reregister_min_box_cover / reregister_after_off_box
+// from pose.yaml.
 PoseBackendConfig LoadPoseBackendConfig(const std::string& pose_yaml_path);
 
 }  // namespace the_eyes::runtime

@@ -1,9 +1,11 @@
 #include "the_eyes/pose/foundationpose_client.hpp"
 
+#include <algorithm>
 #include <cerrno>
 #include <cmath>
 #include <cstring>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 
 #include <sys/socket.h>
@@ -41,6 +43,33 @@ cv::Mat EnsureContiguous(const cv::Mat& m) { return m.isContinuous() ? m : m.clo
 
 }  // namespace
 
+bool BoxChangedBeyond(double registered_area, double area, double ratio) {
+  if (!(ratio > 0.0) || !(registered_area > 0.0) || !(area > 0.0)) return false;
+  return area > ratio * registered_area || area * ratio < registered_area;
+}
+
+double BoxCover(const Eigen::Isometry3d& pose_cam, const Eigen::Vector3d& half_extent,
+                const Eigen::Matrix3d& K, const cv::Rect2i& box) {
+  if (box.area() <= 0 || !(half_extent.minCoeff() > 0.0)) return -1.0;
+  double u0 = std::numeric_limits<double>::infinity(), v0 = u0;
+  double u1 = -u0, v1 = -u0;
+  for (int i = 0; i < 8; ++i) {
+    const Eigen::Vector3d corner(i & 1 ? half_extent.x() : -half_extent.x(),
+                                 i & 2 ? half_extent.y() : -half_extent.y(),
+                                 i & 4 ? half_extent.z() : -half_extent.z());
+    const Eigen::Vector3d p = K * (pose_cam * corner);
+    if (!(p.z() > 0.0)) return 0.0;
+    u0 = std::min(u0, p.x() / p.z());
+    u1 = std::max(u1, p.x() / p.z());
+    v0 = std::min(v0, p.y() / p.z());
+    v1 = std::max(v1, p.y() / p.z());
+  }
+  const double w = std::min<double>(box.x + box.width, u1) - std::max<double>(box.x, u0);
+  const double h = std::min<double>(box.y + box.height, v1) - std::max<double>(box.y, v0);
+  if (w <= 0.0 || h <= 0.0) return 0.0;
+  return w * h / static_cast<double>(box.area());
+}
+
 FoundationPoseClient::FoundationPoseClient(FoundationPoseClientConfig config)
     : config_(std::move(config)) {}
 
@@ -56,6 +85,7 @@ void FoundationPoseClient::Disconnect(const std::string& reason) {
   // The server owns per-object estimator state. A reconnected server has none,
   // so every object must re-register or it would refine against nothing.
   registered_.clear();
+  off_box_.clear();
   if (!reason.empty()) warnings_.push_back("disconnected: " + reason);
 }
 
@@ -140,7 +170,11 @@ std::optional<PoseEstimate> FoundationPoseClient::Estimate(const PoseRequest& re
   const cv::Mat depth = EnsureContiguous(frame.depth(request.roi));
 
   const ObjectKey key{frame.camera_id, request.detection.cls, request.detection.track_id};
-  const bool first_sighting = registered_.find(key) == registered_.end();
+  const double box_area = static_cast<double>(request.detection.bbox.area());
+  const auto known = registered_.find(key);
+  const bool register_now =
+      known == registered_.end() ||
+      BoxChangedBeyond(known->second, box_area, config_.reregister_area_ratio);
 
   std::ostringstream header;
   header << std::setprecision(17);
@@ -148,7 +182,7 @@ std::optional<PoseEstimate> FoundationPoseClient::Estimate(const PoseRequest& re
          << "cls: \"" << request.detection.cls << "\"\n"
          << "track_id: " << request.detection.track_id << "\n"
          << "stamp_ns: " << frame.stamp_ns << "\n"
-         << "mode: \"" << (first_sighting ? "register" : "track") << "\"\n"
+         << "mode: \"" << (register_now ? "register" : "track") << "\"\n"
          << "mesh: \"" << request.mesh->mesh_path << "\"\n"
          << "roi: [" << request.roi.x << ", " << request.roi.y << ", " << request.roi.width
          << ", " << request.roi.height << "]\n"
@@ -255,7 +289,8 @@ std::optional<PoseEstimate> FoundationPoseClient::Estimate(const PoseRequest& re
 
   // Only now is the object known-registered on the server side. Recording it
   // earlier would leave the client believing in state a failed call never made.
-  registered_.insert(key);
+  // A tracking call keeps the box of the registration it refines from.
+  if (register_now) registered_[key] = box_area;
 
   PoseEstimate estimate;
   estimate.camera_id = frame.camera_id;
@@ -267,6 +302,27 @@ std::optional<PoseEstimate> FoundationPoseClient::Estimate(const PoseRequest& re
   estimate.score = score;
   estimate.symmetric = request.mesh->symmetric;
   estimate.extent = request.mesh->extent;
+
+  if (config_.reregister_min_box_cover > 0.0 && config_.reregister_after_off_box > 0) {
+    const double cover =
+        BoxCover(estimate.pose_cam, estimate.extent, frame.K, request.detection.bbox);
+    OffBox& off = off_box_[key];
+    const int needed = config_.reregister_after_off_box << std::min(off.forced, 10);
+    if (cover < 0.0 || cover >= config_.reregister_min_box_cover) {
+      off = OffBox{};
+    } else if (++off.running >= needed) {
+      off.running = 0;
+      ++off.forced;
+      registered_.erase(key);
+      ++forced_registrations_;
+      std::ostringstream os;
+      os << std::fixed << std::setprecision(2) << estimate.camera_id << " " << estimate.cls << " #"
+         << estimate.track_id << ": covered " << cover << " of its detection box, under "
+         << config_.reregister_min_box_cover << " on " << needed
+         << " estimates running, registering again";
+      warnings_.push_back(os.str());
+    }
+  }
   return estimate;
 }
 

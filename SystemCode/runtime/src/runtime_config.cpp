@@ -117,6 +117,22 @@ PoseBackendConfig LoadPoseBackendConfig(const std::string& pose_yaml_path) {
   if (cfg.request_timeout_ms < 1) {
     throw std::runtime_error("pose.yaml: 'estimator.request_timeout_ms' must be >= 1");
   }
+  if (est["reregister_area_ratio"]) cfg.reregister_area_ratio = est["reregister_area_ratio"].as<double>();
+  if (!(cfg.reregister_area_ratio == 0.0 || cfg.reregister_area_ratio > 1.0)) {
+    throw std::runtime_error("pose.yaml: 'estimator.reregister_area_ratio' must be 0 (off) or > 1");
+  }
+  if (est["reregister_min_box_cover"]) {
+    cfg.reregister_min_box_cover = est["reregister_min_box_cover"].as<double>();
+  }
+  if (!(cfg.reregister_min_box_cover >= 0.0 && cfg.reregister_min_box_cover <= 1.0)) {
+    throw std::runtime_error("pose.yaml: 'estimator.reregister_min_box_cover' must be in [0, 1] (0 = off)");
+  }
+  if (est["reregister_after_off_box"]) {
+    cfg.reregister_after_off_box = est["reregister_after_off_box"].as<int>();
+  }
+  if (cfg.reregister_after_off_box < 0) {
+    throw std::runtime_error("pose.yaml: 'estimator.reregister_after_off_box' must be >= 0 (0 = off)");
+  }
   return cfg;
 }
 

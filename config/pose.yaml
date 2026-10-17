@@ -25,6 +25,36 @@ estimator:
   # (SystemCode/runtime) warns below 10 s.
   request_timeout_ms: 15000
 
+  # Register a tracked object again when its detection box has grown or shrunk
+  # more than this factor in area since it was last registered (0 = off).
+  # Found 17 Oct replaying the live take demo_live_a with the fine-tuned
+  # detector: it boxed the red marks on the card before cam_front as a cube,
+  # and when the card came away that track grew onto the real cube (x3.56).
+  # Tracking only refines the last pose, so the pose fitted to the card was kept
+  # and the cube read as occluded from cam_front for the rest of the take.
+  # On the clean take demo_clean_a it also caught the bowl, first boxed and
+  # registered together with the hand carrying it in: the box shrank 3.08x
+  # when it narrowed to the bowl alone, and the bowl registered again. 3 never
+  # fires on the detections of the 22 scored scenes; 2.5 would, once, in
+  # t3_bottle_over_b.
+  reregister_area_ratio: 3.0
+
+  # Register a tracked object again once its estimate has covered less than
+  # this share of its own detection box this many times running; each forced
+  # registration doubles the count for the next (either at 0 = off). The cover
+  # is the box's overlap with the bounding rectangle of the mesh's corners
+  # projected at the estimated pose. Found 17 Oct on demo_clean_a: the cube was
+  # lifted out of the bowl faster than tracking could follow, its box went
+  # with it, and its pose stayed in the bowl (cover 0.00) -- `(in red_cube
+  # bowl)` held to 65 s, 21 s after the cube had left. It also catches a pose
+  # registered while the hand was still setting the object down (the bottle
+  # there, cover 0.19), which tracking never recovers from. A box on the
+  # visible part of a half hidden object lies inside the footprint: replayed
+  # with this rule, the 22 scored scenes match their 17 Oct runs pair for pair,
+  # and none of their tracks stays under 0.5 for 5 estimates running.
+  reregister_min_box_cover: 0.3
+  reregister_after_off_box: 5
+
   # Below this hypothesis score the estimate is discarded rather than passed to
   # fusion. Fusion weights by score, so a very low-confidence pose is not free:
   # it still drags the fused estimate.

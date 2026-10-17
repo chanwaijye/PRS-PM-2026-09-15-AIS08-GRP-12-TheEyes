@@ -78,6 +78,9 @@ PoseHandle MakePoseEstimator(const PoseBackendConfig& cfg) {
     pose::FoundationPoseClientConfig client_cfg;
     client_cfg.socket_path = cfg.socket_path;
     client_cfg.request_timeout_ms = cfg.request_timeout_ms;
+    client_cfg.reregister_area_ratio = cfg.reregister_area_ratio;
+    client_cfg.reregister_min_box_cover = cfg.reregister_min_box_cover;
+    client_cfg.reregister_after_off_box = cfg.reregister_after_off_box;
     auto client = std::make_shared<pose::FoundationPoseClient>(client_cfg);
     h.client = client.get();
     h.estimator = client;

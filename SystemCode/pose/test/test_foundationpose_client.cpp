@@ -260,6 +260,131 @@ TEST(FoundationPoseClient, EachTrackedInstanceRegistersIndependently) {
   EXPECT_EQ(server.modes(), (std::vector<std::string>{"register", "register", "track"}));
 }
 
+TEST(FoundationPoseClient, ABoxThatChangesSizeBeyondTheRatioRegistersAgain) {
+  // The live take of 10 Oct, replayed 17 Oct: a track on the print of a card
+  // (30x59 px) grew onto the real cube behind it (76x83) when the card came
+  // away. Tracking from the card's pose never recovered.
+  FakeServer server(Behaviour::kReturnIdentity);
+  FoundationPoseClientConfig config = ConfigFor(server);
+  config.reregister_area_ratio = 3.0;
+  FoundationPoseClient client(config);
+
+  const Frame frame = MakeFrame();
+  const MeshEntry mesh = MakeMesh();
+  const auto boxed = [&](cv::Rect2i box) {
+    PoseRequest r = MakeRequest(frame, mesh);
+    r.detection.bbox = box;
+    return r;
+  };
+  ASSERT_TRUE(client.Estimate(boxed({100, 80, 30, 60})).has_value());  // 1800 px: first sight
+  ASSERT_TRUE(client.Estimate(boxed({100, 80, 50, 100})).has_value());  // x2.8 of 1800: track
+  ASSERT_TRUE(client.Estimate(boxed({95, 80, 76, 84})).has_value());    // x3.5 of 1800: again
+  ASSERT_TRUE(client.Estimate(boxed({95, 80, 40, 60})).has_value());    // /2.7 of 6384: track
+  ASSERT_TRUE(client.Estimate(boxed({95, 80, 30, 60})).has_value());    // /3.5 of 6384: again
+
+  EXPECT_EQ(server.modes(),
+            (std::vector<std::string>{"register", "track", "register", "track", "register"}));
+}
+
+TEST(FoundationPoseClient, ReregistrationOnBoxChangeIsOffByDefault) {
+  FakeServer server(Behaviour::kReturnIdentity);
+  FoundationPoseClient client(ConfigFor(server));
+
+  const Frame frame = MakeFrame();
+  const MeshEntry mesh = MakeMesh();
+  for (const cv::Rect2i box : {cv::Rect2i(100, 80, 30, 60), cv::Rect2i(95, 80, 76, 84)}) {
+    PoseRequest r = MakeRequest(frame, mesh);
+    r.detection.bbox = box;
+    ASSERT_TRUE(client.Estimate(r).has_value());
+  }
+  EXPECT_EQ(server.modes(), (std::vector<std::string>{"register", "track"}));
+}
+
+TEST(FoundationPoseClient, AnEstimateOffItsBoxForcesARegistrationWithDoublingPatience) {
+  // The 10 Oct clean take, replayed 17 Oct: the cube was lifted out of the
+  // bowl faster than tracking could follow. Its box went with it and its pose
+  // stayed in the bowl.
+  FakeServer server(Behaviour::kReturnIdentity);
+  FoundationPoseClientConfig config = ConfigFor(server);
+  config.reregister_min_box_cover = 0.3;
+  config.reregister_after_off_box = 2;
+  FoundationPoseClient client(config);
+
+  // The fake server's pose puts the mesh's footprint at about u 161-215,
+  // v 85-133 in MakeFrame's intrinsics.
+  const Frame frame = MakeFrame();
+  const MeshEntry mesh = MakeMesh();
+  const auto step = [&](bool on_box) {
+    PoseRequest r = MakeRequest(frame, mesh);
+    r.detection.bbox = on_box ? cv::Rect2i(165, 90, 40, 40) : cv::Rect2i(20, 150, 40, 40);
+    ASSERT_TRUE(client.Estimate(r).has_value());
+  };
+  step(false);  // register; off 1 of 2
+  step(true);   // track; on the box, the run starts again
+  step(false);  // track; 1 of 2
+  step(false);  // track; 2 of 2 -> the next call registers
+  step(false);  // register; now 4 are needed
+  step(false);  // track; 2 of 4
+  step(false);  // track; 3 of 4
+  step(false);  // track; 4 of 4 -> the next call registers
+  step(true);   // register
+
+  EXPECT_EQ(server.modes(), (std::vector<std::string>{"register", "track", "track", "track", "register",
+                                                      "track", "track", "track", "register"}));
+  EXPECT_EQ(client.forced_registrations(), 2);
+  ASSERT_FALSE(client.warnings().empty());
+  EXPECT_NE(client.warnings().front().find("cam_front mustard_bottle #1: covered 0.00 of its detection box"),
+            std::string::npos);
+}
+
+TEST(FoundationPoseClient, EstimatesOffTheirBoxAreIgnoredWhenTheRuleIsOff) {
+  FakeServer server(Behaviour::kReturnIdentity);
+  FoundationPoseClient client(ConfigFor(server));
+
+  const Frame frame = MakeFrame();
+  const MeshEntry mesh = MakeMesh();
+  for (int i = 0; i < 4; ++i) {
+    PoseRequest r = MakeRequest(frame, mesh);
+    r.detection.bbox = cv::Rect2i(20, 150, 40, 40);
+    ASSERT_TRUE(client.Estimate(r).has_value());
+  }
+  EXPECT_EQ(server.modes(), (std::vector<std::string>{"register", "track", "track", "track"}));
+  EXPECT_EQ(client.forced_registrations(), 0);
+}
+
+TEST(FoundationPoseClient, BoxCoverIsTheShareOfTheBoxInsideTheFootprint) {
+  // A 10 cm cube 0.5 m ahead: its corners project to 320 +- 500 * 0.05 / 0.45
+  // = 264.4 .. 375.6 px in u, and the same about 240 in v.
+  Eigen::Matrix3d K;
+  K << 500.0, 0.0, 320.0, 0.0, 500.0, 240.0, 0.0, 0.0, 1.0;
+  Eigen::Isometry3d pose = Eigen::Isometry3d::Identity();
+  pose.translation() = Eigen::Vector3d(0.0, 0.0, 0.5);
+  const Eigen::Vector3d half(0.05, 0.05, 0.05);
+  const double edge = 320.0 + 500.0 * 0.05 / 0.45;
+
+  EXPECT_DOUBLE_EQ(BoxCover(pose, half, K, {300, 200, 40, 40}), 1.0);  // inside: a visible fragment
+  EXPECT_NEAR(BoxCover(pose, half, K, {360, 200, 40, 40}), (edge - 360.0) / 40.0, 1e-9);
+  EXPECT_DOUBLE_EQ(BoxCover(pose, half, K, {0, 0, 40, 40}), 0.0);       // the pose left behind
+  // A box larger than the footprint is covered only in part.
+  const double side = 2.0 * (edge - 320.0);
+  EXPECT_NEAR(BoxCover(pose, half, K, {200, 120, 240, 240}), side * side / (240.0 * 240.0), 1e-9);
+
+  Eigen::Isometry3d behind = pose;
+  behind.translation().z() = -0.5;
+  EXPECT_DOUBLE_EQ(BoxCover(behind, half, K, {300, 200, 40, 40}), 0.0);
+  EXPECT_DOUBLE_EQ(BoxCover(pose, half, K, {300, 200, 0, 40}), -1.0);              // no box
+  EXPECT_DOUBLE_EQ(BoxCover(pose, Eigen::Vector3d::Zero(), K, {300, 200, 40, 40}), -1.0);  // no extent
+}
+
+TEST(FoundationPoseClient, BoxChangedBeyondIsSymmetricAndIgnoresUnknownAreas) {
+  EXPECT_TRUE(BoxChangedBeyond(100.0, 301.0, 3.0));
+  EXPECT_TRUE(BoxChangedBeyond(301.0, 100.0, 3.0));
+  EXPECT_FALSE(BoxChangedBeyond(100.0, 300.0, 3.0));
+  EXPECT_FALSE(BoxChangedBeyond(100.0, 1000.0, 0.0));  // off
+  EXPECT_FALSE(BoxChangedBeyond(0.0, 1000.0, 3.0));    // no box at registration
+  EXPECT_FALSE(BoxChangedBeyond(100.0, 0.0, 3.0));     // no box now
+}
+
 TEST(FoundationPoseClient, DeclinedRequestReturnsNulloptWithTheServersReason) {
   FakeServer server(Behaviour::kDecline);
   FoundationPoseClient client(ConfigFor(server));

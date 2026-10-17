@@ -74,4 +74,29 @@ TEST(RuntimeConfig, ReadsThePoseBackendFromPoseYaml) {
       "p3.yaml", "estimator: {backend: foundationpose, socket_path: /x.sock, request_timeout_ms: 9}\n"));
   EXPECT_EQ(custom.socket_path, "/x.sock");
   EXPECT_EQ(custom.request_timeout_ms, 9);
+  EXPECT_DOUBLE_EQ(custom.reregister_area_ratio, 0.0);  // absent: off
+
+  EXPECT_GT(cfg.reregister_area_ratio, 1.0);  // the shipped config turns it on
+  EXPECT_DOUBLE_EQ(LoadPoseBackendConfig(WriteTemp("p4.yaml", "estimator: {backend: mock, "
+                                                              "reregister_area_ratio: 2.5}\n"))
+                       .reregister_area_ratio,
+                   2.5);
+  EXPECT_THROW(LoadPoseBackendConfig(
+                   WriteTemp("p5.yaml", "estimator: {backend: mock, reregister_area_ratio: 0.5}\n")),
+               std::runtime_error);
+
+  EXPECT_DOUBLE_EQ(custom.reregister_min_box_cover, 0.0);  // absent: off
+  EXPECT_EQ(custom.reregister_after_off_box, 0);
+  EXPECT_GT(cfg.reregister_min_box_cover, 0.0);  // the shipped config turns it on
+  EXPECT_GT(cfg.reregister_after_off_box, 0);
+  const PoseBackendConfig cover = LoadPoseBackendConfig(WriteTemp(
+      "p7.yaml", "estimator: {backend: mock, reregister_min_box_cover: 0.25, reregister_after_off_box: 4}\n"));
+  EXPECT_DOUBLE_EQ(cover.reregister_min_box_cover, 0.25);
+  EXPECT_EQ(cover.reregister_after_off_box, 4);
+  EXPECT_THROW(LoadPoseBackendConfig(
+                   WriteTemp("p8.yaml", "estimator: {backend: mock, reregister_min_box_cover: 1.5}\n")),
+               std::runtime_error);
+  EXPECT_THROW(LoadPoseBackendConfig(
+                   WriteTemp("p9.yaml", "estimator: {backend: mock, reregister_after_off_box: -1}\n")),
+               std::runtime_error);
 }

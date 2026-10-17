@@ -78,6 +78,25 @@ nothing. First sighting sends `mode: register` (~1.2 s at the shipped 6 refine
 iterations; ~0.7 s with `--register-iters 3`), thereafter `mode: track`
 (~11 ms).
 
+Tracking only refines the last pose, so a track whose pose has gone wrong while
+its box stays right never recovers by itself. Two rules in `config/pose.yaml`
+send it back to `register` (both added 17 Oct, from replays of the 10 Oct live
+takes; each is off at 0):
+
+- `reregister_area_ratio: 3.0`: the detection box has grown or shrunk more
+  than 3× in area since the last registration. The 2D tracker had carried a
+  track from the red marks on the card onto the real cube behind it.
+- `reregister_min_box_cover: 0.3` / `reregister_after_off_box: 5`: on 5
+  estimates running, the bounding rectangle of the mesh's projected corners
+  covers under 0.3 of the detection box (`BoxCover`). This catches a pose left
+  behind by a fast move, or registered while a hand was still setting the
+  object down. A box on the visible part of a half-hidden object lies inside
+  the footprint and does not trigger it. The count doubles after each forced
+  registration.
+
+Neither rule fires on the 22 scored scenes: they replay pair for pair as
+before.
+
 ## Findings worth knowing
 
 **FoundationPose's hypothesis score is not a usable confidence.** §3 specifies a
