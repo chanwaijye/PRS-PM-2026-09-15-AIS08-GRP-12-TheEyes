@@ -172,6 +172,55 @@ the_eyes_run replay <session>    the same pipeline from a recording, bit-exact
 
 FoundationPose has no C++ implementation, so it runs **out of process** as a Python server on a Unix domain socket with a length-prefixed byte protocol (`SystemCode/pose/README.md`). Every line of the project's own runtime logic stays in C++. A FoundationPose crash disconnects a socket instead of killing the perception process, and the client re-registers every object after a reconnect, because the server's per-object state is lost.
 
+Figure 2 shows what each stage passes to the next, and what it reads and writes.
+
+```mermaid
+%%{init: {"themeVariables": {"fontSize": "22px"}, "flowchart": {"rankSpacing": 34, "nodeSpacing": 20, "padding": 6, "wrappingWidth": 420}}}%%
+flowchart TB
+    CAM["2 × D435i, selected by serial"]:::ext
+    REC[("D1 Session recording<BR>colour + 16-bit depth per pair")]:::store
+    CAL[("D4 Calibration<BR>extrinsics.yaml, depth_correction.yaml")]:::store
+    P1("1 Capture and pair"):::proc
+    MOD[("D2 Detector model<BR>ONNX, 4-channel")]:::store
+    P2("2 Detect and track, each view"):::proc
+    MESH[("D3 Mesh registry<BR>meshes.yaml + meshes")]:::store
+    P3("3 Pose client, each view"):::proc
+    FP["FoundationPose server<BR>Python, Unix socket"]:::ext
+    P4("4 View evidence"):::proc
+    P5("5 Fusion ★"):::proc
+    P6("6 Scene-graph bridge ★"):::proc
+    OUT["Consumer: planner, capstone world model"]:::ext
+    LOG[("D5 metrics.sqlite")]:::store
+    CAM -->|"colour, aligned depth, K, stamp"| P1
+    P1 -->|"frame pairs, recorded"| REC
+    REC -->|"frame pairs, replayed"| P1
+    CAL -->|"depth scale"| P1
+    P1 -->|"FramePair"| P2
+    MOD -->|"weights"| P2
+    P2 -->|"DetectionSet"| P3
+    MESH -->|"mesh path, extent"| P3
+    P3 -->|"RGB-D crop, K,<BR>register or track"| FP
+    FP -->|"pose, score"| P3
+    P3 -->|"PoseEstimate, camera frame"| P4
+    P1 -->|"both depth images"| P4
+    MESH -->|"mesh"| P4
+    CAL -->|"T_world_cam"| P4
+    P4 -->|"PoseEstimate +<BR>depth_support, seen_through"| P5
+    CAL -->|"T_world_cam"| P5
+    MESH -->|"symmetry group"| P5
+    P5 -->|"ObjectState list"| P6
+    P6 -->|"SceneState, PDDL (:init) facts"| OUT
+    P2 -.->|"detections"| LOG
+    P4 -.->|"estimates + evidence"| LOG
+    P5 -.->|"fused objects"| LOG
+    P6 -.->|"facts"| LOG
+    classDef ext fill:#eeeeee,stroke:#444444,stroke-width:2px
+    classDef proc fill:#dbeafe,stroke:#1d4ed8
+    classDef store fill:#fef3c7,stroke:#b45309
+```
+
+*Figure 2. Runtime data flow. Grey: outside the process; blue: the process's stages; yellow: data stores. Every stage also reads its own file in `config/`. A live run and a replay differ only in where stage 1 gets its frame pairs.*
+
 The output contract (`INTERFACES.md` §5) is the per-object state the capstone will consume:
 
 ```cpp
@@ -277,6 +326,60 @@ Four things must match between the Python training side and the C++ runtime, and
 
 ## 7. Data Collection and Datasets
 
+Figure 3 shows how the offline data was made and where each set is used: the training sets, the calibration, the ground truth, and the recordings every result is scored from.
+
+```mermaid
+%%{init: {"themeVariables": {"fontSize": "22px"}, "flowchart": {"rankSpacing": 34, "nodeSpacing": 20, "padding": 6, "wrappingWidth": 420}}}%%
+flowchart TB
+    ISAAC["Isaac Sim 5.1 + Replicator"]:::ext
+    BOARD["ChArUco board"]:::ext
+    RIG["Rig: 2 × D435i, objects in marker trays"]:::ext
+    O1("Render<BR>replicator_dataset.py"):::proc
+    O4("Calibrate<BR>calibrate, depth_tare"):::proc
+    O5("Record<BR>capture_day.sh"):::proc
+    SYN[("synth50k_v2<BR>50,000 RGB-D frames")]:::store
+    CAL[("extrinsics.yaml<BR>depth_correction.yaml")]:::store
+    RECS[("Recordings<BR>22 scenes, 12 training layouts")]:::store
+    O6("Ground truth<BR>gt_from_trays, visibility_from_gt"):::proc
+    GT[("Ground truth<BR>tray poses, tiers")]:::store
+    O7("Box labels<BR>real_dataset.py"):::proc
+    REAL[("real_v1<BR>360 train, 72 val,<BR>960 + 240 test")]:::store
+    O2("Train, fine-tune, export<BR>train.py, export_onnx.py"):::proc
+    ONNX[("Detector model, ONNX")]:::store
+    LAB[("predicate_labels.yaml<BR>hand labels")]:::store
+    O8("Replay and score<BR>replay, ablation_from_log, ablation_ci.py,<BR>pose_error.py, predicate_accuracy.py, report_figures.py"):::proc
+    RES[("Results: ablation logs, ablation_ci.json, §9 tables and figures")]:::store
+    ISAAC -->|"scenes"| O1
+    O1 -->|"RGB-D frames, boxes"| SYN
+    BOARD -->|"board images"| O4
+    RIG -->|"empty-table recording"| O4
+    O4 --> CAL
+    RIG -->|"frame pairs"| O5
+    O5 --> RECS
+    RIG -->|"tray stills"| O6
+    CAL -->|"T_world_cam"| O6
+    RECS -->|"depth"| O6
+    O6 --> GT
+    RECS -->|"frames"| O7
+    GT -->|"poses"| O7
+    O7 -->|"visible-extent boxes"| REAL
+    SYN -->|"40,012 train frames"| O2
+    REAL -->|"train, val"| O2
+    O2 --> ONNX
+    RECS --> O8
+    ONNX --> O8
+    CAL --> O8
+    GT --> O8
+    REAL -->|"test"| O8
+    LAB --> O8
+    O8 --> RES
+    classDef ext fill:#eeeeee,stroke:#444444,stroke-width:2px
+    classDef proc fill:#dbeafe,stroke:#1d4ed8
+    classDef store fill:#fef3c7,stroke:#b45309
+```
+
+*Figure 3. Offline data flow. Ground truth is used for labels and scoring only, never at inference (§7.3), and no scored scene is in the detector's training data (§7.6).*
+
 ### 7.1 Objects
 
 Three classes: `mustard_bottle` (YCB 006), `bowl` (YCB 024) and an authored 50 mm `red_cube`. Each mesh is re-centred so the object frame's origin is its bounding-box centre; the raw YCB bowl's origin sat 43.7 mm off centre. **All three are 3D-printed from their meshes**, so no object-to-mesh mismatch hides inside the pose error. (The YCB bottle is a 20 oz product that is not sold in Singapore, and the common 14 oz bottle would have added exactly that mismatch.) The printed cube is within 0.30% of CAD on every axis. Accuracy thresholds are 10% of each diameter: cube 8.66 mm, bowl 16.20 mm, bottle 19.65 mm.
@@ -319,11 +422,11 @@ Every scene is recorded once as 300 frame pairs and then **replayed bit-exactly*
 | T3, not certified | `t3_bottle_over` | As above; the tool reads 88% visible because the cover's draped edge has no depth | — |
 | T4, fully hidden | `t4_cube_front`, `t4_cube_over`, `t4_bottle_over`, `t4_bottle_over_b` | One object hidden from one camera | 0%, 0%, 6%, 2% |
 
-Figure 2 shows one scene of each tier as the two cameras recorded it.
+Figure 4 shows one scene of each tier as the two cameras recorded it.
 
-![Figure 2](figures/fig_tiers.png)
+![Figure 4](figures/fig_tiers.png)
 
-*Figure 2. One scene per tier, pair 30 of each. Each object is drawn at its ground-truth pose and tinted by what that camera's depth shows at each pixel of it. The share seen is the median over the scene's 300 pairs (`visibility_from_gt`).*
+*Figure 4. One scene per tier, pair 30 of each. Each object is drawn at its ground-truth pose and tinted by what that camera's depth shows at each pixel of it. The share seen is the median over the scene's 300 pairs (`visibility_from_gt`).*
 
 Six more scenes are recorded but not in the scored set. Two have the cube **inside** the bowl (`t2_in_a`, `t2_in_b`, 10 Oct), because no scored scene held a true `in` fact. Four were shot in light too dim to score: `dim_t1_cube`, `dim_t1_bottle_gain128`, `dim_t3_bottle_over`, and the 6 October attempt at `t2_clutter_a`. All 22 scenes (6,600 pairs) are used for predicate accuracy and as regression checks. On top of these: twelve **training layouts** (7 Oct, 90 pairs each, two with the trays empty and two with the occluding card in view), and the live video takes of 10 October.
 
@@ -405,9 +508,9 @@ Depth noise is 2–4 mm at the mounted distances (§7.2). The two cameras follow
 
 Per class, the fine-tuned model's mAP@0.5:0.95 is: bottle 0.915, cube 0.894, bowl 0.995.
 
-![Figure 3](figures/fig_detector_real.png)
+![Figure 5](figures/fig_detector_real.png)
 
-*Figure 3. The three detectors on the real frames of the 16 scored scenes (the table above). Depth is what finds the cube; fine-tuning on 360 real frames tightens the boxes and lifts precision.*
+*Figure 5. The three detectors on the real frames of the 16 scored scenes (the table above). Depth is what finds the cube; fine-tuning on 360 real frames tightens the boxes and lifts precision.*
 
 - **The modality ablation reverses on real frames.** On synthetic validation, depth added +0.00076 mAP@0.5:0.95, which is nothing (Interim Report §4.4). On real frames, the same two models differ by **+0.169 mAP@0.5:0.95**, and depth is what finds the cube: AP@0.5 0.099 without it, 0.905 with it. The interim report kept the early-fusion stem for exactly this case, real depth on real frames, and the result bears that out.
 - **Dataset size** (synthetic validation, same split): 5,001 / 20,006 / 40,012 training frames give mAP@0.5:0.95 0.925 / 0.947 / 0.957. Recall saturates at 20k; box precision does not.
@@ -457,9 +560,9 @@ A camera that sees only half of the object is a different matter. In the half-hi
 | *`t2_in_a` (cube in bowl; bowl and bottle scored)* | 2.94 · 100% | 3.18 · 100% | 2.77 · 100% | 2.77 · 100% | 2.77 · 100% | 2.77 · 100% |
 | *`t2_in_b`* | 2.91 · 100% | 4.07 · 100% | 6.45 · 100% | 3.83 · 100% | 3.02 · 100% | 3.84 · 100% |
 
-![Figure 4](figures/fig_scenes.png)
+![Figure 6](figures/fig_scenes.png)
 
-*Figure 4. The per-scene table as a chart, for the 16 scored scenes. A cross is an arm that matched the object on no frame; a hollow marker, one inside a tenth of the diameter on under half of the frames. The fused star is at 4.33 mm or better in every scene. The naive average fails where the two views hold different but equivalent cube orientations, and where one view is half hidden. Gating by the pose score fails on the two half-hidden bottles. The scene marked with an asterisk is not certified.*
+*Figure 6. The per-scene table as a chart, for the 16 scored scenes. A cross is an arm that matched the object on no frame; a hollow marker, one inside a tenth of the diameter on under half of the frames. The fused star is at 4.33 mm or better in every scene. The naive average fails where the two views hold different but equivalent cube orientations, and where one view is half hidden. Gating by the pose score fails on the two half-hidden bottles. The scene marked with an asterisk is not certified.*
 
 **Over the scenes, with intervals** (`docs/results/ablation_ci.json`; all 16 scenes, each counted once):
 
@@ -474,9 +577,9 @@ A camera that sees only half of the object is a different matter. In the half-hi
 | naive + EKF | 12.70 [6.90, 19.63] | 16 | 0.69 [0.48, 0.88] |
 | **fused** | **2.76 [2.39, 3.12]** | **16** | **0.98 [0.95, 1.00]** |
 
-![Figure 5](figures/fig_arms.png)
+![Figure 7](figures/fig_arms.png)
 
-*Figure 5. Each arm over the 16 scenes, with 95% bootstrap intervals over scenes. The single cameras' ADD-S counts only the scenes where they matched anything; recall counts a miss as a failure, so a blocked camera pulls it down. Grey band: the 2–4 mm sensor floor.*
+*Figure 7. Each arm over the 16 scenes, with 95% bootstrap intervals over scenes. The single cameras' ADD-S counts only the scenes where they matched anything; recall counts a miss as a failure, so a blocked camera pulls it down. Grey band: the 2–4 mm sensor floor.*
 
 **The pre-registered comparisons**, paired scene by scene:
 
@@ -493,9 +596,9 @@ A camera that sees only half of the object is a different matter. In the half-hi
 | fused − cam_front + EKF | T2 only | +0.43 [−0.22, 1.37] | no | −0.08 [−0.24, 0.00] |
 | EKF − raw (fused − gated) | all 16 | −0.08 [−0.11, −0.04] | no: real, far under the floor | 0.00 |
 
-![Figure 6](figures/fig_differences.png)
+![Figure 8](figures/fig_differences.png)
 
-*Figure 6. The pre-registered comparisons, paired scene by scene. Green: the interval excludes zero and, for ADD-S, the difference is beyond the 2 mm floor (dark band; light band to 4 mm). Grey: not resolvable. The large gains are in finding the object and in refusing a wrong view; against the better single camera the difference sits inside the floor.*
+*Figure 8. The pre-registered comparisons, paired scene by scene. Green: the interval excludes zero and, for ADD-S, the difference is beyond the 2 mm floor (dark band; light band to 4 mm). Grey: not resolvable. The large gains are in finding the object and in refusing a wrong view; against the better single camera the difference sits inside the floor.*
 
 **Verdicts:**
 
@@ -521,15 +624,15 @@ The same pattern appeared in every case where a pose was confidently wrong:
 
 **The score is the estimator's opinion of its own answer, and it does not rank the views.** The two measurements of §6.5 do. The threshold was set on 8 October, on that day's replays with the synthetic-only detector. Then, the 10,843 estimates within 30 mm of the truth were seen through by 0.13 at most, and the four wrong ones by 0.46–0.54, 0.69–0.76, 0.85–0.94 and 0.96–1.00. One third had none of either on the wrong side. Nothing in the rule is tuned per class.
 
-Figure 7 shows the same measurement on the current replays, with the fine-tuned detector, for every per-view estimate of the 16 scenes:
+Figure 9 shows the same measurement on the current replays, with the fine-tuned detector, for every per-view estimate of the 16 scenes:
 
 - **Right estimates stay low.** Of the 11,101 within 30 mm of the truth, all but one are seen through by 0.14 at most. The exception is a half-hidden bottle estimate 25.5 mm off, at 0.35; the veto drops it.
 - **The case the veto is for is caught.** A half-hidden view (T3) produced 982 wrong estimates, and 979 of them are vetoed.
 - **Depth cannot refute a pose where the other camera sees no free space.** In the T4 scenes, 270 of the 273 wrong estimates come from the blocked camera, and only 26 are vetoed. The rest are placed where the other camera sees a surface, or no depth, rather than free space. The 225 estimates of a class that is not in the scene are not vetoed either. None of these reaches the scene graph. The wrong-class ones cannot be associated with a real object at all, and the others lie 165 mm or more from it, beyond the 150 mm association radius. So they never mix with the right view. They form objects of their own, which float above the table or sit under its top, and the support check (§9.7) removes them.
 
-![Figure 7](figures/fig_evidence.png)
+![Figure 9](figures/fig_evidence.png)
 
-*Figure 7. Every per-view estimate of the 16 scored scenes (current replays), by its position error and by how much of it the other camera sees past. Right estimates stay near zero; the half-hidden views' wrong ones sit above the veto line. Most of a blocked camera's wrong estimates are placed where the other camera sees no free space, so depth cannot refute them; the support check removes them instead.*
+*Figure 9. Every per-view estimate of the 16 scored scenes (current replays), by its position error and by how much of it the other camera sees past. Right estimates stay near zero; the half-hidden views' wrong ones sit above the veto line. Most of a blocked camera's wrong estimates are placed where the other camera sees no free space, so depth cannot refute them; the support check removes them instead.*
 
 | Effect, all 20 scenes of 5–7 Oct replayed | |
 |---|---|
@@ -566,9 +669,9 @@ The proposal also listed ADD, the corresponding-point metric. It is not reported
 | `in` | 1.000 | 1.000 | met |
 | `occluded_from` | **0.557** | 1.000 | **precision not met** |
 
-![Figure 8](figures/fig_predicates.png)
+![Figure 10](figures/fig_predicates.png)
 
-*Figure 8. Predicate precision and recall over all 22 scenes, 6,600 pairs, against the hand labels.*
+*Figure 10. Predicate precision and recall over all 22 scenes, 6,600 pairs, against the hand labels.*
 
 - The 0.6% of false `on` and `clear` facts are one duplicate bottle in `dim_t3_bottle_over`, where the fine-tuned detector now finds the bottle in both views and the two estimates are not always matched.
 - `in` is right on every pair of both `in` scenes.
@@ -611,9 +714,9 @@ On the RTX 5070 Ti, from the live take of 10 October. That take ran the syntheti
 | mAP@0.5:0.95 (synthetic-only RGB-D) | 0.957 | 0.670 | **−0.287** |
 | mAP@0.5:0.95 after fine-tuning on 360 real frames | 0.945 | 0.934 | −0.011 |
 
-![Figure 9](figures/fig_sim2real.png)
+![Figure 11](figures/fig_sim2real.png)
 
-*Figure 9. (a) More synthetic data still helps on synthetic validation. (b) The model trained on all of it still loses 0.287 on real frames; fine-tuning on 360 real frames closes most of that gap. The RGB-only model's gap is the largest.*
+*Figure 11. (a) More synthetic data still helps on synthetic validation. (b) The model trained on all of it still loses 0.287 on real frames; fine-tuning on 360 real frames closes most of that gap. The RGB-only model's gap is the largest.*
 
 - **The gap is in the box, not in the finding.** The detector trained on synthetic data still finds the objects (recall 0.889). Its boxes are loose (the bottle's mAP@0.5:0.95 is 0.455), and it takes things that are not there for objects (precision 0.719: the grey tray as a bowl, and other false objects).
 - **The input gap is light.** On 9 September, only 1% of the training images' pixels were darker than 132 (of 255); 82–93% of the real cameras' pixels were. The camera cannot close this: past about 300 exposure units it drops below 30 fps. Lamps closed it partly. The brightness floor (§6.3) handles the rest.
@@ -643,7 +746,7 @@ Because all three objects are printed in their render colours, this gap is a sta
 
 **F1. The second camera's value on this rig is coverage, not precision.** When one camera is blocked, fusion turns 0% recall into 100% at the open camera's accuracy. When both see the object, the fused pose is within a millimetre of the better camera, and that difference is under the sensor floor. That is still useful: which camera is better changes from scene to scene, and the fused output never needs to know.
 
-**F2. With two cameras, deciding which view to believe is the core problem, and the estimator's score cannot decide it.** Every confidently wrong pose in the dataset outscored the right one. A half-hidden view is wrong in a predictable way: it fits the visible part at the occluder's depth. The other camera's depth contradicts exactly that, by seeing the space behind where the object is claimed to be. A depth check took two failing scenes to 3 mm and changed nothing else. It cannot refute a pose placed where the other camera sees no free space, such as most of a blocked camera's wrong estimates; the support check removes those (Figure 7). This is the strongest argument in this project for the second camera: it does not only add a view, it can refute the first.
+**F2. With two cameras, deciding which view to believe is the core problem, and the estimator's score cannot decide it.** Every confidently wrong pose in the dataset outscored the right one. A half-hidden view is wrong in a predictable way: it fits the visible part at the occluder's depth. The other camera's depth contradicts exactly that, by seeing the space behind where the object is claimed to be. A depth check took two failing scenes to 3 mm and changed nothing else. It cannot refute a pose placed where the other camera sees no free space, such as most of a blocked camera's wrong estimates; the support check removes those (Figure 9). This is the strongest argument in this project for the second camera: it does not only add a view, it can refute the first.
 
 **F3. The gate beats the plain average, but partly for a mundane reason.** Of the 9.8 mm, much comes from symmetry: a naive average of two equivalent orientations of a cube is a rotation neither camera saw. The rest comes from refusing the half-hidden view. Both are real effects of the policy, and the eight-arm design is what keeps them apart from the filter's effect.
 
