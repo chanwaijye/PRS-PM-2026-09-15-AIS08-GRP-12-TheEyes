@@ -34,7 +34,7 @@ img, pre, tr, li, blockquote { break-inside: avoid; }
    table that did not would still break, since avoid is a preference. */
 table { break-inside: avoid; }
 thead { break-after: avoid; }
-p:has(> img) { break-inside: avoid; text-align: center; margin: 0.5em 0 1em; }
+p:has(> img) { break-inside: avoid; break-after: avoid; text-align: center; margin: 0.5em 0 1em; }
 
 /* A tall diagram shrinks to fit its page together with its heading and legend
    (A4 at 20 mm margins leaves about 255 mm). */
