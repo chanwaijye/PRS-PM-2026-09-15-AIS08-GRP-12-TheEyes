@@ -50,7 +50,7 @@ will operate on. **Interface stability is a first-class requirement.**
 | OS | Ubuntu 24.04 LTS (noble) | dual-boot, desktop |
 | GPU | RTX 5070 Ti 16 GB (Blackwell, sm_120) | see R1 below |
 | ROS2 | Jazzy | Installed, unused. Neither this project nor PM1 ships any ROS2 code (verified 2026-09-08); the earlier "PM1 is on Humble" conflict does not exist. `INTERFACES.md` §1/§6 keep the topics as the documented contract only. |
-| Compiler | GCC 12, C++17 | |
+| Compiler | GCC 13 (Ubuntu 24.04 default), C++17 | |
 | Cameras | 2 × Intel RealSense D435i | active IR stereo |
 | Edge target | Jetson Orin Nano Super | stretch goal only |
 
@@ -133,7 +133,7 @@ this one covers all four:
 | # | Category | Where |
 |---|---|---|
 | ① | Supervised / unsupervised | RGB-D YOLOv8 fine-tune (supervised). The unsupervised half, DBSCAN unknown-object segmentation, was cut and is not claimed |
-| ② | ML / DL techniques | **Multimodal RGB-D YOLOv8** (4-channel early-fusion stem, COCO stem inflation); FoundationPose transformer; ONNX/TensorRT deployment |
+| ② | ML / DL techniques | **Multimodal RGB-D YOLOv8** (4-channel early-fusion stem, COCO stem inflation); FoundationPose transformer; ONNX Runtime deployment (CUDA provider) |
 | ③ | Hybrid / ensemble | Two per-view estimators fused with confidence weighting + disagreement gating; learned frontend + classical EKF backend |
 | ④ | Intelligent sensing / sense-making | Dual RGB-D + calibration; poses → relational predicates |
 

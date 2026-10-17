@@ -1,8 +1,9 @@
 # scenegraph — relational predicate extraction
 
 Converts a fused `SceneState` into symbolic relational predicates and a PDDL
-`(:init ...)` block for PM1's planner. Written from first principles per
-`CLAUDE.md` constraint 2 — no scene-graph library.
+`(:init ...)` block for a task planner. Written from first principles per
+`CLAUDE.md` constraint 2 — no scene-graph library. PM1's planner uses a
+different vocabulary; only `clear` matches (`docs/PM1_INTEGRATION.md` §2.2).
 
 Consumes `INTERFACES.md` §5, produces §6.
 
@@ -121,12 +122,20 @@ three cubes that do not exist, to the three that are true on every pair:
 `(on red_cube_01 table_01)`. Fusion is untouched: the ADD-S tables of all six
 cube scenes are identical before and after.
 
-Two limits on that table. These are the scenes that suggested the rule, each
-with one real object; the clutter scenes are its test and are not shot yet.
-And on the one multi-object recording there is — the 2026-10-04 rehearsal,
-bowl, bottle and cube, TV on, not a scored result — reading the same decision
-off its facts keeps all 450 real object-pairs and removes 101 of 115 false
-ones: the other 14 are a false cube that landed at table height.
+These are the scenes that suggested the rule, each with one real object. Its
+test is the three clutter scenes of 2026-10-07, three real objects each, on
+the same synthetic-only detector (`scripts/scene_graph_audit.py 20261007
+--run 5`, the last run before the fine-tuned detector): all 2,700 real
+object-pairs kept, all 19 false ones removed, and 0 of 5,610 facts name an
+object that is not there. On the 2026-10-04 rehearsal — bowl, bottle and
+cube, TV on, not a scored result — reading the same decision off its facts
+keeps all 450 real object-pairs and removes 101 of 115 false ones: the other
+14 are a false cube that landed at table height.
+
+Since 2026-10-17 the shipped detector is fine-tuned on real frames and reports
+no false object in any of the 22 recorded scenes, so on the current logs the
+check has nothing left to remove. It stays on for what a detector can still
+get wrong.
 
 What it does not do: a false object that happens to land at table height is
 supported, and stays. And it asserts a static scene — an object in a gripper
@@ -140,6 +149,6 @@ a ground class or turns the check off.
 | Deterministic: same `SceneState` in → same fact set out | Met — asserted over 25 input permutations |
 | Tolerances from config, no hard-coded constants | Met |
 | Edge-case fixtures (stack, container, single-view occlusion, unknown object) | Met |
-| An object that rests on nothing is not reported (2026-10-05) | Met on the seven single-object scenes of 2026-10-05 — 1 of 2,771 false object-pairs left, 0 of 2,100 real ones lost; **not yet measured on clutter** |
-| Predicate accuracy ≥ 95% vs. hand-labelled ground truth | **Blocked** — needs the benchmark scene suite, which needs real captures |
-| Emitted PDDL parses in PM1's planner unmodified | **[VERIFY]** — only balanced-paren and vocabulary checks run here; not yet fed to PM1 |
+| An object that rests on nothing is not reported (2026-10-05) | Met — seven single-object scenes: 1 of 2,771 false object-pairs left, 0 of 2,100 real ones lost; three clutter scenes: 0 of 19 left, 0 of 2,700 lost |
+| Predicate accuracy ≥ 95% vs. hand-labelled ground truth | **Met for `on`, `clear`, `in`; not for `occluded_from` precision.** 22 scenes, 6,600 pairs (`scripts/predicate_accuracy.py`): precision / recall `on` 0.994 / 1.000, `clear` 0.995 / 1.000, `in` 1.000 / 1.000, `occluded_from` **0.557** / 1.000. Why `occluded_from` falls short: final report §9.7 |
+| Emitted PDDL parses in PM1's planner unmodified | **Not met; dropped with the PM1 integration (2026-09-08).** Only `clear` of PM1's eleven predicates matches, and PM1's parser accepts unknown facts silently, so the facts would need a mapping layer. Fused poses given to PM1 as `scene_context` planned with no code changed on either side (`docs/PM1_INTEGRATION.md`) |

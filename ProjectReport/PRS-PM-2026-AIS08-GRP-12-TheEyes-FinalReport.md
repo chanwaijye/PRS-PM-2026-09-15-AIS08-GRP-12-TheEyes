@@ -121,7 +121,7 @@ The module asks for at least three of the four PRS technique groups. *The Eyes* 
 | ③ | Hybrid / ensemble | Two independent per-view estimators fused by a gate that decides between disagreeing views on depth evidence, weighted by confidence, with symmetry handling. A learned front end (detector, pose network) feeding a classical back end (per-object error-state EKF) |
 | ④ | Intelligent sensing / sense-making | Two calibrated RGB-D cameras; depth checks of each pose against both cameras' depth images; poses turned into relational predicates, with a support check that removes objects resting on nothing |
 
-**Tools.** C++17 (all runtime code) · Python 3.11 (training and dataset tools) · Ultralytics YOLOv8 · FoundationPose (PyTorch) · ONNX Runtime C++ API · Eigen · OpenCV (ChArUco, ArUco) · yaml-cpp · SQLite · GoogleTest · NVIDIA Isaac Sim 5.1 with Omniverse Replicator · librealsense (RSUSB backend) · Ubuntu 24.04 on an RTX 5070 Ti 16 GB.
+**Tools.** C++17 (all runtime code) · Python 3.12 (training and dataset tools; Isaac Sim runs its own 3.11) · Ultralytics YOLOv8 · FoundationPose (PyTorch) · ONNX Runtime C++ API · Eigen · OpenCV (ChArUco, ArUco) · yaml-cpp · SQLite · GoogleTest · NVIDIA Isaac Sim 5.1 with Omniverse Replicator · librealsense (RSUSB backend) · Ubuntu 24.04 on an RTX 5070 Ti 16 GB.
 
 ---
 
@@ -686,7 +686,7 @@ The proposal also listed ADD, the corresponding-point metric. It is not reported
 | Facts naming an object that is not there | 5,543 of 10,690 | **3 of 5,150** |
 | ADD-S of every arm | — | identical |
 
-On clutter (7 Oct), the three real objects were reported on 2,700 of 2,700 object-pairs, and 0 of 6,210 facts named an object that was not there. The check cannot catch a false object that happens to sit at table height. The fine-tuned detector removed the remaining cases at the source: **0 false objects reported over the 22 scenes**.
+On clutter (7 Oct), with the synthetic-only detector, the three real objects were reported on 2,700 of 2,700 object-pairs, the 19 false ones on none, and no fact named an object that was not there. The check cannot catch a false object that happens to sit at table height. The fine-tuned detector removed the remaining cases at the source: **0 false objects reported over the 22 scenes**.
 
 ### 9.8 Runtime
 
@@ -822,7 +822,7 @@ The proposal was submitted on 15 September 2026: `ProjectReport/PRS-PM-2026-AIS0
 
 **Requirements:**
 
-- Ubuntu 24.04, an NVIDIA GPU (developed on an RTX 5070 Ti 16 GB) and GCC 12.
+- Ubuntu 24.04, an NVIDIA GPU (developed on an RTX 5070 Ti 16 GB) and GCC 13.
 - CMake 3.22+, Eigen3, OpenCV with the aruco module, yaml-cpp, SQLite3 and GoogleTest.
 - ONNX Runtime 1.29 (GPU build).
 - librealsense 2.x built with the RSUSB backend. The DKMS package does not build on the 6.14 kernel.
