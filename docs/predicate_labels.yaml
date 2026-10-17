@@ -1,0 +1,206 @@
+_how: 'Hand labels for predicate accuracy (scripts/predicate_accuracy.py). One list of true facts per scene, by
+  class. DRAFTED from ground truth; a scene is a label only once checked: set checked: true after reading it against
+  the scene''s stills. All 22 checked by the author on 2026-10-17 ("labels ok"), with occluded_from meaning under
+  25% of the silhouette visible from that camera (proposal 7.1).'
+scenes:
+  20261005/t1_cube:
+    checked: true
+    tier: T1
+    note: room light on plus fading daylight; monitor blanked during stills and recording; stills at colour exposure
+      150
+    facts:
+    - (clear red_cube)
+    - (on red_cube table)
+  20261005/t1_cube_b:
+    checked: true
+    tier: T1
+    note: room light only (dusk); monitor blanked; second cube-alone scene, at the placement used for the cam_front
+      occlusion pair; stills shared with t4_cube_front; 18:3
+    facts:
+    - (clear red_cube)
+    - (on red_cube table)
+  20261005/t1_bottle:
+    checked: true
+    tier: T1
+    note: room light only (night); monitor blanked; stills at colour exposure 150; 19:11 extrinsics
+    facts:
+    - (clear mustard_bottle)
+    - (on mustard_bottle table)
+  20261006/t1_bottle_b:
+    checked: true
+    tier: T1
+    note: two LED lamps + room light (night); monitor blanked; stills at colour exposure 150; 22:04 extrinsics
+    facts:
+    - (clear mustard_bottle)
+    - (on mustard_bottle table)
+  20261006/t1_bottle_c:
+    checked: true
+    tier: T1
+    note: two LED lamps (80% battery) + room light (night); monitor blanked; stills at colour exposure 150; 22:47
+      extrinsics; bottle sequence restarted at 23:08, third pl
+    facts:
+    - (clear mustard_bottle)
+    - (on mustard_bottle table)
+  20261007/t2_clutter_a:
+    checked: true
+    tier: T2
+    note: 'two LED lamps + room light (night); monitor blanked; stills at colour exposure 150; cameras still since
+      22:19, to be processed on the CLOSING registration (the '
+    facts:
+    - (clear bowl)
+    - (clear mustard_bottle)
+    - (clear red_cube)
+    - (on bowl table)
+    - (on mustard_bottle table)
+    - (on red_cube table)
+  20261007/t2_clutter_b:
+    checked: true
+    tier: T2
+    note: 'two LED lamps + room light (night); monitor blanked; stills at colour exposure 150; cameras still since
+      22:19, to be processed on the CLOSING registration (the '
+    facts:
+    - (clear bowl)
+    - (clear mustard_bottle)
+    - (clear red_cube)
+    - (on bowl table)
+    - (on mustard_bottle table)
+    - (on red_cube table)
+  20261007/t2_clutter_c:
+    checked: true
+    tier: T2
+    note: 'two LED lamps + room light (night); monitor blanked; stills at colour exposure 150; cameras still since
+      22:19, to be processed on the CLOSING registration (the '
+    facts:
+    - (clear bowl)
+    - (clear mustard_bottle)
+    - (clear red_cube)
+    - (on bowl table)
+    - (on mustard_bottle table)
+    - (on red_cube table)
+  20261005/t3_cube_front:
+    checked: true
+    tier: T3
+    note: 'room light only (dusk); monitor blanked; preview: cam_front 60% visible (59% with depth), cam_over 100%;
+      stills reused from t4_cube_front (tray untouched); 18:3'
+    facts:
+    - (clear red_cube)
+    - (on red_cube table)
+  20261005/t3_cube_over:
+    checked: true
+    tier: T3
+    note: 'room light on; monitor blanked; preview: cam_over 44% visible (5% with depth), cam_front 100%; stills
+      reused from t4_cube_over (17:35, tray untouched, 17:27 ext'
+    facts:
+    - (clear red_cube)
+    - (on red_cube table)
+  20261006/t3_bottle_over:
+    checked: true
+    tier: T3
+    note: 'two LED lamps + room light (night, fading); monitor blanked; stills at colour exposure 150; 22:47 extrinsics;
+      occluder: a binder with a dark grey cloth draped o'
+    facts:
+    - (clear mustard_bottle)
+    - (on mustard_bottle table)
+  20261006/t3_bottle_over_b:
+    checked: true
+    tier: T3
+    note: 'two LED lamps (80% battery) + room light (night); monitor blanked; stills reused from t1_bottle_c (tray
+      untouched); occluder: a binder with a grey cloth over it'
+    facts:
+    - (clear mustard_bottle)
+    - (on mustard_bottle table)
+  20261005/t4_cube_front:
+    checked: true
+    tier: T4
+    note: 'room light only (dusk); monitor blanked; preview: cam_front 0% visible, cam_over 100% and detecting 15/15;
+      18:32 extrinsics for stills and recording'
+    facts:
+    - (clear red_cube)
+    - (occluded_from red_cube cam_front)
+    - (on red_cube table)
+  20261005/t4_cube_over:
+    checked: true
+    tier: T4
+    note: 'room light on; monitor blanked; stills 17:35 before the card (17:27 extrinsics valid for them); cam_front''s
+      USB controller hung at 18:13, cable replugged 18:23 '
+    facts:
+    - (clear red_cube)
+    - (occluded_from red_cube cam_over)
+    - (on red_cube table)
+  20261006/t4_bottle_over:
+    checked: true
+    tier: T4
+    note: 'two LED lamps + room light (night); monitor blanked; stills reused from t1_bottle_b (tray untouched);
+      occluder: a binder with a WHITE cloth draped over it (corr'
+    facts:
+    - (clear mustard_bottle)
+    - (occluded_from mustard_bottle cam_over)
+    - (on mustard_bottle table)
+  20261006/t4_bottle_over_b:
+    checked: true
+    tier: T4
+    note: 'two LED lamps (80% battery) + room light (night); monitor blanked; stills reused from t1_bottle_c (tray
+      untouched); occluder: a binder with a grey cloth over it'
+    facts:
+    - (clear mustard_bottle)
+    - (occluded_from mustard_bottle cam_over)
+    - (on mustard_bottle table)
+  20261010/t2_in_a:
+    checked: true
+    tier: T2
+    note: red cube INSIDE the bowl, no tray under the cube (so no ground-truth pose for it); bowl and bottle in
+      their trays; four distractors on the bare table. Predicate
+    facts:
+    - (clear bowl)
+    - (clear mustard_bottle)
+    - (clear red_cube)
+    - (in red_cube bowl)
+    - (on bowl table)
+    - (on mustard_bottle table)
+  20261010/t2_in_b:
+    checked: true
+    tier: T2
+    note: red cube INSIDE the bowl, second placement, no tray under the cube (no ground-truth pose for it); bowl
+      and bottle in their trays; four distractors on the bare t
+    facts:
+    - (clear bowl)
+    - (clear mustard_bottle)
+    - (clear red_cube)
+    - (in red_cube bowl)
+    - (on bowl table)
+    - (on mustard_bottle table)
+  20261005/dim_t1_cube:
+    checked: true
+    tier: T1
+    note: daylight, curtains drawn; monitor blanked during stills and recording; stills at pipeline exposure
+    facts:
+    - (clear red_cube)
+    - (on red_cube table)
+  20261005/dim_t1_bottle_gain128:
+    checked: true
+    tier: T1
+    note: 'room light only (night); recorded at colour gain 128 (config_gain128) because cam_over is blind to the
+      bottle at gain 64 in this light; monitor blanked; stills '
+    facts:
+    - (clear mustard_bottle)
+    - (on mustard_bottle table)
+  20261005/dim_t3_bottle_over:
+    checked: true
+    tier: T3
+    note: 'room light only (night), gain 64 as the cube set; monitor blanked; preview: cam_over 54% visible (8%
+      with depth), cam_front 100%; card on its short edge; stills'
+    facts:
+    - (clear mustard_bottle)
+    - (on mustard_bottle table)
+  20261006/t2_clutter_a:
+    checked: true
+    tier: T2
+    note: 'two LED lamps + room light (night); monitor blanked; stills at colour exposure 150; 22:47 extrinsics;
+      distractors: a white handset, a wooden block, a roll of br'
+    facts:
+    - (clear bowl)
+    - (clear mustard_bottle)
+    - (clear red_cube)
+    - (on bowl table)
+    - (on mustard_bottle table)
+    - (on red_cube table)

@@ -831,10 +831,97 @@ shipped detector). Over the 22 scenes, 9,600 ground-truth object-pairs:
   real bottle on 56 pairs — cam_front now finds it and the two views' estimates
   are not always matched. Not examined.
 
-**Not decided: whether it replaces the shipped model.** It would change every
-number in the scored tables, and the detector would no longer be
-"synthetic-only". The model file is `assets/models/yolov8_the_eyes_ft_real_v1.onnx`;
-`config/detector.yaml` still names the shipped one.
+**Adopted on 17 Oct** (the author's decision), below.
+
+## 17 Oct — the fine-tuned detector adopted; the significance test (remote, no rig)
+
+`config/detector.yaml` names `assets/models/yolov8_the_eyes_ft_real_v1.onnx`
+(sha256 in the file); the synthetic-only model stays beside it as the
+comparison. All four days reprocessed with it (`capture_day.sh process
+--force`): every scored log's latest run is at `abf5045` with the new model in
+its saved config, and its facts and ablation tables are identical to the trial
+replays of 11 Oct. Tier checks as before. The ablation tables of the old
+detector are kept in `runs/adopt_ft/before_*.ablation.log`.
+
+**The significance test of proposal §7.1** (`scripts/ablation_ci.py`; every
+number in `docs/results/ablation_ci.json`): ADD-S and recall@0.1d per arm, 95%
+bootstrap intervals resampling scenes (10,000 resamples), each scene counted
+once. Groups follow the measured tier; `t3_bottle_over` (88% visible) is kept
+out of T3. Gate + EKF ("fused") against the arms:
+
+| over the 16 scenes | ADD-S mm [95% CI] | recall@0.1d [95% CI] |
+|---|---|---|
+| fused | 2.76 [2.39, 3.12] | 0.98 [0.95, 1.00] |
+| cam_front + EKF | 3.19 [2.92, 3.51] (15 scenes) | 0.94 [0.81, 1.00] |
+| cam_over + EKF | 15.79 [3.04, 33.92] (12 scenes) | 0.60 [0.35, 0.81] |
+| naive + EKF | 12.70 [6.90, 19.63] | 0.69 [0.48, 0.88] |
+| the same, synthetic-only detector: fused | 3.04 [2.55, 3.55] | 0.98 [0.94, 1.00] |
+
+| difference, paired by scene | ADD-S mm [95% CI] | counts (CI excludes 0 and beyond the 2–4 mm floor)? | recall |
+|---|---|---|---|
+| fused − blocked view, T4 (4 scenes) | — (the blocked view matches nothing) | — | **+1.00 [1.00, 1.00], excludes 0** |
+| fused − open view, T4 | 0.00 | no | 0.00 |
+| gated − naive, all 16 | −9.81 [−16.96, −3.75] | **yes, at 2 and 4 mm** | +0.28 [0.08, 0.50], excludes 0 |
+| fused − cam_over + EKF, all 16 | −13.12 [−31.06, −0.60] | yes | +0.38 [0.14, 0.63], excludes 0 |
+| fused − cam_front + EKF, all 16 | −0.36 [−0.83, 0.08] | no | +0.05 [−0.05, 0.19] |
+| EKF − raw (fused − gated), all 16 | −0.08 [−0.11, −0.04] | no: real, under the floor | 0.00 |
+
+- **The primary result stands, with either detector:** a camera that cannot
+  see the object finds it on no frame; the fused output has it on every frame.
+- **The negative outcome stated in advance did not happen:** the gate beats the
+  plain average by 9.8 mm, beyond the sensor floor.
+- **Against the better single camera, the difference is not resolvable on this
+  rig** (cam_front is the better one: 3.19 mm against fused 2.76).
+- **The EKF's gain is real but tiny** (0.08 mm, interval clear of zero, far
+  under the floor): on still scenes there is little for a filter to do.
+- With 3–5 scenes in a tier, the scene-resampled intervals are coarse;
+  per-tier tables are in the JSON.
+
+**Predicate accuracy against hand labels** (`scripts/predicate_accuracy.py`;
+labels in `docs/predicate_labels.yaml`, drafted from ground truth and checked
+scene by scene by the author on 17 Oct): over 22 scenes, 6,600 pairs —
+
+| predicate | precision | recall |
+|---|---|---|
+| on | 0.994 | 1.000 |
+| clear | 0.995 | 1.000 |
+| in | 1.000 | 1.000 |
+| occluded_from | 0.557 | 1.000 |
+
+The 0.6% on `on` / `clear` is the duplicate bottle of `dim_t3_bottle_over`.
+`occluded_from` follows the proposal's definition (under 25% visible): on the
+three half-hidden scenes the system says the object is occluded from the camera
+whose estimate the depth check refused, and by that definition it is not.
+
+**Rotation and translation error** (`scripts/pose_error.py`; fused poses the
+scene graph reported, matched within 50 mm, the 16 scenes):
+
+| object | scenes | rotation, median of scene medians [range] | translation [range] |
+|---|---|---|---|
+| red_cube | 9 | 2.5° [1.5, 5.7] | 1.9 mm [0.9, 8.5] |
+| mustard_bottle | 10 | 3.3° [1.0, 4.3] | 2.4 mm [1.0, 3.8] |
+| bowl (tilt only) | 3 | 0.6° [0.4, 1.1] | 3.1 mm [2.0, 4.0] |
+
+The synthetic-only detector: cube 2.5° / 1.8 mm, bottle 3.9° [0.8, 10.8] / 3.0 mm,
+bowl 0.6° / 3.1 mm.
+
+**The bottle is not "read back to front"; it has no front.** Measured with no
+symmetry, the fused bottle is 171–180° from the tray's ground truth in every
+single-bottle scene with the new detector, and in 6 of 8 with the old one (right
+in the clutter scenes with both). But the YCB mesh turned half a turn about its
+upright axis is the same surface to 1.35 mm on average and 4.6 mm at worst, its
+nozzle is centred to 1.4 mm, and the printed bottle is one plain yellow. No
+sensor on this rig can tell its front from its back, and its tray seats it either
+way, so the ground truth fixes its yaw only up to 180°. Rotation error is scored
+modulo that half turn. `config/meshes.yaml` still declares the bottle
+`symmetric: false`; declaring the two-fold symmetry would change how fusion
+compares two views' orientations (it has no two-fold group yet) and is not done.
+The earlier finding "the bottle read back to front" (6 Oct, 8 Oct) is this.
+
+**Also found:** the README's build step (`cmake ..`) cannot configure a fresh
+checkout — the CMake project is `SystemCode/`. Corrected; a fresh clone then
+builds and passes all 8 test suites, with one warning (fixed:
+`test_console_panels.cpp`).
 
 ## 11–24 Oct — Taiwan (offline, or remote to the desktop)
 

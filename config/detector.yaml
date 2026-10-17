@@ -3,15 +3,22 @@
 model:
   # ONNX exported from the YOLOv8 fine-tune (training/detector/export_onnx.py).
   #
-  # PRESENT as of 2026-09-05, exported from runs/detector/rgbd_50k_v2/weights/
-  # best.pt -- the 40-epoch RGB-D run on the 50k v2 synthetic set. opset 17,
-  # fixed 1x4x640x640 input, 1x7x8400 output (4 box + 3 classes). The file is
-  # not tracked in git; regenerate with:
+  # SINCE 2026-10-17 (adopted by the author): the synthetic model fine-tuned on
+  # real frames -- runs/detector/rgbd_ft_real_v1/weights/best.pt, trained from
+  # rgbd_50k_v2 on ten of the 7 Oct layouts beside 2,000 synthetic frames
+  # (docs/OCTOBER_PLAN.md, "The detector on real captures"). opset 17, fixed
+  # 1x4x640x640 input, 1x7x8400 output (4 box + 3 classes).
+  # sha256 2c64a0cefce25b328844d247213246ec81e2d0fdd8fadacfe44b02038c9d572f
   #
   #   python training/detector/export_onnx.py \
-  #       --weights runs/detector/rgbd_50k_v2/weights/best.pt \
-  #       --imgsz 640 --out assets/models/yolov8_the_eyes.onnx
-  onnx_path: "assets/models/yolov8_the_eyes.onnx"
+  #       --weights runs/detector/rgbd_ft_real_v1/weights/best.pt \
+  #       --out assets/models/yolov8_the_eyes_ft_real_v1.onnx
+  #
+  # The synthetic-only model it replaced stays at assets/models/
+  # yolov8_the_eyes.onnx (rgbd_50k_v2, exported 2026-09-05, sha256 eb8fa51a...):
+  # every scored run made before 2026-10-17 used it, and it is the "synthetic
+  # only" arm of the sim-to-real comparison. Neither file is tracked in git.
+  onnx_path: "assets/models/yolov8_the_eyes_ft_real_v1.onnx"
   # Network input side. YOLOv8 is trained square; letterboxing preserves aspect
   # ratio and the transform is inverted when boxes are mapped back.
   input_size: 640

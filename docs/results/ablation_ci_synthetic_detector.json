@@ -1,0 +1,933 @@
+{
+ "seed": 20261017,
+ "resamples": 10000,
+ "groups": {
+  "all 16": {
+   "scenes": [
+    "20261005/t1_cube",
+    "20261005/t1_cube_b",
+    "20261005/t1_bottle",
+    "20261006/t1_bottle_b",
+    "20261006/t1_bottle_c",
+    "20261007/t2_clutter_a",
+    "20261007/t2_clutter_b",
+    "20261007/t2_clutter_c",
+    "20261005/t3_cube_front",
+    "20261005/t3_cube_over",
+    "20261006/t3_bottle_over",
+    "20261006/t3_bottle_over_b",
+    "20261005/t4_cube_front",
+    "20261005/t4_cube_over",
+    "20261006/t4_bottle_over",
+    "20261006/t4_bottle_over_b"
+   ],
+   "arms": {
+    "cam_front": {
+     "adds": 3.287333333333334,
+     "adds_ci": [
+      2.972666666666668,
+      3.6659999999999995
+     ],
+     "scenes_matched": 15,
+     "recall": 0.9228500000000001,
+     "recall_ci": [
+      0.7836125,
+      1.0
+     ]
+    },
+    "cam_over": {
+     "adds": 13.509166666666665,
+     "adds_ci": [
+      3.394958333333333,
+      30.41335416666667
+     ],
+     "scenes_matched": 12,
+     "recall": 0.59195,
+     "recall_ci": [
+      0.35416875000000003,
+      0.8115375
+     ]
+    },
+    "naive": {
+     "adds": 12.634374999999999,
+     "adds_ci": [
+      7.451796874999999,
+      18.90878125
+     ],
+     "scenes_matched": 16,
+     "recall": 0.638475,
+     "recall_ci": [
+      0.43,
+      0.8370875
+     ]
+    },
+    "gated": {
+     "adds": 3.1243749999999997,
+     "adds_ci": [
+      2.66,
+      3.6331249999999997
+     ],
+     "scenes_matched": 16,
+     "recall": 0.9820125,
+     "recall_ci": [
+      0.9460375000000001,
+      1.0
+     ]
+    },
+    "cam_front+ekf": {
+     "adds": 3.246,
+     "adds_ci": [
+      2.9246666666666665,
+      3.6226833333333333
+     ],
+     "scenes_matched": 15,
+     "recall": 0.9228500000000001,
+     "recall_ci": [
+      0.7836125,
+      1.0
+     ]
+    },
+    "cam_over+ekf": {
+     "adds": 13.388333333333334,
+     "adds_ci": [
+      3.2641458333333335,
+      30.16695833333333
+     ],
+     "scenes_matched": 12,
+     "recall": 0.59445,
+     "recall_ci": [
+      0.35416875000000003,
+      0.8123625
+     ]
+    },
+    "naive+ekf": {
+     "adds": 12.367500000000001,
+     "adds_ci": [
+      7.436859374999999,
+      18.266906249999998
+     ],
+     "scenes_matched": 16,
+     "recall": 0.63500625,
+     "recall_ci": [
+      0.41707640625000003,
+      0.83354375
+     ]
+    },
+    "fused": {
+     "adds": 3.0381250000000004,
+     "adds_ci": [
+      2.54875,
+      3.551265625
+     ],
+     "scenes_matched": 16,
+     "recall": 0.9792375,
+     "recall_ci": [
+      0.9377125,
+      1.0
+     ]
+    }
+   },
+   "differences": {
+    "fused \u2212 cam_front+ekf": {
+     "adds": -0.13066666666666665,
+     "adds_ci": [
+      -0.6513666666666668,
+      0.4233333333333333
+     ],
+     "n": 15,
+     "recall": 0.05638749999999999,
+     "recall_ci": [
+      -0.018750000000000017,
+      0.18770625
+     ],
+     "n_recall": 16
+    },
+    "fused \u2212 cam_over+ekf": {
+     "adds": -10.343333333333332,
+     "adds_ci": [
+      -25.573354166666668,
+      -0.33831250000000035
+     ],
+     "n": 12,
+     "recall": 0.3847875,
+     "recall_ci": [
+      0.14450625,
+      0.6254125
+     ],
+     "n_recall": 16
+    },
+    "gated \u2212 naive (raw)": {
+     "adds": -9.51,
+     "adds_ci": [
+      -15.92328125,
+      -4.186671875000004
+     ],
+     "n": 16,
+     "recall": 0.3435375,
+     "recall_ci": [
+      0.14208125,
+      0.56041875
+     ],
+     "n_recall": 16
+    },
+    "fused \u2212 gated (EKF \u2212 raw)": {
+     "adds": -0.08625,
+     "adds_ci": [
+      -0.13124999999999992,
+      -0.048734375000000135
+     ],
+     "n": 16,
+     "recall": -0.0027750000000000066,
+     "recall_ci": [
+      -0.00832500000000002,
+      0.0
+     ],
+     "n_recall": 16
+    }
+   }
+  },
+  "T1": {
+   "scenes": [
+    "20261005/t1_cube",
+    "20261005/t1_cube_b",
+    "20261005/t1_bottle",
+    "20261006/t1_bottle_b",
+    "20261006/t1_bottle_c"
+   ],
+   "arms": {
+    "cam_front": {
+     "adds": 3.434,
+     "adds_ci": [
+      2.8779999999999997,
+      4.23
+     ],
+     "scenes_matched": 5,
+     "recall": 0.9993400000000001,
+     "recall_ci": [
+      0.99802,
+      1.0
+     ]
+    },
+    "cam_over": {
+     "adds": 3.4159999999999995,
+     "adds_ci": [
+      2.95,
+      4.048
+     ],
+     "scenes_matched": 5,
+     "recall": 1.0,
+     "recall_ci": [
+      1.0,
+      1.0
+     ]
+    },
+    "naive": {
+     "adds": 13.225999999999999,
+     "adds_ci": [
+      6.744,
+      19.736
+     ],
+     "scenes_matched": 5,
+     "recall": 0.6,
+     "recall_ci": [
+      0.2,
+      1.0
+     ]
+    },
+    "gated": {
+     "adds": 2.934,
+     "adds_ci": [
+      1.998,
+      4.05
+     ],
+     "scenes_matched": 5,
+     "recall": 1.0,
+     "recall_ci": [
+      1.0,
+      1.0
+     ]
+    },
+    "cam_front+ekf": {
+     "adds": 3.3899999999999997,
+     "adds_ci": [
+      2.8280000000000003,
+      4.192
+     ],
+     "scenes_matched": 5,
+     "recall": 0.9993400000000001,
+     "recall_ci": [
+      0.99802,
+      1.0
+     ]
+    },
+    "cam_over+ekf": {
+     "adds": 3.3019999999999996,
+     "adds_ci": [
+      2.7779999999999996,
+      4.004
+     ],
+     "scenes_matched": 5,
+     "recall": 1.0,
+     "recall_ci": [
+      1.0,
+      1.0
+     ]
+    },
+    "naive+ekf": {
+     "adds": 13.203999999999999,
+     "adds_ci": [
+      6.736,
+      19.704
+     ],
+     "scenes_matched": 5,
+     "recall": 0.6,
+     "recall_ci": [
+      0.2,
+      1.0
+     ]
+    },
+    "fused": {
+     "adds": 2.844,
+     "adds_ci": [
+      1.8539999999999999,
+      3.9859999999999998
+     ],
+     "scenes_matched": 5,
+     "recall": 1.0,
+     "recall_ci": [
+      1.0,
+      1.0
+     ]
+    }
+   },
+   "differences": {
+    "fused \u2212 cam_front+ekf": {
+     "adds": -0.546,
+     "adds_ci": [
+      -1.034,
+      -0.06799999999999998
+     ],
+     "n": 5,
+     "recall": 0.0006599999999999939,
+     "recall_ci": [
+      0.0,
+      0.0019799999999999818
+     ],
+     "n_recall": 5
+    },
+    "fused \u2212 cam_over+ekf": {
+     "adds": -0.458,
+     "adds_ci": [
+      -1.188,
+      0.6779999999999999
+     ],
+     "n": 5,
+     "recall": 0.0,
+     "recall_ci": [
+      0.0,
+      0.0
+     ],
+     "n_recall": 5
+    },
+    "gated \u2212 naive (raw)": {
+     "adds": -10.291999999999998,
+     "adds_ci": [
+      -17.516,
+      -3.0679999999999996
+     ],
+     "n": 5,
+     "recall": 0.4,
+     "recall_ci": [
+      0.0,
+      0.8
+     ],
+     "n_recall": 5
+    },
+    "fused \u2212 gated (EKF \u2212 raw)": {
+     "adds": -0.09000000000000012,
+     "adds_ci": [
+      -0.15800000000000008,
+      -0.028000000000000202
+     ],
+     "n": 5,
+     "recall": 0.0,
+     "recall_ci": [
+      0.0,
+      0.0
+     ],
+     "n_recall": 5
+    }
+   }
+  },
+  "T2": {
+   "scenes": [
+    "20261007/t2_clutter_a",
+    "20261007/t2_clutter_b",
+    "20261007/t2_clutter_c"
+   ],
+   "arms": {
+    "cam_front": {
+     "adds": 3.0,
+     "adds_ci": [
+      2.68,
+      3.25
+     ],
+     "scenes_matched": 3,
+     "recall": 0.9229666666666666,
+     "recall_ci": [
+      0.7689,
+      1.0
+     ]
+    },
+    "cam_over": {
+     "adds": 4.873333333333334,
+     "adds_ci": [
+      3.8699999999999997,
+      6.41
+     ],
+     "scenes_matched": 3,
+     "recall": 0.8748333333333332,
+     "recall_ci": [
+      0.6667,
+      1.0
+     ]
+    },
+    "naive": {
+     "adds": 10.183333333333334,
+     "adds_ci": [
+      6.94,
+      11.92
+     ],
+     "scenes_matched": 3,
+     "recall": 0.6674333333333333,
+     "recall_ci": [
+      0.6667,
+      0.6689000000000002
+     ]
+    },
+    "gated": {
+     "adds": 4.123333333333333,
+     "adds_ci": [
+      3.51,
+      5.33
+     ],
+     "scenes_matched": 3,
+     "recall": 0.9040666666666667,
+     "recall_ci": [
+      0.7122,
+      1.0
+     ]
+    },
+    "cam_front+ekf": {
+     "adds": 2.983333333333333,
+     "adds_ci": [
+      2.63,
+      3.25
+     ],
+     "scenes_matched": 3,
+     "recall": 0.9229666666666666,
+     "recall_ci": [
+      0.7689,
+      1.0
+     ]
+    },
+    "cam_over+ekf": {
+     "adds": 4.723333333333333,
+     "adds_ci": [
+      3.7999999999999994,
+      6.39
+     ],
+     "scenes_matched": 3,
+     "recall": 0.8881666666666667,
+     "recall_ci": [
+      0.6667,
+      1.0
+     ]
+    },
+    "naive+ekf": {
+     "adds": 10.0,
+     "adds_ci": [
+      7.0,
+      11.68
+     ],
+     "scenes_matched": 3,
+     "recall": 0.6667,
+     "recall_ci": [
+      0.6667,
+      0.6667
+     ]
+    },
+    "fused": {
+     "adds": 4.056666666666667,
+     "adds_ci": [
+      3.34,
+      5.33
+     ],
+     "scenes_matched": 3,
+     "recall": 0.8892666666666665,
+     "recall_ci": [
+      0.6678000000000001,
+      1.0
+     ]
+    }
+   },
+   "differences": {
+    "fused \u2212 cam_front+ekf": {
+     "adds": 1.0733333333333335,
+     "adds_ci": [
+      0.25,
+      2.7000000000000006
+     ],
+     "n": 3,
+     "recall": -0.03370000000000003,
+     "recall_ci": [
+      -0.10110000000000008,
+      0.0
+     ],
+     "n_recall": 3
+    },
+    "fused \u2212 cam_over+ekf": {
+     "adds": -0.6666666666666665,
+     "adds_ci": [
+      -1.0599999999999996,
+      -0.2999999999999998
+     ],
+     "n": 3,
+     "recall": 0.0010999999999999899,
+     "recall_ci": [
+      0.0,
+      0.0021999999999999797
+     ],
+     "n_recall": 3
+    },
+    "gated \u2212 naive (raw)": {
+     "adds": -6.06,
+     "adds_ci": [
+      -8.41,
+      -1.6100000000000003
+     ],
+     "n": 3,
+     "recall": 0.23663333333333336,
+     "recall_ci": [
+      0.045500000000000096,
+      0.33330000000000004
+     ],
+     "n_recall": 3
+    },
+    "fused \u2212 gated (EKF \u2212 raw)": {
+     "adds": -0.06666666666666658,
+     "adds_ci": [
+      -0.18999999999999995,
+      0.0
+     ],
+     "n": 3,
+     "recall": -0.014800000000000035,
+     "recall_ci": [
+      -0.044400000000000106,
+      0.0
+     ],
+     "n_recall": 3
+    }
+   }
+  },
+  "T3": {
+   "scenes": [
+    "20261005/t3_cube_front",
+    "20261005/t3_cube_over",
+    "20261006/t3_bottle_over_b"
+   ],
+   "arms": {
+    "cam_front": {
+     "adds": 3.34,
+     "adds_ci": [
+      2.34,
+      4.55
+     ],
+     "scenes_matched": 3,
+     "recall": 1.0,
+     "recall_ci": [
+      1.0,
+      1.0
+     ]
+    },
+    "cam_over": {
+     "adds": 19.029999999999998,
+     "adds_ci": [
+      3.01,
+      35.05
+     ],
+     "scenes_matched": 2,
+     "recall": 0.28223333333333334,
+     "recall_ci": [
+      0.0,
+      0.8466999999999999
+     ]
+    },
+    "naive": {
+     "adds": 15.223333333333334,
+     "adds_ci": [
+      2.34,
+      22.709999999999997
+     ],
+     "scenes_matched": 3,
+     "recall": 0.40443333333333337,
+     "recall_ci": [
+      0.06,
+      1.0
+     ]
+    },
+    "gated": {
+     "adds": 2.5966666666666667,
+     "adds_ci": [
+      2.32,
+      3.1300000000000003
+     ],
+     "scenes_matched": 3,
+     "recall": 1.0,
+     "recall_ci": [
+      1.0,
+      1.0
+     ]
+    },
+    "cam_front+ekf": {
+     "adds": 3.276666666666667,
+     "adds_ci": [
+      2.26,
+      4.47
+     ],
+     "scenes_matched": 3,
+     "recall": 1.0,
+     "recall_ci": [
+      1.0,
+      1.0
+     ]
+    },
+    "cam_over+ekf": {
+     "adds": 18.925,
+     "adds_ci": [
+      2.86,
+      34.99
+     ],
+     "scenes_matched": 2,
+     "recall": 0.28223333333333334,
+     "recall_ci": [
+      0.0,
+      0.8466999999999999
+     ]
+    },
+    "naive+ekf": {
+     "adds": 15.083333333333334,
+     "adds_ci": [
+      2.26,
+      22.399999999999995
+     ],
+     "scenes_matched": 3,
+     "recall": 0.3866666666666667,
+     "recall_ci": [
+      0.0032999999999999995,
+      1.0
+     ]
+    },
+    "fused": {
+     "adds": 2.4599999999999995,
+     "adds_ci": [
+      2.02,
+      3.1
+     ],
+     "scenes_matched": 3,
+     "recall": 1.0,
+     "recall_ci": [
+      1.0,
+      1.0
+     ]
+    }
+   },
+   "differences": {
+    "fused \u2212 cam_front+ekf": {
+     "adds": -0.8166666666666665,
+     "adds_ci": [
+      -2.4499999999999997,
+      0.0
+     ],
+     "n": 3,
+     "recall": 0.0,
+     "recall_ci": [
+      0.0,
+      0.0
+     ],
+     "n_recall": 3
+    },
+    "fused \u2212 cam_over+ekf": {
+     "adds": -16.365000000000002,
+     "adds_ci": [
+      -31.89,
+      -0.8399999999999999
+     ],
+     "n": 2,
+     "recall": 0.7177666666666666,
+     "recall_ci": [
+      0.1533,
+      1.0
+     ],
+     "n_recall": 3
+    },
+    "gated \u2212 naive (raw)": {
+     "adds": -12.626666666666667,
+     "adds_ci": [
+      -20.39,
+      0.0
+     ],
+     "n": 3,
+     "recall": 0.5955666666666667,
+     "recall_ci": [
+      0.0,
+      0.94
+     ],
+     "n_recall": 3
+    },
+    "fused \u2212 gated (EKF \u2212 raw)": {
+     "adds": -0.13666666666666658,
+     "adds_ci": [
+      -0.2999999999999998,
+      -0.029999999999999805
+     ],
+     "n": 3,
+     "recall": 0.0,
+     "recall_ci": [
+      0.0,
+      0.0
+     ],
+     "n_recall": 3
+    },
+    "fused \u2212 blocked view": {
+     "adds": -17.17,
+     "adds_ci": [
+      -31.89,
+      -2.4499999999999997
+     ],
+     "n": 2,
+     "recall": 0.6666666666666666,
+     "recall_ci": [
+      0.0,
+      1.0
+     ],
+     "n_recall": 3
+    },
+    "fused \u2212 open view": {
+     "adds": -0.27999999999999997,
+     "adds_ci": [
+      -0.8399999999999999,
+      0.0
+     ],
+     "n": 3,
+     "recall": 0.0511,
+     "recall_ci": [
+      0.0,
+      0.1533
+     ],
+     "n_recall": 3
+    }
+   }
+  },
+  "T4": {
+   "scenes": [
+    "20261005/t4_cube_front",
+    "20261005/t4_cube_over",
+    "20261006/t4_bottle_over",
+    "20261006/t4_bottle_over_b"
+   ],
+   "arms": {
+    "cam_front": {
+     "adds": 3.3166666666666664,
+     "adds_ci": [
+      2.93,
+      4.0
+     ],
+     "scenes_matched": 3,
+     "recall": 0.75,
+     "recall_ci": [
+      0.25,
+      1.0
+     ]
+    },
+    "cam_over": {
+     "adds": 2.04,
+     "adds_ci": [
+      2.04,
+      2.04
+     ],
+     "scenes_matched": 1,
+     "recall": 0.25,
+     "recall_ci": [
+      0.0,
+      0.75
+     ]
+    },
+    "naive": {
+     "adds": 2.9975,
+     "adds_ci": [
+      2.285,
+      3.7325
+     ],
+     "scenes_matched": 4,
+     "recall": 1.0,
+     "recall_ci": [
+      1.0,
+      1.0
+     ]
+    },
+    "gated": {
+     "adds": 2.9975,
+     "adds_ci": [
+      2.285,
+      3.7325
+     ],
+     "scenes_matched": 4,
+     "recall": 1.0,
+     "recall_ci": [
+      1.0,
+      1.0
+     ]
+    },
+    "cam_front+ekf": {
+     "adds": 3.27,
+     "adds_ci": [
+      2.89,
+      3.9500000000000006
+     ],
+     "scenes_matched": 3,
+     "recall": 0.75,
+     "recall_ci": [
+      0.25,
+      1.0
+     ]
+    },
+    "cam_over+ekf": {
+     "adds": 1.88,
+     "adds_ci": [
+      1.88,
+      1.88
+     ],
+     "scenes_matched": 1,
+     "recall": 0.25,
+     "recall_ci": [
+      0.0,
+      0.75
+     ]
+    },
+    "naive+ekf": {
+     "adds": 2.9225000000000003,
+     "adds_ci": [
+      2.1525,
+      3.6850000000000005
+     ],
+     "scenes_matched": 4,
+     "recall": 1.0,
+     "recall_ci": [
+      1.0,
+      1.0
+     ]
+    },
+    "fused": {
+     "adds": 2.9225000000000003,
+     "adds_ci": [
+      2.1525,
+      3.6850000000000005
+     ],
+     "scenes_matched": 4,
+     "recall": 1.0,
+     "recall_ci": [
+      1.0,
+      1.0
+     ]
+    }
+   },
+   "differences": {
+    "fused \u2212 cam_front+ekf": {
+     "adds": 0.0,
+     "adds_ci": [
+      0.0,
+      0.0
+     ],
+     "n": 3,
+     "recall": 0.25,
+     "recall_ci": [
+      0.0,
+      0.75
+     ],
+     "n_recall": 4
+    },
+    "fused \u2212 cam_over+ekf": {
+     "adds": 0.0,
+     "adds_ci": [
+      0.0,
+      0.0
+     ],
+     "n": 1,
+     "recall": 0.75,
+     "recall_ci": [
+      0.25,
+      1.0
+     ],
+     "n_recall": 4
+    },
+    "gated \u2212 naive (raw)": {
+     "adds": 0.0,
+     "adds_ci": [
+      0.0,
+      0.0
+     ],
+     "n": 4,
+     "recall": 0.0,
+     "recall_ci": [
+      0.0,
+      0.0
+     ],
+     "n_recall": 4
+    },
+    "fused \u2212 gated (EKF \u2212 raw)": {
+     "adds": -0.07499999999999996,
+     "adds_ci": [
+      -0.13250000000000006,
+      -0.04249999999999998
+     ],
+     "n": 4,
+     "recall": 0.0,
+     "recall_ci": [
+      0.0,
+      0.0
+     ],
+     "n_recall": 4
+    },
+    "fused \u2212 blocked view": {
+     "adds": NaN,
+     "adds_ci": [
+      NaN,
+      NaN
+     ],
+     "n": 0,
+     "recall": 1.0,
+     "recall_ci": [
+      1.0,
+      1.0
+     ],
+     "n_recall": 4
+    },
+    "fused \u2212 open view": {
+     "adds": 0.0,
+     "adds_ci": [
+      0.0,
+      0.0
+     ],
+     "n": 4,
+     "recall": 0.0,
+     "recall_ci": [
+      0.0,
+      0.0
+     ],
+     "n_recall": 4
+    }
+   }
+  }
+ }
+}
