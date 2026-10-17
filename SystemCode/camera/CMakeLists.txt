@@ -36,8 +36,6 @@ target_link_libraries(the_eyes_camera
   PUBLIC the_eyes_common ${OpenCV_LIBS}
   PRIVATE yaml-cpp)
 
-target_compile_options(the_eyes_camera PRIVATE -Wall -Wextra -Wpedantic)
-
 if(THE_EYES_HAVE_REALSENSE)
   target_include_directories(the_eyes_camera PUBLIC ${REALSENSE_INCLUDE_DIR})
   target_link_libraries(the_eyes_camera PUBLIC ${REALSENSE_LIBRARY})

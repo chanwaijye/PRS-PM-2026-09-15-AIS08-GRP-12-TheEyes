@@ -41,8 +41,6 @@ target_link_libraries(the_eyes_detector
   PUBLIC the_eyes_common ${OpenCV_LIBS}
   PRIVATE yaml-cpp)
 
-target_compile_options(the_eyes_detector PRIVATE -Wall -Wextra -Wpedantic)
-
 if(THE_EYES_HAVE_ORT)
   target_include_directories(the_eyes_detector PUBLIC ${ORT_INCLUDE_DIR})
   target_link_libraries(the_eyes_detector PUBLIC ${ORT_LIBRARY})

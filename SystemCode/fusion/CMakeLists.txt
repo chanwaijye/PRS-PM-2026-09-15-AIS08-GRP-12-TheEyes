@@ -15,8 +15,6 @@ target_link_libraries(the_eyes_fusion
   PUBLIC the_eyes_common
   PRIVATE yaml-cpp)
 
-target_compile_options(the_eyes_fusion PRIVATE -Wall -Wextra -Wpedantic)
-
 if(THE_EYES_BUILD_TESTS)
   add_executable(test_fusion
     test/test_math.cpp

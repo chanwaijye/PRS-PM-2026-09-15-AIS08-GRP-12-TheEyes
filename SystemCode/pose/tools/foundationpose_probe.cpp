@@ -5,8 +5,7 @@
 // interoperate, on real RGB-D frames, producing poses that satisfy the §3
 // contract. It needs the server running:
 //
-//   ~/venvs/the-eyes-r1/bin/python SystemCode/pose/server/foundationpose_server.py \
-//       --asset-root ~/src/FoundationPose
+//   ~/venvs/the-eyes-r1/bin/python SystemCode/pose/server/foundationpose_server.py --asset-root ~/src/FoundationPose
 //
 // Usage:
 //   foundationpose_probe <mustard0_dir> [n_frames] [socket_path]

@@ -61,11 +61,13 @@ ModelRegistry Models() {
   return m;
 }
 
-const AblationRow& Row(const AblationResult& r, const std::string& label) {
+// Takes const char*, not std::string: a temporary string argument makes GCC 13
+// warn that the returned reference may dangle, though it points into `r`.
+const AblationRow& Row(const AblationResult& r, const char* label) {
   for (const AblationRow& row : r.rows) {
     if (row.label == label) return row;
   }
-  throw std::runtime_error("no ablation row labelled '" + label + "'");
+  throw std::runtime_error(std::string("no ablation row labelled '") + label + "'");
 }
 
 // --------------------------------------------------------------------------
@@ -131,7 +133,7 @@ TEST(Ablation, FusedBeatsEitherSingleViewUnderSymmetricNoise) {
   for (int i = 0; i < 120; ++i) {
     AblationFrame f;
     f.stamp_ns = static_cast<uint64_t>(i) * 33'000'000ULL + 1'000'000'000ULL;
-    for (const std::string& cam : {"cam_front", "cam_over"}) {
+    for (const char* cam : {"cam_front", "cam_over"}) {
       Eigen::Isometry3d measured = truth;
       measured.translation() += Eigen::Vector3d(noise(rng), noise(rng), noise(rng));
       f.estimates.push_back(Observe(ex, cam, "cube", measured));
@@ -174,7 +176,7 @@ TEST(Ablation, TheFilterAndThePolicyAreNotConfounded) {
   for (int i = 0; i < 120; ++i) {
     AblationFrame f;
     f.stamp_ns = static_cast<uint64_t>(i) * 33'000'000ULL + 1'000'000'000ULL;
-    for (const std::string& cam : {"cam_front", "cam_over"}) {
+    for (const char* cam : {"cam_front", "cam_over"}) {
       Eigen::Isometry3d measured = truth;
       measured.translation() += Eigen::Vector3d(noise(rng), noise(rng), noise(rng));
       f.estimates.push_back(Observe(ex, cam, "cube", measured));

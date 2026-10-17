@@ -9,8 +9,6 @@ target_link_libraries(the_eyes_scenegraph
   PUBLIC the_eyes_common
   PRIVATE yaml-cpp)
 
-target_compile_options(the_eyes_scenegraph PRIVATE -Wall -Wextra -Wpedantic)
-
 if(THE_EYES_BUILD_TESTS)
   add_executable(test_scenegraph
     test/test_predicates.cpp

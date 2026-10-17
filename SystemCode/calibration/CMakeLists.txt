@@ -33,8 +33,6 @@ target_link_libraries(the_eyes_calibration
   PUBLIC the_eyes_common ${OpenCV_LIBS}
   PRIVATE yaml-cpp)
 
-target_compile_options(the_eyes_calibration PRIVATE -Wall -Wextra -Wpedantic)
-
 if(THE_EYES_HAVE_ARUCO)
   target_link_libraries(the_eyes_calibration PUBLIC ${ARUCO_LIBRARY})
   target_compile_definitions(the_eyes_calibration PUBLIC THE_EYES_WITH_ARUCO=1)
@@ -65,4 +63,3 @@ add_executable(calibrate tools/calibrate.cpp)
 # way (calibration writes extrinsics, fusion consumes them).
 target_link_libraries(calibrate
   PRIVATE the_eyes_calibration the_eyes_camera the_eyes_fusion ${OpenCV_LIBS})
-target_compile_options(calibrate PRIVATE -Wall -Wextra -Wpedantic)

@@ -15,8 +15,6 @@ target_link_libraries(the_eyes_pose
   PUBLIC the_eyes_common ${OpenCV_LIBS}
   PRIVATE yaml-cpp)
 
-target_compile_options(the_eyes_pose PRIVATE -Wall -Wextra -Wpedantic)
-
 if(THE_EYES_BUILD_TESTS)
   add_executable(test_pose
     test/test_mesh_registry.cpp

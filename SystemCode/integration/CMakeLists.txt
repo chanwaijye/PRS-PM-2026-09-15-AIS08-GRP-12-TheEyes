@@ -8,7 +8,6 @@ if(THE_EYES_BUILD_TESTS)
   target_link_libraries(test_pipeline
     PRIVATE the_eyes_fusion the_eyes_scenegraph the_eyes_pose the_eyes_calibration
             GTest::gtest GTest::gtest_main)
-  target_compile_options(test_pipeline PRIVATE -Wall -Wextra -Wpedantic)
   add_test(NAME pipeline COMMAND test_pipeline)
 endif()
 

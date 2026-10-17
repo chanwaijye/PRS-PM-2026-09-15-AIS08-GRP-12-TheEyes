@@ -46,18 +46,14 @@ target_link_libraries(the_eyes_runtime
          the_eyes_scenegraph ${OpenCV_LIBS} Threads::Threads
   PRIVATE SQLite::SQLite3 yaml-cpp)
 
-target_compile_options(the_eyes_runtime PRIVATE -Wall -Wextra -Wpedantic)
-
 # The runner. Always built: replay, check and the mock backends need no
 # hardware; `live` reports at runtime if librealsense was absent.
 add_executable(the_eyes_run tools/the_eyes_run.cpp)
 target_link_libraries(the_eyes_run PRIVATE the_eyes_runtime)
-target_compile_options(the_eyes_run PRIVATE -Wall -Wextra -Wpedantic)
 
 # Re-scores the occlusion ablation from a metrics log once ground truth exists.
 add_executable(ablation_from_log tools/ablation_from_log.cpp)
 target_link_libraries(ablation_from_log PRIVATE the_eyes_runtime)
-target_compile_options(ablation_from_log PRIVATE -Wall -Wextra -Wpedantic)
 
 # Fills a run's ground_truth table from the ArUco trays, so ablation_from_log
 # has a yardstick. Links calibration for the marker detector -- tool level only,
@@ -65,18 +61,15 @@ target_compile_options(ablation_from_log PRIVATE -Wall -Wextra -Wpedantic)
 # their one-way layering.
 add_executable(gt_from_trays tools/gt_from_trays.cpp)
 target_link_libraries(gt_from_trays PRIVATE the_eyes_runtime the_eyes_calibration yaml-cpp)
-target_compile_options(gt_from_trays PRIVATE -Wall -Wextra -Wpedantic)
 
 # Measures how much of each object's ground-truth silhouette each camera sees,
 # which is how the proposal defines the occlusion tiers (7.1).
 add_executable(visibility_from_gt tools/visibility_from_gt.cpp)
 target_link_libraries(visibility_from_gt PRIVATE the_eyes_runtime yaml-cpp)
-target_compile_options(visibility_from_gt PRIVATE -Wall -Wextra -Wpedantic)
 
 # Fits each camera's depth scale against a recording of the bare table.
 add_executable(depth_tare tools/depth_tare.cpp)
 target_link_libraries(depth_tare PRIVATE the_eyes_runtime)
-target_compile_options(depth_tare PRIVATE -Wall -Wextra -Wpedantic)
 
 if(THE_EYES_BUILD_TESTS)
   add_executable(test_runtime
@@ -101,7 +94,6 @@ if(THE_EYES_BUILD_TESTS)
   target_link_libraries(test_runtime
     PRIVATE the_eyes_runtime the_eyes_calibration GTest::gtest GTest::gtest_main
             yaml-cpp SQLite::SQLite3)
-  target_compile_options(test_runtime PRIVATE -Wall -Wextra -Wpedantic)
   target_compile_definitions(test_runtime PRIVATE
     THE_EYES_CONFIG_DIR="${CMAKE_SOURCE_DIR}/../config"
     THE_EYES_REPO_ROOT="${CMAKE_SOURCE_DIR}/..")
