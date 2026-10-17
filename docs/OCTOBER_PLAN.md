@@ -923,6 +923,22 @@ checkout — the CMake project is `SystemCode/`. Corrected; a fresh clone then
 builds and passes all 8 test suites, with one warning (fixed:
 `test_console_panels.cpp`).
 
+**The reshoot of the live takes, decided, and two tracking faults it exposed.**
+Scenes 1 and 6 of the video ran the synthetic-only detector, so they are
+reshot on 25 Oct (`VIDEO_PLAN.md` §5.7). Replaying the 10 Oct takes with the
+new detector first showed three ways a track's pose stays wrong while its box
+is right: a track carried from the card's print onto the real cube; an object
+registered while the hand was still setting it down; and the cube lifted out
+of the bowl faster than tracking follows (`(in red_cube bowl)` held 21 s after
+it had left). Two rules in `config/pose.yaml` register such a track again:
+its box changing more than 3× in area, and its estimate covering under 0.3 of
+its own box on 5 estimates running. With them, every `occluded_from` left in
+either take falls where something hides the object, and all 22 scored scenes
+replay pair for pair as above: no reported number moves
+(`runs/video/ft_preview/fix3/`). A rule tried first — register again after 15
+refusals by the depth check — moved four T3 scenes' per-view estimates and hid
+true occlusions, and was dropped.
+
 ## 11–24 Oct — Taiwan (offline, or remote to the desktop)
 
 Detector fine-tune and replay; real-capture mAP from ground-truth boxes;

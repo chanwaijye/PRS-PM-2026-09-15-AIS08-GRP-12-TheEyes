@@ -311,6 +311,113 @@ both ends; both cameras then need re-registering (6 and 7 Oct). The lamps fade.
 The rig does not survive a night untouched. All three are in `OCTOBER_PLAN.md`
 with what was done.
 
+### 5.7 The reshoot, Sun 25 Oct — the fine-tuned detector
+
+Decided 17 Oct. Scenes 1 and 6 are the video's only live footage, and both ran
+the synthetic-only detector of 10 Oct: the false cubes boxed on the card's
+print and the wrong `occluded_from` on the bottle belong to that day's system,
+not the one submitted. The reshoot puts the submitted system on camera.
+Nothing else is reshot: the scored scenes are the measurement and stay as
+recorded, and scene 4's rig footage does not depend on the detector.
+
+**What the new detector does on the 10 Oct recordings**, replayed 17 Oct
+(`runs/video/ft_preview/`, own databases):
+
+- `demo_live_a`: the bottle's wrong `occluded_from` is gone (500 pairs → 0).
+  But cam_front still boxes the red marks on the card's print as a cube
+  (scores 0.27–0.39), and when the card came away that track grew onto the
+  real cube (×3.56 in area). Tracking only refines the last pose, so the pose
+  fitted to the card was kept, and `(occluded_from red_cube cam_front)` stayed
+  on from 88 s to the end: 1,438 pairs, against 144 with the card in place.
+  **Fixed 17 Oct** (`config/pose.yaml`, `estimator.reregister_area_ratio: 3`):
+  a track whose box has grown or shrunk more than 3× in area since it was
+  registered is registered again. With it the fact is on 144 pairs, the
+  card's. It never fires on the detections of the 22 scored scenes, and
+  `t3_bottle_over_b` replayed with it matches its 17 Oct run pair for pair.
+- `demo_clean_a` shows two faults that fix does not reach. The new detector
+  boxes an object while the hand is still putting it down, FoundationPose
+  registers on that moving, partly hidden view (own-depth support 0.02–0.08),
+  and tracking never recovers: at 30 s all three objects stand in plain view
+  of both cameras and three `occluded_from` facts are wrong. And at 44 s the
+  cube is lifted out of the bowl faster than tracking follows: its box goes
+  with it, its pose stays in the bowl, and `(in red_cube bowl)` holds to 65 s.
+  The old detector's live take shows neither; whether it simply did not box
+  objects in the hand is not checked.
+  **Fixed 17 Oct** (`estimator.reregister_min_box_cover: 0.3`,
+  `reregister_after_off_box: 5`): a track whose estimate covers less than 0.3
+  of its own detection box on 5 estimates running is registered again, the
+  count doubling after each. Both faults leave the pose off its box (cover
+  0.19 for the bottle set down, 0.00 for the cube), while a box on the visible
+  part of a half-hidden object lies inside the pose's footprint, so an
+  occluder that stays put does not trigger it; one that moves can. Of the
+  eight registrations it forces on the clean take, five are the faults (5,
+  25, 35 twice, 44 s) and three come as the card sweeps across the bottle (56,
+  67, 78 s). The bowl, boxed together with the hand carrying it in, is caught
+  by the 3× rule.
+  Replayed with both rules (`runs/video/ft_preview/fix3/`): every
+  `occluded_from` left in `demo_clean_a` falls where the card, a hand or an
+  arm hides the object (frames checked), `(in red_cube bowl)` holds 34–44 s,
+  and `demo_live_a` is unchanged from the 3× rule alone. The 22 scored scenes
+  match their 17 Oct runs pair for pair, so no reported number moves.
+  Tried first and dropped: registering again after 15 refusals in a row by the
+  depth check. It mended the clean take as well, but moved the per-view
+  estimates of four T3 scenes, and with the card before cam_front it
+  re-registered the half-hidden bowl and bottle onto their visible parts, so
+  their true `occluded_from` went missing (patch kept in `fix3/`).
+
+**Before the rig** (remote, any day before):
+
+- [ ] `main` holds the 17 Oct re-registration rules, `build/` is built from
+      it, `config/detector.yaml` names `yolov8_the_eyes_ft_real_v1.onnx`, and
+      `config/pose.yaml` has `reregister_area_ratio: 3.0` and
+      `reregister_min_box_cover: 0.3`.
+- [ ] Disk: 155 GB free on 17 Oct; the takes below are about 16 GB.
+- [ ] Lamps charged: they fade within an hour.
+- [ ] Phone as on 10 Oct: landscape, 1080p at 30 fps, focus and exposure
+      locked, the same stand and framing (`PXL_20261010_133258777.mp4` is the
+      reference).
+
+**Order at the rig**, about an hour. The author places the objects; the
+commands are driven from the session, as on 10 Oct.
+
+| # | Step | Min |
+|---|---|---|
+| 0 | Pose server up from the repo root, then `build/runtime/the_eyes_run check --live --pose foundationpose`. The rig has stood two weeks with the cats about: a knocked camera or a loose cable shows here first. Keep its output — it is also the `check --live` of proposal §11.1 | 5 |
+| 1 | `scripts/capture_day.sh begin`: board on, re-register, empty table. A refused registration means recalibrate, and commit the new extrinsics, before any take | 12 |
+| 2 | Board off; check that neither camera moved | 3 |
+| 3 | `runs/scored/helpers/lightcheck.sh demo`: cam_over's frame mean above 45 | 3 |
+| 4 | Rehearse §5.3 once, not recorded | 5 |
+| 5 | Cold open, twice: `runs/scored/helpers/demo_take.sh demo_cold_e 60`, then `demo_cold_f`. The cube alone; the card on its stand, plain back to cam_over | 6 |
+| 6 | Long take, twice: `demo_take.sh demo_live_c 200`, then `demo_live_d`. The beats of §5.3, with the card on its stand in place of the hand, as on 10 Oct | 15 |
+| 7 | Clean take, once: `demo_take.sh demo_clean_b 150 clean` | 5 |
+| 8 | Read each take's summary (`demo_take.sh` prints it); `scripts/capture_day.sh end`; cover the rig | 8 |
+
+The monitor going dark is the start cue: count to twelve before the first tap
+(§5.0).
+
+**A take is kept when** its log names `yolov8_the_eyes_ft_real_v1.onnx` and
+its `runs` row reads `source = live`, `pose_backend = foundationpose`; every
+beat of §5.3 shows in `demo_summary.py`'s fact timeline; no `occluded_from`
+names an object that nothing hides; and the phone clip runs from the first tap
+to the last. If neither long take passes, scene 6 keeps `demo_live_a` with its
+captions, which are honest as they stand. There is no second reshoot day.
+
+**After it**, no rig needed:
+
+- Retime the kept takes: `scripts/retime_console.py runs/video/demo_live_c.avi
+  demo_live_c runs/video/retimed/demo_live_c.mp4`, and the cold open the same.
+- Script draft 4. Only these change, each read from the new take's summary,
+  and the spoken ones shown to the author before they go in: the take names in
+  the notes of scenes 1 and 6; scene 6's speed caption and its spoken "10 frame
+  pairs a second" and "about four fifths"; scene 6's bottle caption ("The third
+  fact is wrong") and card caption, each dropped if the take no longer shows
+  it; scene 11's "though the take predates the fix"; the sources for scene 6.
+  The "LIVE … the detector before fine-tuning" caption loses its last words.
+- `OCTOBER_PLAN.md` gets a 25 Oct section with the takes table, as for 10 Oct;
+  `STATUS.md`'s speed `[VERIFY]` is closed from the kept take.
+- The narration is recorded after draft 4, all twelve scenes in one sitting,
+  same room and same phone, so the voice sounds the same throughout.
+
 ---
 
 ## 6. Rendering the replays
@@ -418,7 +525,8 @@ three true facts under the new one.
 | Fri 9 Oct, evening | §5.1 |
 | Sat 10 Oct | The shoot — **done** (§5.0), and every replay clip rendered (§6). Not backed up and not copied to the laptop: the footage is on the desktop, reached by AnyDesk |
 | 11–24 Oct, Taiwan | Slides, diagram and tables; rough cut from Saturday's footage; the script checked against the report's tables as they settle |
-| 25–31 Oct | Replays already rendered on the final detector (17 Oct); the live take reshot only if the detector changed what it shows; the voice recorded; final cut; export; link in `README.md` §4; submit Sat 31 Oct |
+| Sun 25 Oct | The reshoot of scenes 1 and 6 on the fine-tuned detector (§5.7), and `check --live`. Replays were already rendered on that detector on 17 Oct |
+| 26–31 Oct | Script draft 4 from the new takes; the voice recorded; final cut; export; link in `README.md` §4; submit Sat 31 Oct |
 
 If the cut runs long, shorten in this order: scene 10's first paragraph down
 to its first sentence (the picture shows the false objects); scene 3 down to its
