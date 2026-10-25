@@ -36,11 +36,17 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 V = os.path.join(ROOT, "runs/video")
 SLIDE = os.path.join(V, "slides/png")
 OUT = os.path.join(V, "build")
+VOICE = os.path.join(V, "voice")
 FPS, WPM = 30, 130
 # The phone's first frame comes about 0.95 s after the time in its file name: measured
 # on 25 Oct by correlating phone motion with cam_front's (demo_cold_e +1.0 s,
 # demo_live_d +0.9 s), and checked frame by frame on demo_live_d's first tap.
 PHONE_LAG = 0.95
+# Pauses inside a chunk of a live scene are cut to CAP_CHUNK, so the words keep up with
+# the take; elsewhere any pause is cut to CAP_VOICE.
+CAP_CHUNK, CAP_VOICE = 0.45, 0.9
+# The narration: a gentle high-pass, then levelled to -16 LUFS, the usual target for speech online.
+VOICE_FX = "highpass=f=80,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000"
 BG = "0x14202B"
 SCRIPT = os.path.join(ROOT, "ProjectReport/presentation/video_script.txt")
 FINAL = os.path.join(V, "PRS-PM-2026-AIS08-GRP-12-TheEyes-Video.mp4")
@@ -76,7 +82,7 @@ def words(t):
 
 # ---- the recording ----------------------------------------------------------
 def voice_file(scene):
-    f = sorted(glob.glob(os.path.join(V, f"voice/scene{scene:02d}.*")))
+    f = sorted(glob.glob(os.path.join(VOICE, f"scene{scene:02d}.*")))
     return f[0] if f else None
 
 
@@ -86,10 +92,31 @@ def duration(path):
     return float(r.stdout.strip())
 
 
-def speech(path, gap=0.35, noise="-38dB"):
+def voice_track(path):
+    """The audio stream to use: a phone recorder can store two (one noise-suppressed);
+    the one with the cleaner gap between speech and silence wins."""
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
+                        "-of", "csv=p=0", path], capture_output=True, text=True, check=True)
+    n = len(r.stdout.split())
+    if n < 2:
+        return 0
+    import numpy as np
+    best = (None, 0)
+    for k in range(n):
+        raw = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-map", f"0:a:{k}", "-ac", "1", "-ar", "8000",
+                              "-f", "s16le", "-"], capture_output=True, check=True).stdout
+        a = np.frombuffer(raw, np.int16).astype(float)
+        w = a[: len(a) // 400 * 400].reshape(-1, 400).std(axis=1) + 1e-3  # 50 ms windows
+        snr = np.percentile(w, 90) / np.percentile(w, 10)
+        if best[0] is None or snr > best[0]:
+            best = (snr, k)
+    return best[1]
+
+
+def speech(path, track=0, gap=0.35, noise="-38dB"):
     """Speech segments [(start, end)], from silencedetect."""
-    r = subprocess.run(["ffmpeg", "-hide_banner", "-i", path, "-af", f"silencedetect=noise={noise}:d={gap}",
-                        "-f", "null", "-"], capture_output=True, text=True)
+    r = subprocess.run(["ffmpeg", "-hide_banner", "-i", path, "-map", f"0:a:{track}",
+                        "-af", f"silencedetect=noise={noise}:d={gap}", "-f", "null", "-"], capture_output=True, text=True)
     d = duration(path)
     starts = [float(x) for x in re.findall(r"silence_start: ([\d.]+)", r.stderr)]
     ends = [float(x) for x in re.findall(r"silence_end: ([\d.]+)", r.stderr)]
@@ -103,17 +130,38 @@ def speech(path, gap=0.35, noise="-38dB"):
     return [(a, b) for a, b in segs if b - a > 0.12]
 
 
-def group(segs, k):
-    """Joins fine speech segments into k chunks at the k-1 longest gaps."""
-    if len(segs) < k:
+def group(segs, texts):
+    """Joins fine speech segments into one chunk per text. The boundaries are chosen
+    together: each chunk's speech should last about its share of the words, and a
+    boundary should fall in a long gap. Exact, by dynamic programming."""
+    k, n = len(texts), len(segs)
+    if n < k:
         return None
-    gaps = sorted(range(len(segs) - 1), key=lambda i: segs[i + 1][0] - segs[i][1], reverse=True)[:k - 1]
-    cuts = sorted(gaps)
-    out, a = [], 0
-    for c in cuts + [len(segs) - 1]:
-        out.append((segs[a][0], segs[c][1]))
-        a = c + 1
-    return out
+    speech_s = sum(b - a for a, b in segs)
+    total_w = sum(words(t) for t in texts)
+    expect = [speech_s * words(t) / total_w for t in texts]
+    dur = lambda i, j: sum(b - a for a, b in segs[i:j + 1])        # segments i..j as one chunk
+    INF = float("inf")
+    best = [[INF] * (n + 1) for _ in range(k + 1)]
+    back = [[None] * (n + 1) for _ in range(k + 1)]
+    best[0][0] = 0.0
+    for c in range(1, k + 1):
+        for j in range(c, n + 1):                                    # chunk c ends at segment j-1
+            for i in range(c - 1, j):                                # and starts at segment i
+                if best[c - 1][i] == INF:
+                    continue
+                e = expect[c - 1]
+                cost = (dur(i, j - 1) - e) ** 2 / (e + 1.0)
+                if c > 1:
+                    cost -= 2.0 * (segs[i][0] - segs[i - 1][1])     # reward a long gap before it
+                if best[c - 1][i] + cost < best[c][j]:
+                    best[c][j], back[c][j] = best[c - 1][i] + cost, i
+    out, j = [], n
+    for c in range(k, 0, -1):
+        i = back[c][j]
+        out.append((segs[i][0], segs[j - 1][1]))
+        j = i
+    return out[::-1]
 
 
 def word_clock(segs, texts):
@@ -207,20 +255,23 @@ def concat(parts, out):
 
 
 def mux(video, audio_filter_inputs, out, dur):
-    """Muxes picture and sound; fades the scene in and out over 0.3 s."""
-    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", video]
-    for a in audio_filter_inputs["inputs"]:
-        cmd += ["-i", a]
+    """Muxes picture and sound; fades the scene in and out over 0.3 s. The sound is
+    rendered to a WAV first: one ffmpeg graph holding both the video and a split,
+    re-timed voice can stall."""
     fade = f"fade=t=in:st=0:d=0.3,fade=t=out:st={max(dur - 0.3, 0):.3f}:d=0.3"
+    wav = out + ".wav"
     if audio_filter_inputs["inputs"]:
-        fc = f"[0:v]{fade}[v];{audio_filter_inputs['graph']}"
-        cmd += ["-filter_complex", fc, "-map", "[v]", "-map", "[a]"]
+        cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo"]
+        for a in audio_filter_inputs["inputs"]:
+            cmd += ["-i", a]
+        cmd += ["-filter_complex", audio_filter_inputs["graph"], "-map", "[a]", "-t", f"{dur:.3f}", "-ac", "2",
+                "-ar", "48000", wav]
+        run(cmd)
     else:
-        cmd += ["-f", "lavfi", "-t", f"{dur:.3f}", "-i", "anullsrc=r=48000:cl=stereo",
-                "-filter_complex", f"[0:v]{fade}[v]", "-map", "[v]", "-map", f"{1}:a"]
-    cmd += ["-t", f"{dur:.3f}", "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-c:a", "aac", "-b:a", "192k",
-            "-ar", "48000", "-ac", "2", out]
-    run(cmd)
+        run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-t", f"{dur:.3f}", "-i", "anullsrc=r=48000:cl=stereo", wav])
+    run(["ffmpeg", "-y", "-loglevel", "error", "-i", video, "-i", wav, "-vf", fade, "-map", "0:v", "-map", "1:a",
+         "-t", f"{dur:.3f}", "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-c:a", "aac", "-b:a", "192k", out])
+    os.remove(wav)
 
 
 # ---- the takes ----------------------------------------------------------
@@ -301,8 +352,8 @@ VOICE_LED = {
 # picture-led scenes: the take, its phone clip, the window, and each chunk's beat
 PICTURE_LED = {
     1: dict(take="demo_cold_e", console=os.path.join(V, "retimed/demo_cold_e.mp4"),
-            phone=PH("20261025_074919969"), window=(12.0, 47.0),
-            beats=[12.5, 19.6, 23.0, 31.5], side=[], events=[]),
+            phone=PH("20261025_074919969"), window=(12.0, 41.0),
+            beats=[12.5, 18.3, 21.3, 33.5], side=[], events=[]),
     6: dict(take="demo_live_d", console=os.path.join(V, "retimed/demo_live_d.mp4"),
             phone=PH("20261025_080801961"), window=(-4.0, 135.0),
             beats=[-3.5, 8.0, 14.8, 17.5, 25.5, 37.0, 42.0, 50.5, 59.5, 68.5, 71.0, 81.0, 96.5, 101.5, 120.0, 123.5, 126.5],
@@ -322,19 +373,41 @@ def caption_band(cap, lines, boxed=False):
     return out
 
 
+def tighten(segs, cap):
+    """Lays speech segments end to end with each gap cut to at most cap seconds.
+    Returns [(src_start, src_end, offset)] and the total length."""
+    out, t = [], 0.0
+    for i, (a, b) in enumerate(segs):
+        if i:
+            t += min(a - segs[i - 1][1], cap)
+        out.append((a, b, t))
+        t += b - a
+    return out, t
+
+
+def voice_mix(track, pieces, pad=0.08):
+    """An audio graph placing each (src_start, src_end, scene_time) piece of input 1."""
+    n = len(pieces)
+    g = [f"[1:a:{track}]{VOICE_FX},asplit={n}" + "".join(f"[v{i}]" for i in range(n))]
+    for i, (a, b, t) in enumerate(pieces):
+        a2, t2 = max(a - pad, 0.0), max(t - pad, 0.0)
+        ms = int(t2 * 1000)
+        g.append(f"[v{i}]atrim={a2:.3f}:{b + pad:.3f},asetpts=PTS-STARTPTS,adelay={ms}|{ms}[a{i}]")
+    g.append("".join(f"[a{i}]" for i in range(n)) + f"amix=inputs={n}:normalize=0,apad[a]")
+    return ";".join(g)
+
+
 def build_voice_led(scene, tmp, cap, dur_out):
     texts = chunks(scene)
     vf = voice_file(scene)
     head, tail = 0.6, 0.9
     if vf:
-        segs = speech(vf)
-        a0, a1 = segs[0][0], segs[-1][1]
-        at = word_clock(segs, texts)
-        span = a1 - a0
+        track = voice_track(vf)
+        laid, span = tighten(speech(vf, track), CAP_VOICE)
+        at = word_clock([(head + o, head + o + (b - a)) for a, b, o in laid], texts)
     else:
-        a0 = 0.0
         span = sum(words(t) for t in texts) / WPM * 60 + 0.6 * (len(texts) - 1)
-        at = lambda w: span * w / max(sum(words(t) for t in texts), 1)
+        at = lambda w: head + span * w / max(sum(words(t) for t in texts), 1)
     total = head + span + tail
     joined = " ".join(texts)
     # each cue's time in the scene
@@ -346,7 +419,7 @@ def build_voice_led(scene, tmp, cap, dur_out):
         i = joined.find(key)
         if i < 0:
             raise SystemExit(f"scene {scene}: cue {key!r} is not in the script")
-        times.append(head + at(words(joined[:i])) - a0 - 0.15)
+        times.append(at(words(joined[:i])) - 0.15)
     times.append(total)
     parts = []
     for k, (key, pic) in enumerate(VOICE_LED[scene]):
@@ -361,8 +434,7 @@ def build_voice_led(scene, tmp, cap, dur_out):
     video = os.path.join(tmp, f"s{scene}_v.mp4")
     concat(parts, video)
     if vf:
-        audio = {"inputs": [vf], "graph": f"[1:a]atrim={a0:.3f}:{a1:.3f},asetpts=PTS-STARTPTS,"
-                                          f"adelay={int(head * 1000)}|{int(head * 1000)},apad[a]"}
+        audio = {"inputs": [vf], "graph": voice_mix(track, [(a, b, head + o) for a, b, o in laid])}
     else:
         audio = {"inputs": [], "graph": ""}
     mux(video, audio, dur_out, total)
@@ -377,15 +449,19 @@ def build_picture_led(scene, tmp, cap, fonts, dur_out):
         raise SystemExit(f"scene {scene}: {len(texts)} chunks in the script, {len(s['beats'])} beats")
     vf = voice_file(scene)
     if vf:
-        segs = group(speech(vf), len(texts)) or None
+        track = voice_track(vf)
+        fine = speech(vf, track)
+        segs = group(fine, texts)
         if segs is None:
             raise SystemExit(f"scene {scene}: the recording has fewer pauses than the script's {len(texts)} chunks")
+        # each chunk's own speech, its inner pauses cut short
+        laid = [tighten([x for x in fine if x[0] >= a - 1e-6 and x[1] <= b + 1e-6], CAP_CHUNK) for a, b in segs]
     else:
         segs = None
     # chunk placement on the take's clock
     place, t_free = [], w0
     for i, b in enumerate(s["beats"]):
-        d = (segs[i][1] - segs[i][0]) if segs else words(texts[i]) / WPM * 60
+        d = laid[i][1] if segs else words(texts[i]) / WPM * 60
         st = max(b, t_free + 0.25)
         place.append((st, d))
         t_free = st + d
@@ -411,13 +487,8 @@ def build_picture_led(scene, tmp, cap, fonts, dur_out):
          "-map", "[v]", "-t", f"{total:.3f}", "-r", str(FPS), "-c:v", "libx264", "-crf", "18", "-preset", "medium",
          "-an", video])
     if vf:
-        graph, labels = [], []
-        for i, ((a, b), (st, d)) in enumerate(zip(segs, place)):
-            ms = int((st - w0) * 1000)
-            graph.append(f"[1:a]atrim={a:.3f}:{b:.3f},asetpts=PTS-STARTPTS,adelay={ms}|{ms}[a{i}]")
-            labels.append(f"[a{i}]")
-        graph.append(f"{''.join(labels)}amix=inputs={len(labels)}:normalize=0,apad[a]")
-        audio = {"inputs": [vf], "graph": ";".join(graph)}
+        pieces = [(a, b, st - w0 + o) for (lay, _), (st, _) in zip(laid, place) for a, b, o in lay]
+        audio = {"inputs": [vf], "graph": voice_mix(track, pieces)}
     else:
         audio = {"inputs": [], "graph": ""}
     mux(video, audio, dur_out, total)
@@ -429,7 +500,15 @@ def main():
     ap.add_argument("--scenes", default="1,2,3,4,5,6,7,8,9,10,11,12")
     ap.add_argument("--fonts", help="directory holding IBMPlexSans-Regular.ttf and SpaceGrotesk-Bold.ttf")
     ap.add_argument("--final", action="store_true", help="join all twelve scenes into the video")
+    ap.add_argument("--voice", help="take the narration from this folder (e.g. runs/video/voice_clone, for a rehearsal cut)")
+    ap.add_argument("--out", help="write the scenes, and the joined file, here instead")
     a = ap.parse_args()
+    global VOICE, OUT, FINAL
+    if a.voice:
+        VOICE = os.path.abspath(a.voice)
+    if a.out:
+        OUT = os.path.abspath(a.out)
+        FINAL = os.path.join(OUT, "rehearsal_cut.mp4")
     os.makedirs(OUT, exist_ok=True)
     fonts = Fonts(a.fonts)
     total = 0.0
