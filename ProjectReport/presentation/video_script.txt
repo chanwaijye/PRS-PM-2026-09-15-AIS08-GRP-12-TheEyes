@@ -1,4 +1,4 @@
-The Eyes - Project video - narration script (draft 3, 2026-10-17, numbers from the fine-tuned detector)
+The Eyes - Project video - narration script (draft 4, 2026-10-25, live scenes from the 25 Oct takes; every number from the fine-tuned detector)
 
 How to read this file.
   ON SCREEN:   what the picture shows while you speak. Do not read it out.
@@ -14,7 +14,7 @@ Scene 1. One camera loses the cube.
 
 ON SCREEN: Live take, before any title. The phone's picture of the table beside the console. One cube on the table. A card slides in between the cube and one camera.
 
-NOTE: the take is demo_cold_d (10 Oct 2026, 21:50).
+NOTE: the take is demo_cold_f (25 Oct 2026, 15:55): the cube is on the table from the first frame. demo_cold_e (15:49) is the spare; there the cube is put down on camera.
 
 This is a red cube on a table, with two depth cameras looking at it.
 
@@ -67,9 +67,9 @@ The last stage turns geometry into four kinds of fact: on, in, clear, and occlud
 
 Scene 6. Live on the rig.
 
-ON SCREEN: One continuous live take. The console fills the frame; the phone's picture of the table and my hands sits in a corner, in step with it. Caption for the whole scene: LIVE on the rig, 10 Oct 2026, one take, not replayed, the detector before fine-tuning. The measured speed of the take stays on screen as a caption: 12.1 frame pairs a second over the take, 10 with three objects. Three more captions, each at its moment. When the bottle's facts appear: "The third fact is wrong: nothing hides the bottle. Fixed the next day. See: What it still gets wrong." At the first freeze: "Freeze: the pose estimator is finding a new object, about 1 second." When the card stands before the front camera: "The boxes on the card are false cubes, from its red print. The depth check refuses them."
+ON SCREEN: One continuous live take. The console fills the frame; the phone's picture of the table and my hands sits in a corner, in step with it. Caption for the whole scene: LIVE on the rig, 25 Oct 2026, one take, not replayed. The measured speed of the take stays on screen as a caption: 13.3 frame pairs a second over the take, 10 with three objects. Two more captions, each at its moment. At the first freeze: "Freeze: the pose estimator is finding a new object, about a second in each camera." At 91 s, as the card is carried past the bowl, for the 3.4 s that frame is held: "For this one frame the bowl is counted twice, and the copy reads as hidden from the front camera. See: What it still gets wrong."
 
-NOTE: the take is demo_live_a (10 Oct 2026, 21:33), and the words follow it beat by beat; the time of each beat is in docs/OCTOBER_PLAN.md, 10 Oct. The console file holds one frame for each processed pair, so it is retimed before the voice is cut to it (docs/VIDEO_PLAN.md, section 7).
+NOTE: the take is demo_live_d (25 Oct 2026, 16:08), already retimed: runs/video/retimed/demo_live_d.mp4. The words follow it beat by beat. By the take's clock: the first tap at 4.7 s; the table empty to 15 s; the bottle's facts from 16 s, the bowl's from 28 s, the cube's from 40 s; the cube in the bowl 54-67 s, and on the table again from 68 s; the card before cam_over 78-91 s, before cam_front 100-113 s; the bottle's facts gone at 123 s; the last tap at 132 s. The phone clip is PXL_20261025_080801961.mp4. The taps cannot be heard on it, so sync on the hand touching the table.
 
 Now a live run. The small picture is my phone, filming the table at the same moment as the screen. Nothing here is replayed.
 
@@ -83,7 +83,7 @@ Now the cube goes into the bowl. (pause) The fact changes from "on the table" to
 
 Watch the three counters at the bottom left: the front camera alone, the other camera alone, and the fused result. I stand a card between the cube and one camera. (pause) Its count drops. The fused count does not, and a new fact says which camera cannot see the cube. (pause)
 
-Now the other camera. (pause) Its count goes to zero, and the fused count is still three. (pause)
+Now the other camera. (pause) Its count drops, the fused count is still three, and the new fact names the front camera. (pause)
 
 I take the bottle away, (pause) and its facts go with it.
 
@@ -141,11 +141,11 @@ The other fix was at the source. I fine-tuned the detector on ten arrangements o
 
 Scene 11. What it still gets wrong.
 
-ON SCREEN: The heading "What it still gets wrong" stays up for the whole scene. One picture for each item: the third clutter scene with the cube's box; the live take's frame with the wrong fact outlined, then the predicate table; the detector table, real recordings, with and without depth.
+ON SCREEN: The heading "What it still gets wrong" stays up for the whole scene. One picture for each item: the third clutter scene with the cube's box; the live take's frame at 91 s with the second bowl and its wrong fact outlined, then the predicate table; the detector table, real recordings, with and without depth.
 
 In one of the three clutter scenes the cube, small and far from one camera, is still outside its threshold on a quarter of the frames.
 
-The occluded-from fact is the weakest. Its error in the live run is fixed, though the take predates the fix. But a half-hidden object is still reported as hidden from the camera whose estimate was thrown out, and by the definition I fixed in advance, it is not. Against hand labels, on, in and clear are 99 to 100 percent right. Occluded-from, 56 percent.
+The occluded-from fact is the weakest. In the live run, as the card passed the bowl, one camera started a second track on it, and for one frame that copy read as hidden. And a half-hidden object is still reported as hidden from the camera whose estimate was thrown out, and by the definition I fixed in advance, it is not. Against hand labels, on, in and clear are 99 to 100 percent right. Occluded-from, 56 percent.
 
 One result surprised me. On synthetic data the depth channel did not help the detector: 0.957 with it, 0.957 without. On the real recordings, without depth the cube is found one time in eight. Depth is what finds it.
 
@@ -165,8 +165,21 @@ Numbers spoken in this script, and where each one comes from
 ----------------------------------------------------------------------------
 Check each against the final report's tables before recording. Scenes 7 to 11
 are the scored scenes as replayed on 17 Oct with the fine-tuned detector
-(config/detector.yaml). Scenes 1 and 6 are the live takes of 10 Oct, which ran
-the synthetic-only detector and cannot be run again.
+(config/detector.yaml). Scenes 1 and 6 are the live takes of 25 Oct, on the
+same detector with the re-registration rules (commit 9eb524c); a live take
+cannot be run again, so its numbers are read from its own log
+(runs/runtime/<stamp>_<take>/metrics.sqlite). Record of the day:
+captures/scored/20261025/day.log and docs/OCTOBER_PLAN.md, 25 Oct.
+
+Scene 1
+  lost the cube completely      demo_cold_f: cam_over has no estimate of the
+                                cube while the card stands, 21-30 s of the take.
+  in the same place             the fused cube is reported on all 1,325 pairs; its
+                                mean position moves 3.4 mm when the card goes in
+                                (cam_front alone) and back when it comes out.
+  one new fact                  (occluded_from red_cube_01 cam_over), 275 pairs,
+                                21-30 s only; the card hides the cube in those
+                                frames (checked).
 
 Scene 4
   0.74 metres, 80 degrees       config/extrinsics.yaml as registered 2026-10-07
@@ -174,7 +187,8 @@ Scene 4
                                 with every registration.
   17 milliseconds               the two frames of a pair are at most 16.7 ms
                                 apart in every scored scene and every take
-                                (frames.skew_ms), half a frame at 30 a second.
+                                (frames.skew_ms), half a frame at 30 a second;
+                                at most 15.7 ms in the takes of 25 Oct.
                                 The sync cable is NOT claimed: it was not
                                 connected on 2026-10-10 and the author is not
                                 sure of 2026-10-07; docs/OCTOBER_PLAN.md, 10 Oct.
@@ -185,24 +199,30 @@ Scene 5
                                 validation), docs/STATUS.md.
   50 millimetres, 30 degrees    config/fusion.yaml disagreement_gate.
 Scene 6
-  10 pairs a second             demo_live_a, 2026-10-10: 90.7 ms a pair (p50)
-                                on the 281 pairs with three objects tracked in
+  10 pairs a second             demo_live_d, 2026-10-25: 91.0 ms a pair (p50)
+                                on the 458 pairs with three objects tracked in
                                 each view, which is every third camera frame.
-                                Caption: 12.1 pairs a second over the whole
-                                take, 2,231 pairs in 184.9 s.
+                                Caption: 13.3 pairs a second over the whole
+                                take, 2,598 pairs in 194.8 s.
   about four fifths             the same pairs, between pauses: pose 36.6 +
-                                35.1 ms of 90.7 ms (79%); detector 3.8 + 4.0,
-                                depth check 10.7, fusion 0.03, scene graph 0.02.
-  about a second                FoundationPose registration, median 1.09 s
-                                over the take's 29 pose calls above 0.5 s.
-  count goes to zero            card before cam_front, 73 to 88 s of the take:
-                                cam_front 0, fused 3. The detector boxes red
-                                marks on the card's print as cubes; all 165 of
-                                cam_front's estimates there are refused by the
-                                depth check.
-  the wrong fact                (occluded_from mustard_bottle_01 cam_front) on
-                                500 pairs of the take; docs/OCTOBER_PLAN.md,
-                                10 Oct.
+                                35.0 ms of 91.0 ms (79%); depth check 11.1,
+                                fusion 0.03, scene graph 0.02; the detector
+                                3.8 + 4.0 ms over the take.
+  about a second in each camera FoundationPose registration, median 1.08 s
+                                (1.06-1.17) over the take's 16 single
+                                registrations in a view; 14 freezes, 26.1 s in
+                                all. A new object both cameras see freezes the
+                                picture for about 2.2 s.
+  its count drops, fused three  card before cam_over, 81-89 s: cam_over 2
+                                estimates, cam_front 3, fused 3. Card before
+                                cam_front, 102-111 s: cam_front 2, cam_over 3,
+                                fused 3. Each card hides only the cube (frames
+                                checked).
+  the bowl counted twice        pair 1240, 91.1 s: bowl_02 (both views) and
+                                bowl_04 (cam_over only), hence
+                                (occluded_from bowl_04 cam_front), on that pair
+                                only; the frame is held 3.44 s in the retimed
+                                file while the new track registers.
 Scene 7
   a millimetre and a half       ground truth across cameras: 0.6 mm cube set,
                                 0.6 to 0.7 mm bottle set, 0.3 to 1.4 mm clutter
@@ -252,9 +272,10 @@ Scene 10
                                 the 22 scenes, synthetic-only -> fine-tuned.
 Scene 11
   a quarter of the frames       t2_clutter_c, fused 75.7% inside 0.1 d.
-  fixed now                     2026-10-11: 300 -> 0 pairs in four scored
-                                scenes, 500 -> 1 on a replay of the live take;
-                                docs/OCTOBER_PLAN.md, "The occluded_from fix".
+  one frame, the copy hidden    demo_live_d pair 1240 (scene 6, above). The
+                                same one-pair duplicate is on 1 pair of
+                                demo_live_c and 3 of demo_live_e; final report
+                                section 11.
   half-hidden reported hidden   t3_cube_over, t3_bottle_over(_b): the fact on
                                 about 300 pairs each; under 25% visible is the
                                 definition (proposal 7.1), these are 44-88%.

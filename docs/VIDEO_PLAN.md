@@ -418,6 +418,30 @@ captions, which are honest as they stand. There is no second reshoot day.
 - The narration is recorded after draft 4, all twelve scenes in one sitting,
   same room and same phone, so the voice sounds the same throughout.
 
+**Shot, Sun 25 Oct.** The record with every number is `docs/OCTOBER_PLAN.md`,
+25 Oct, and `captures/scored/20261025/day.log`. The rig was recalibrated first
+(9eb524c) and held to the end. The takes are on the bare table, with no trays.
+
+| Use | Take | Files |
+|---|---|---|
+| Scene 1 | **`demo_cold_f`**, the cube alone, the card before cam_over. 1,325 pairs, 24.2 pairs/s. Spare: `demo_cold_e` (24.8 pairs/s; the cube is put down on camera) | `runs/video/retimed/demo_cold_f.mp4`, phone `PXL_20261025_075511615.mp4`; `demo_cold_e.mp4`, `PXL_20261025_074919969.mp4` |
+| Scene 6 | **`demo_live_d`**, the whole sequence of §5.3. 2,598 pairs in 194.8 s, 13.3 pairs/s | `runs/video/retimed/demo_live_d.mp4`, phone `PXL_20261025_080801961.mp4` |
+| Scene 11 | the frame at 91 s of `demo_live_d` (the bowl counted twice) | as scene 6 |
+| Spares | `demo_live_c` (a false `occluded_from` on 54 pairs: a pose registered on the hand), `demo_live_e` (3 one-pair duplicates), `demo_clean_b` (150 s, recording only; its replay has the cam_front bottle wrong on 657 pairs) | `runs/video/`, `captures/runtime/` |
+
+- **The keep rule, strictly, passed no long take.** `demo_live_d` has one pair
+  on which an `occluded_from` names a copy of the bowl that nothing hides. It
+  is kept in place of the fallback `demo_live_a`, because `demo_live_a` runs
+  the detector this reshoot was made to replace. The pair is captioned in
+  scene 6 and named in scene 11.
+- **Another take would have been a lottery.** The fault comes from a hand
+  passing an object (final report §11). The rehearsal and takes c, d and e had
+  0, 1, 1 and 3 such pairs.
+- **The taps cannot be heard** on the phone. The edit syncs on the hand
+  touching the table.
+- **The console's scene-graph panel** draws the `in` edge from the cube to the
+  bowl through the bottle's node. Caption it if the narration points there.
+
 ---
 
 ## 6. Rendering the replays

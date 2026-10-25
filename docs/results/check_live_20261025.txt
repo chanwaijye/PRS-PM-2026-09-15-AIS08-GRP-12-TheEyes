@@ -1,0 +1,11 @@
+=== startup checks (/home/wjchan/projects/PRS-PM-2026-09-15-AIS08-GRP-12-TheEyes/config) ===
+  support check: on -- an object that rests on nothing (ground: table) is left out of the scene graph
+  extrinsics pass the reprojection gate (cam_front 0.28456 px cam_over 0.3146 px <= 0.5 px)
+  configs: 2 cameras, 3 mesh classes, 1 static objects, world frame 'table_origin'
+  detector: onnx model /home/wjchan/projects/PRS-PM-2026-09-15-AIS08-GRP-12-TheEyes/assets/models/yolov8_the_eyes_ft_real_v1.onnx, provider 'cuda' (cpu fallback allowed)
+  pose: FoundationPose server reachable at /tmp/the_eyes_foundationpose.sock, timeout 15000 ms
+  devices: Attached RealSense devices (2)
+  devices:   261722073945  RealSense D435I  fw 5.17.3.10  USB 3.2
+  devices:   261822074567  RealSense D435I  fw 5.17.3.10  USB 3.2
+  devices: RESULT: all configured cameras present and on adequate links
+  startup checks: OK (0 failure(s), 0 warning(s))

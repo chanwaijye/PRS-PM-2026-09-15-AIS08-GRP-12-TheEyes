@@ -128,6 +128,12 @@ pair, FoundationPose is essentially the whole budget; real ADD-S via
 `ablation_from_log` once the ArUco trays exist and a tool fills
 `ground_truth`.
 
+**Both closed.** Speed, 2026-10-25, live on the fine-tuned detector
+(`demo_live_d`): with three objects tracked in each view, 91.0 ms per pair
+(p50), 10 pairs/s between registrations; 13.3 pairs/s over the whole take,
+counting 14 registration pauses, 26.1 s in all, at 1.06–1.17 s per registration per view (final report §9.8).
+Real ADD-S: measured on the scored scenes of 5–7 Oct (final report §9.4).
+
 ---
 
 ## Detector: RGB-D, trained, deployed — DONE 2026-09-05

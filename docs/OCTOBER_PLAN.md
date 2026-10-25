@@ -956,3 +956,46 @@ takes (`VIDEO_PLAN.md` §5.0).
 
 Re-register; reshoot the live demo if the detector changed; edit the video;
 finish the report; ZIP; submit by Sat 31 Oct.
+
+### Sun 25 Oct — the reshoot (12:36–16:36)
+
+Every take is on the fine-tuned detector with `--pose foundationpose`, on the
+bare table without trays, at commit 9eb524c. The full record is
+`captures/scored/20261025/day.log`.
+
+- **The rig had moved.** Re-registration against the 10 Oct extrinsics was
+  refused (8.58 mm / 0.33°). A burst of four pairs repeated to 0.1 mm per
+  camera, so the cameras had been knocked; the mounts are not loose.
+  - Recalibrated with `--factory`: RMSE 0.252 / 0.309 px, round trip
+    0.07 / 0.17 / 0.20 mm; committed as 9eb524c.
+  - The closing re-registration passed: 2.07 mm / 0.046°.
+  - The shared region was not recomputed and depth was not re-tared, because
+    no scored scene was shot.
+- **Rehearsal:** every beat produced its facts on the bare table, so there are
+  no trays. Registration pauses ran 2–5 s, not the ~1 s planned for: a new
+  object seen by both views registers in each.
+- **Cold open:** `demo_cold_e` and `demo_cold_f` are both clean.
+  `(occluded_from red_cube cam_over)` holds only while the card hides the cube
+  (frames checked). They ran at 24.8 and 24.2 pairs/s.
+- **Long take:** `demo_live_d` is kept for scene 6. It ran at 13.3 pairs/s,
+  and every beat appears in its facts.
+  - One pair (91 s) holds the bowl twice and gives a false
+    `(occluded_from bowl_04 cam_front)`. The pair registering it is held
+    3.4 s in the retimed file.
+  - `demo_live_c` reads a false cube-in-bowl `occluded_from` on 54 pairs: the
+    pose registered on the hand. It is a candidate for scene 11.
+  - `demo_live_e` has three one-pair duplicates.
+- **Clean take:** `demo_clean_b` (150 s) has 4,500 pairs, none dropped.
+  - Its replay has the cam_front bottle wrong from 45 to 131 s, with 657 false
+    `occluded_from` pairs.
+  - No scene needs it.
+- **Both faults appear only with a hand in view**, and no scored scene has one.
+  They are now in final report §11.
+- **Live speed** (final report §9.8): 30 / 30 / 15 / 10 pairs/s between
+  registrations with 0–3 objects per view; 14 pauses, 26.1 s of the 194.8.
+- **Phone:** `runs/video/phone/PXL_20261025_*.mp4`, named in UTC. The taps
+  cannot be heard, so the edit syncs on the hand in picture.
+  `PXL_20261025_080801961` covers both of `demo_live_d`'s taps (4.7 s and
+  132.1 s on the take's clock).
+- **Retimed:** `runs/video/retimed/demo_live_d.mp4` (194.9 s),
+  `demo_cold_e.mp4` and `demo_cold_f.mp4`.

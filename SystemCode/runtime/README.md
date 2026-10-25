@@ -345,6 +345,15 @@ response to an ordinary desk and no accuracy number is claimed from these runs.
 | detector on **CUDA**, replay of the cube session, 300 inferences | p50 3.60 / 3.43 ms per view, p95 4.14 / 4.08 ms; pipeline total p50 7.13 ms with the mock pose |
 | `live` on a printed 50 mm cube, fixed boxes + FoundationPose, 150 pairs | **both views fused into one object on every pair**; per-view world poses disagree by **11 mm**; fused pose sd 0.1 mm, EKF sigma 6.6 mm; `(on red_cube_01 table_01)` on all 150 pairs; 22.3 pairs/s, p50 23.6 ms per pair, pose p50 12.3 / 11.2 ms per view |
 
+**Measured live, as submitted (2026-10-25).** Fine-tuned RGB-D detector on CUDA
+with FoundationPose and the 17 Oct re-registration rules, the three printed objects
+placed, moved and hidden by hand (`demo_live_d`, 2,598 pairs in 194.8 s):
+13.3 pairs/s over the take; between registrations 30 / 30 / 15 / 10 pairs/s
+with 0 / 1 / 2 / 3 objects tracked in each view (p50 7.6 / 33.4 / 63.4 /
+91.0 ms per pair; the one-object figure is from that day's two cold-open
+takes); detector p50 3.8 / 4.0 ms per view; 14 registration pauses,
+26.1 s in all, at 1.06–1.17 s per registration per view. Final report §9.8.
+
 Track churn is visible in the logs (`red_cube_01` … `red_cube_05` over 100
 pairs with the mock pose): the synthetic-only detector flickers on real desk
 clutter at scores 0.39–0.54, each flicker is a new IoU track, and each new

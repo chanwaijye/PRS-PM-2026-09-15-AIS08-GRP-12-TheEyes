@@ -428,7 +428,7 @@ Figure 4 shows one scene of each tier as the two cameras recorded it.
 
 *Figure 4. One scene per tier, pair 30 of each. Each object is drawn at its ground-truth pose and tinted by what that camera's depth shows at each pixel of it. The share seen is the median over the scene's 300 pairs (`visibility_from_gt`).*
 
-Six more scenes are recorded but not in the scored set. Two have the cube **inside** the bowl (`t2_in_a`, `t2_in_b`, 10 Oct), because no scored scene held a true `in` fact. Four were shot in light too dim to score: `dim_t1_cube`, `dim_t1_bottle_gain128`, `dim_t3_bottle_over`, and the 6 October attempt at `t2_clutter_a`. All 22 scenes (6,600 pairs) are used for predicate accuracy and as regression checks. On top of these: twelve **training layouts** (7 Oct, 90 pairs each, two with the trays empty and two with the occluding card in view), and the live video takes of 10 October.
+Six more scenes are recorded but not in the scored set. Two have the cube **inside** the bowl (`t2_in_a`, `t2_in_b`, 10 Oct), because no scored scene held a true `in` fact. Four were shot in light too dim to score: `dim_t1_cube`, `dim_t1_bottle_gain128`, `dim_t3_bottle_over`, and the 6 October attempt at `t2_clutter_a`. All 22 scenes (6,600 pairs) are used for predicate accuracy and as regression checks. On top of these: twelve **training layouts** (7 Oct, 90 pairs each, two with the trays empty and two with the occluding card in view), and the live video takes of 10 and 25 October.
 
 **Deviations from the proposal's capture plan:**
 
@@ -484,7 +484,7 @@ Each scene carries its own extrinsics and depth correction, so a camera knocked 
 
 ### 8.4 How it was built
 
-I designed the architecture, the interfaces, the evaluation and each fix, and decided every trade-off in this report. The code, including the fusion and scene-graph modules, was written with Claude Code under my design and review (Appendix E). The order of work was: the environment and FoundationPose on the GPU (to mid July); the perception baseline (to early August); fusion, the scene graph and the cameras (to early September); the synthetic dataset and detector (September); then the real captures and evaluation (October). The rig work had to finish by 10 October, before two weeks away; everything after that was done from recordings.
+I designed the architecture, the interfaces, the evaluation and each fix, and decided every trade-off in this report. The code, including the fusion and scene-graph modules, was written with Claude Code under my design and review (Appendix E). The order of work was: the environment and FoundationPose on the GPU (to mid July); the perception baseline (to early August); fusion, the scene graph and the cameras (to early September); the synthetic dataset and detector (September); then the real captures and evaluation (October). The rig work had to finish by 10 October, before two weeks away; everything after that was done from recordings, apart from reshooting the video takes on 25 October.
 
 ---
 
@@ -690,20 +690,22 @@ On clutter (7 Oct), with the synthetic-only detector, the three real objects wer
 
 ### 9.8 Runtime
 
-On the RTX 5070 Ti, from the live take of 10 October. That take ran the synthetic-only detector, before the re-registration rules.
+On the RTX 5070 Ti, live, as submitted: the fine-tuned detector with the re-registration rules. The figures come from the long take of 25 October (`demo_live_d`, three objects placed, moved and hidden by hand). The cube-alone row comes from that day's two cold-open takes.
 
 | Objects tracked in each view | Pairs | Per pair, p50 | Rate between registrations |
 |---|---|---|---|
-| 0 | 162 | 7.5 ms | 30 pairs/s |
-| 1 | 767 | 34.0 ms | 30 pairs/s |
-| 2 | 1,308 | 63.8 ms | 15 pairs/s |
-| 3 | 281 | 90.7 ms | 10 pairs/s |
+| 0 | 458 | 7.6 ms | 30 pairs/s |
+| 1 | 1,798 | 33.4 ms | 30 pairs/s |
+| 2 | 1,216 | 63.4 ms | 15 pairs/s |
+| 3 | 458 | 91.0 ms | 10 pairs/s |
 
-- **Registration is what costs time.** Every new detection costs a FoundationPose registration of about 1.1 s in that view, and nothing is processed meanwhile. The 185 s take had 23 such pauses (37.5 s), so its overall rate was 12.1 pairs a second.
-- Because each false detection is a registration, a better detector is also a faster system. Replaying `t1_bottle`, the mean pair falls from 92 ms to 45 ms with the fine-tuned detector.
-- The detector costs 3.4–3.6 ms per view, and the depth-evidence stage 3–11 ms per pair.
+- **Registration is what costs time.** Each new detection costs a FoundationPose registration of 1.06–1.17 s in that view, and nothing is processed meanwhile. A new object that both cameras see at once costs about 2.2 s. The 195 s take had 14 such pauses (26.1 s), so its overall rate was 13.3 pairs a second.
+- The rate between registrations steps in whole camera frames, which is why it reads 30, 15 and 10.
+- **A better detector is also a faster system,** because each false detection is a registration.
+  - The long take of 10 October, on the synthetic-only detector, ran at the same rates between registrations. It had 23 pauses (37.5 s in 185 s) and 12.1 pairs a second overall. The two takes are not the same sequence, so that is not a controlled comparison.
+  - The controlled one is a replay: on `t1_bottle`, the mean pair falls from 92 ms to 45 ms with the fine-tuned detector.
+- The detector costs 3.8–4.0 ms per view (p50, live), and the depth-evidence stage 3–11 ms per pair.
 - Recording runs at 30 pairs a second with no drops.
-- `[VERIFY]` Live speed with the fine-tuned detector and the re-registration rules, from the 25 October reshoot.
 - **Jetson Orin Nano: not measured.** It was the first item in the cut order and was cut.
 
 ### 9.9 The sim-to-real gap
@@ -735,7 +737,7 @@ Because all three objects are printed in their render colours, this gap is a sta
 | Rotation and translation error | **Measured** | §9.6. ADD not reported, for the reason given there |
 | Fusion gain, occlusion suite | **Measured, significance test applied** | Recall +1.00 when a camera is blocked; gated − naive −9.81 mm; fused vs better camera not resolvable (§9.4) |
 | Predicate accuracy ≥ 95%, per predicate | **Met for `on`, `clear`, `in`; not for `occluded_from` precision** | §9.7 |
-| Runtime, RTX 5070 Ti | **Measured** | §9.8. `[VERIFY]` the fine-tuned detector, live |
+| Runtime, RTX 5070 Ti | **Measured** | Live, three objects: 10 pairs/s between registrations, 13.3 overall (§9.8) |
 | Runtime, Jetson Orin Nano | **Not measured** | Cut first in the fixed cut order |
 | Sim-to-real deltas | **Measured** | §9.9 |
 | Sensor error budget | **Measured** | 2–4 mm (§9.1) |
@@ -773,6 +775,9 @@ Because all three objects are printed in their render colours, this gap is a sta
 - **One rig, one room, one table.** The detector's test scenes share the room and cameras with its training layouts, and the clutter scenes were shot the same evening as those layouts. Nothing here measures transfer to another setting.
 - **Few scenes per tier.** With 3–5 scenes per tier, the per-tier intervals are wide. Sixteen scenes support the pooled verdicts, not fine per-tier claims.
 - **Still scenes only.** All accuracy figures are from static arrangements. The live takes show the system tracking objects moved by hand, but they carry no ground truth.
+- **A hand in view causes two faults that no scored scene meets.** Both give a false `occluded_from`. No scored scene has a hand in it, so no figure in §9 is affected. The counts are from the takes of 25 October.
+  - **A pose registered while a hand covers the object lands on the hand.** The depth check refuses that estimate, and fusion keeps the other view. The object then reads as hidden from the first view until the box-cover rule registers it again. This happened for 54 pairs in one take, and for 657 in the replay of another.
+  - **When a hand passes an object, one view can start a second track on it.** For the one pair on which that track registers, the object is reported twice. The copy seen by that view alone reads as hidden from the other. This was 1 pair in the take kept for the video, and 3 in another.
 - **Hardware sync is uncertain for the scored set** (§7.2). No accuracy figure depends on it, because nothing moves.
 - **One half-hidden scene is not certified** (`t3_bottle_over`): its cover's edge has no depth, so its tier could not be measured. It is kept out of the T3 group.
 - **Four distractors, not eight**, in clutter.
