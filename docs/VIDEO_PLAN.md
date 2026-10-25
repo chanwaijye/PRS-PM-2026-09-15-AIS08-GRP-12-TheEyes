@@ -424,7 +424,7 @@ captions, which are honest as they stand. There is no second reshoot day.
 
 | Use | Take | Files |
 |---|---|---|
-| Scene 1 | **`demo_cold_f`**, the cube alone, the card before cam_over. 1,325 pairs, 24.2 pairs/s. Spare: `demo_cold_e` (24.8 pairs/s; the cube is put down on camera) | `runs/video/retimed/demo_cold_f.mp4`, phone `PXL_20261025_075511615.mp4`; `demo_cold_e.mp4`, `PXL_20261025_074919969.mp4` |
+| Scene 1 | **`demo_cold_e`**, the cube alone, the card before cam_over 23–34 s. 1,359 pairs, 24.8 pairs/s. Chosen over `demo_cold_f` (card 21–30 s) because the third paragraph needs the card to stand longer. Spare: `demo_cold_f` | `runs/video/retimed/demo_cold_e.mp4`, phone `PXL_20261025_074919969.mp4`; `demo_cold_f.mp4`, `PXL_20261025_075511615.mp4` |
 | Scene 6 | **`demo_live_d`**, the whole sequence of §5.3. 2,598 pairs in 194.8 s, 13.3 pairs/s | `runs/video/retimed/demo_live_d.mp4`, phone `PXL_20261025_080801961.mp4` |
 | Scene 11 | the frame at 91 s of `demo_live_d` (the bowl counted twice) | as scene 6 |
 | Spares | `demo_live_c` (a false `occluded_from` on 54 pairs: a pose registered on the hand), `demo_live_e` (3 one-pair duplicates), `demo_clean_b` (150 s, recording only; its replay has the cam_front bottle wrong on 657 pairs) | `runs/video/`, `captures/runtime/` |

@@ -14,7 +14,7 @@ Scene 1. One camera loses the cube.
 
 ON SCREEN: Live take, before any title. The phone's picture of the table beside the console. One cube on the table. A card slides in between the cube and one camera.
 
-NOTE: the take is demo_cold_f (25 Oct 2026, 15:55): the cube is on the table from the first frame. demo_cold_e (15:49) is the spare; there the cube is put down on camera.
+NOTE: the take is demo_cold_e (25 Oct 2026, 15:49), retimed: runs/video/retimed/demo_cold_e.mp4, phone PXL_20261025_074919969.mp4. Its card stands 23-34 s of the take, long enough for the third paragraph; demo_cold_f's stands only 21-30 s.
 
 This is a red cube on a table, with two depth cameras looking at it.
 
@@ -172,14 +172,12 @@ cannot be run again, so its numbers are read from its own log
 captures/scored/20261025/day.log and docs/OCTOBER_PLAN.md, 25 Oct.
 
 Scene 1
-  lost the cube completely      demo_cold_f: cam_over has no estimate of the
-                                cube while the card stands, 21-30 s of the take.
-  in the same place             the fused cube is reported on all 1,325 pairs; its
-                                mean position moves 3.4 mm when the card goes in
-                                (cam_front alone) and back when it comes out.
-  one new fact                  (occluded_from red_cube_01 cam_over), 275 pairs,
-                                21-30 s only; the card hides the cube in those
-                                frames (checked).
+  lost the cube completely      demo_cold_e: cam_over finds no cube while the card
+                                stands, 23-34 s of the take (frames checked).
+  in the same place             the fused cube, red_cube_02, is reported on every
+                                pair from 11 s to the end.
+  one new fact                  (occluded_from red_cube_02 cam_over), 304 pairs,
+                                23-34 s only.
 
 Scene 4
   0.74 metres, 80 degrees       config/extrinsics.yaml as registered 2026-10-07
