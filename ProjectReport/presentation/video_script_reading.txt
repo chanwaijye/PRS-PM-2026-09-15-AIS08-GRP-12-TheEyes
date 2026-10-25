@@ -1,0 +1,145 @@
+The Eyes - narration, reading copy (draft 4, 25 Oct 2026)
+
+One recording per scene, named scene01 ... scene12. Leave two seconds of silence
+before and after. If you trip, pause and say the whole sentence again: I will cut it.
+(pause) means stop for two or three seconds; in scene 6 the picture is timed to each line.
+
+========================================================================
+Scene 1. One camera loses the cube.   (70 words, about 32 s at 130 a minute)
+========================================================================
+
+This is a red cube on a table, with two depth cameras looking at it.
+
+Now I block one of the cameras. (pause)
+
+That camera has lost the cube completely. But the system still reports the cube, in the same place, and it adds one new fact: the cube is occluded from that camera.
+
+Seeing with two cameras, and knowing when not to trust one of them. That is this project.
+
+========================================================================
+Scene 2. Title.   (65 words, about 30 s at 130 a minute)
+========================================================================
+
+Hi, I'm Wai Jye from Group 12, this is a solo project called The Eyes. It is the perception part for a tabletop robot. Two depth cameras detect the objects, estimate each one's six D-O-F pose, combine the two views into one answer, and turn that answer into facts a planner can use. The code was built with Claude Code, under my design and review.
+
+========================================================================
+Scene 3. Why one camera is not enough.   (103 words, about 48 s at 130 a minute)
+========================================================================
+
+A planner does not work with pixels. It works with statements, like "the cube is on the table". In my earlier practice module, The Planner, those statements came from a simulator, which always knows the truth. A real robot has to get them from cameras.
+
+With one camera, anything hidden behind something else simply disappears. A second camera can see it again, but now every object has two estimates that never quite agree. So there are three questions. Which estimates are the same object? When two views disagree, which one is wrong? And how do poses become facts reliable enough to plan with?
+
+========================================================================
+Scene 4. The rig.   (96 words, about 44 s at 130 a minute)
+========================================================================
+
+This is the rig. Two Intel RealSense D four-three-five i cameras on tripods, about 0.74 metres apart, with about 80 degrees between their views. The software pairs their frames by timestamp, never more than 17 milliseconds apart.
+
+The cameras are calibrated against this board, to about 0.3 pixels, and registered again at the start of every session, because the rig drifts even when nobody touches it.
+
+The three objects are 3D printed from the same meshes the pose estimator uses. The grey marker trays are only for measuring ground truth. The pipeline never looks at them.
+
+========================================================================
+Scene 5. The pipeline.   (186 words, about 86 s at 130 a minute)
+========================================================================
+
+Here is the whole system: one C plus plus process.
+
+The top row runs once for each camera. A detector finds the objects: YOLO v8 nano with a four-channel input, colour plus depth, trained in this project on about 40,000 synthetic frames from Isaac Sim, then fine-tuned on real ones. Then FoundationPose, pretrained and frozen, estimates each object's six D-O-F pose from its CAD mesh.
+
+The bottom row runs once for each pair of frames. These are the project's core modules, written from first principles in C plus plus, with no fusion or scene-graph library. Every pose is moved into one shared table frame and checked against what the two depth images actually measured. Estimates of the same object are matched across the views. If the two views disagree by more than 50 millimetres or 30 degrees, they are not averaged: one is kept. Otherwise they are combined, weighted by confidence, and smoothed over time with a Kalman filter for each object.
+
+The last stage turns geometry into four kinds of fact: on, in, clear, and occluded from. This console shows all of it at once.
+
+========================================================================
+Scene 6. Live on the rig.   (213 words, about 98 s at 130 a minute)
+========================================================================
+
+Now a live run. The small picture is my phone, filming the table at the same moment as the screen. Nothing here is replayed.
+
+The table is empty, and the only fact says so: the table is clear. (pause)
+
+I put down the bottle. (pause) Both cameras detect it, and a moment later the facts appear: the bottle is on the table, and nothing is on top of it.
+
+The bowl. (pause) And the cube. (pause) Three objects, each on the table.
+
+Now the cube goes into the bowl. (pause) The fact changes from "on the table" to "in the bowl". I take it out, (pause) and it is on the table again.
+
+Watch the three counters at the bottom left: the front camera alone, the other camera alone, and the fused result. I stand a card between the cube and one camera. (pause) Its count drops. The fused count does not, and a new fact says which camera cannot see the cube. (pause)
+
+Now the other camera. (pause) Its count drops, the fused count is still three, and the new fact names the front camera. (pause)
+
+I take the bottle away, (pause) and its facts go with it.
+
+With three objects on the table this runs at 10 frame pairs a second, and about four fifths of that time is the pose estimator.
+
+========================================================================
+Scene 7. How it is measured.   (145 words, about 67 s at 130 a minute)
+========================================================================
+
+A demo is not a measurement, so this is how I measured it.
+
+Each object sits in a printed tray that carries markers. The markers give the true pose, and the two cameras agree on it to within a millimetre and a half.
+
+I recorded 16 scenes at four levels: an object alone, three objects among clutter, an object half hidden from one camera, and an object fully hidden from one camera. Each is 300 frame pairs, recorded once, and every method is replayed on exactly the same frames. Two more recordings have the cube inside the bowl. In both, the "in" fact is reported on all 300 frame pairs.
+
+The score is A-D-D-S, the distance between the estimated surface and the true one. A frame counts as correct when that is within 10 percent of the object's diameter: for the cube, under 9 millimetres.
+
+========================================================================
+Scene 8. The result: a hidden object is still found.   (159 words, about 73 s at 130 a minute)
+========================================================================
+
+The main result. In four scenes the object is fully hidden from one camera. In every one, the blocked camera finds it on zero frames out of 300. The fused output has it on all 300, within 4 millimetres of the truth.
+
+A single camera does as well only when it is the one not blocked. No single camera covers all four scenes; the fused system does.
+
+With nothing hidden, two views can also beat one. On the cube alone, each camera by itself is about 3 millimetres off; fused, 1.5 to 1.7. Over all 16 scenes, though, fused and the better camera differ by less than the sensor's own noise.
+
+How you combine them matters. Simply averaging the two poses gives 7 to 26 millimetres on the same cube, worse than either camera, because a cube looks the same from several directions and the cameras pick different ones. The fusion module compares orientations with that symmetry taken out.
+
+========================================================================
+Scene 9. When fusion believed the wrong camera.   (175 words, about 81 s at 130 a minute)
+========================================================================
+
+Now the part that failed first, and taught me the most.
+
+Here the bottle is half hidden from one camera. That camera sees only a strip of it and places the whole bottle at the cover, 7 to 9 centimetres from the truth. And the pose estimator scores that wrong pose higher than the correct one from the other camera.
+
+The first rule for a disagreement was to keep the higher score. So fusion believed the wrong camera: 71 millimetres of error in one recording and 84 in another, when the good camera alone was at 3. Fusion made the answer worse.
+
+The fix does not use the score. It uses the other camera's depth image. If the bottle really were where the first camera says, the other camera could not see through that space. If it measures a surface behind it, the estimate is thrown out.
+
+With that check, the two recordings go from 71 and 84 millimetres to 3.0 and 3.1. Of about a thousand estimates it threw out, only one was right.
+
+========================================================================
+Scene 10. Objects that are not there.   (146 words, about 67 s at 130 a minute)
+========================================================================
+
+The second surprise was objects that are not there. The first detector had only seen synthetic images, and on the real table it took a grey tray for a bowl, or the red print on a card for a cube. The pose estimator then fitted a model to it, with a high score.
+
+None of these false objects rested on anything. So the scene graph now reports an object only if something supports it. In the first seven scenes, that took 2,771 false reports down to 1, without losing a real one.
+
+The other fix was at the source. I fine-tuned the detector on ten arrangements of this table, recorded for that and never scored. On the sixteen scored scenes its mean average precision rose from 0.67 to 0.93, and across all 22 recordings the false objects in the scene graph went from 731 to none.
+
+========================================================================
+Scene 11. What it still gets wrong.   (142 words, about 66 s at 130 a minute)
+========================================================================
+
+In one of the three clutter scenes the cube, small and far from one camera, is still outside its threshold on a quarter of the frames.
+
+The occluded-from fact is the weakest. In the live run, as the card passed the bowl, one camera started a second track on it, and for one frame that copy read as hidden. And a half-hidden object is still reported as hidden from the camera whose estimate was thrown out, and by the definition I fixed in advance, it is not. Against hand labels, on, in and clear are 99 to 100 percent right. Occluded-from, 56 percent.
+
+One result surprised me. On synthetic data the depth channel did not help the detector: 0.957 with it, 0.957 without. On the real recordings, without depth the cube is found one time in eight. Depth is what finds it.
+
+========================================================================
+Scene 12. Close.   (96 words, about 44 s at 130 a minute)
+========================================================================
+
+So this is what comes out at the end: a short list of facts, from two real cameras, that a planner can start from. The object format behind it is a fixed contract. Fields can be added but never removed, because my later projects will build on it.
+
+Two cameras do see more than one. But what I learned is that the second camera matters most as a witness. It is what tells you when the first one is wrong.
+
+The code was built with Claude Code, under my design and review. Thank you for watching.
+
+Total 1596 words.

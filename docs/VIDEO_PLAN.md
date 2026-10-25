@@ -63,7 +63,7 @@ reserve. Every other picture is made from files already on disk (§6).
 | `README.md` §4 | Problem framing, system architecture, live perception demo, occlusion ablation result, sim-to-real findings, evaluation methodology |
 | `CAPTURE_PROTOCOL.md` §1, §7 | The demo run is never scored and is "an illustration, labelled as one" |
 | `VIZ_PLAN.md` §4 | The console's single-view counters are a demonstration, not the ablation; the numbers come from `ablation_from_log` |
-| Canvas brief | `[VERIFY]` — not in the repo. Length limit, file format and size, how it is uploaded, and whether it is one video or two (a short promotional one and a technical one) |
+| Module brief (`requirement/`, read 25 Oct; not in git) | One video presentation of **10–15 minutes**, as `.mp4`, `.mov` or `.wmv`. It is the Final Presentation. It goes in the team's one ZIP to Canvas → Assignments → Practice Module, due 31 Oct, beside the slides of both presentations. The brief gives no size limit |
 
 Three rules of the project that apply to every frame and every sentence: a
 number is on screen or spoken only if it came from a run; nothing is said about
@@ -537,8 +537,8 @@ three true facts under the new one.
 - **Rehearsal track.** A spoken guide can be generated from the script, as the
   First Presentation tracks were, to time the rough cut before the real voice
   exists. It never goes into the submitted video.
-- **Export.** H.264 `.mp4` with AAC sound. Size limit `[VERIFY]` against the
-  Canvas brief.
+- **Export.** H.264 `.mp4` with AAC sound. The brief gives no size limit;
+  check the Canvas assignment page before the ZIP is built.
 
 ---
 
@@ -579,7 +579,7 @@ channel.
 
 ## 10. Open
 
-- `[VERIFY]` the Canvas brief (§2).
+- ~~The Canvas brief.~~ Read 25 Oct (§2). The ZIP size limit is still unknown; it is not in the brief.
 - ~~Speed with three objects and the depth check on, live.~~ Measured 10 Oct
   on `demo_live_a`: 90.7 ms a pair (p50), 10 pairs a second; pose 36.6 + 35.1 ms
   of it, the detector 3.8 + 4.0, the depth check 10.7.

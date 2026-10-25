@@ -76,3 +76,6 @@ venv/
 # Original phone photos (full-size, uncropped). Cropped, downscaled copies live
 # in assets/photos/.
 /photos/
+
+# The module brief (NUS copyright): kept locally, never committed
+requirement/
