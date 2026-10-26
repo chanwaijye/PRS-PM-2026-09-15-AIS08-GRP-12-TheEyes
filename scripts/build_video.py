@@ -22,9 +22,15 @@ Two kinds of scene:
   picture-led  (scenes 1 and 6) the take plays straight through; the recording is
                cut at its pauses into the script's chunks (split at paragraphs and
                at "(pause)"), and each chunk starts at its beat in the take.
+
+Where a sentence falls: from runs/video/voice/words.json when it is there
+(scripts/transcribe_narration.py, the recognised words matched to the script's);
+otherwise estimated, the words spread evenly over the speech.
 """
 import argparse
+import difflib
 import glob
+import json
 import os
 import re
 import sqlite3
@@ -82,7 +88,7 @@ def words(t):
 
 # ---- the recording ----------------------------------------------------------
 def voice_file(scene):
-    f = sorted(glob.glob(os.path.join(VOICE, f"scene{scene:02d}.*")))
+    f = sorted(glob.glob(os.path.join(VOICE, f"[sS]cene{scene:02d}.*")))
     return f[0] if f else None
 
 
@@ -162,6 +168,62 @@ def group(segs, texts):
         out.append((segs[i][0], segs[j - 1][1]))
         j = i
     return out[::-1]
+
+
+def split_at_words(segs, texts, rec):
+    """The speech segments of each chunk, cut where the chunk's first word starts; a
+    cut that falls inside unbroken speech splits that segment. None when a chunk's
+    opening words were not recognised."""
+    starts = word_starts(texts, rec, segs)
+    cuts, w = [], 0
+    for t in texts[:-1]:
+        w += words(t)
+        k = next((k for k in range(w, min(w + 4, len(starts))) if starts[k] is not None), None)
+        if k is None:
+            return None
+        s = starts[k]
+        if k > w:  # the first word went unheard: take the start of the speech the next one is in
+            s = next((a for a, b in segs if a <= s <= b), s)
+        cuts.append(s)
+    pieces = []
+    for a, b in segs:
+        for c in cuts:
+            if a + 0.1 < c < b - 0.1:
+                pieces.append((a, c - 0.02))
+                a = c - 0.02
+        pieces.append((a, b))
+    out = [[] for _ in texts]
+    for a, b in pieces:
+        out[sum(1 for c in cuts if a >= c - 0.1)].append((a, b))
+    return out if all(out) else None
+
+
+def recognised(path):
+    """The recording's words [(word, start, end)] from words.json, or None if it was not
+    transcribed or has changed since."""
+    p = os.path.join(os.path.dirname(path), "words.json")
+    if not os.path.exists(p):
+        return None
+    d = json.load(open(p)).get(os.path.basename(path))
+    if not d or abs(d["duration"] - duration(path)) > 0.05:
+        return None
+    return d["words"]
+
+
+def word_starts(texts, rec, segs):
+    """Each script word's start in the recording, or None where the recogniser heard
+    something else. The recogniser often starts a word that follows a pause inside
+    the pause, so a start is moved up to the speech segment the word overlaps most."""
+    norm = lambda w: re.sub(r"[^a-z0-9]", "", w.lower())
+    sw = [norm(w) for w in " ".join(texts).split()]
+    rw = [norm(w) for w, _, _ in rec]
+    out = [None] * len(sw)
+    for blk in difflib.SequenceMatcher(None, sw, rw, autojunk=False).get_matching_blocks():
+        for k in range(blk.size):
+            _, s, e = rec[blk.b + k]
+            over = [(min(b, e) - max(a, s), a) for a, b in segs if min(b, e) > max(a, s)]
+            out[blk.a + k] = max(s, max(over)[1]) if over else s
+    return out
 
 
 def word_clock(segs, texts):
@@ -403,8 +465,17 @@ def build_voice_led(scene, tmp, cap, dur_out):
     head, tail = 0.6, 0.9
     if vf:
         track = voice_track(vf)
-        laid, span = tighten(speech(vf, track), CAP_VOICE)
+        fine = speech(vf, track)
+        laid, span = tighten(fine, CAP_VOICE)
         at = word_clock([(head + o, head + o + (b - a)) for a, b, o in laid], texts)
+        rec = recognised(vf)
+        if rec:
+            starts = word_starts(texts, rec, fine)
+            # a time in the recording on the scene's clock; one inside a shortened pause goes to the speech after it
+            scene_t = lambda t: next((head + o + max(t - a, 0.0) for a, b, o in laid if t <= b), head + span)
+            est = at
+            at = lambda w: next((scene_t(starts[k]) for k in range(w, min(w + 6, len(starts))) if starts[k] is not None),
+                                est(w))
     else:
         span = sum(words(t) for t in texts) / WPM * 60 + 0.6 * (len(texts) - 1)
         at = lambda w: head + span * w / max(sum(words(t) for t in texts), 1)
@@ -438,7 +509,7 @@ def build_voice_led(scene, tmp, cap, dur_out):
     else:
         audio = {"inputs": [], "graph": ""}
     mux(video, audio, dur_out, total)
-    return total, bool(vf)
+    return total, bool(vf), [round(t, 1) for t in times[1:-1]]
 
 
 def build_picture_led(scene, tmp, cap, fonts, dur_out):
@@ -451,11 +522,16 @@ def build_picture_led(scene, tmp, cap, fonts, dur_out):
     if vf:
         track = voice_track(vf)
         fine = speech(vf, track)
-        segs = group(fine, texts)
-        if segs is None:
-            raise SystemExit(f"scene {scene}: the recording has fewer pauses than the script's {len(texts)} chunks")
+        rec = recognised(vf)
+        per = split_at_words(fine, texts, rec) if rec else None
+        if per is None:
+            segs = group(fine, texts)
+            if segs is None:
+                raise SystemExit(f"scene {scene}: the recording has fewer pauses than the script's {len(texts)} chunks")
+            per = [[x for x in fine if x[0] >= a - 1e-6 and x[1] <= b + 1e-6] for a, b in segs]
+        segs = per
         # each chunk's own speech, its inner pauses cut short
-        laid = [tighten([x for x in fine if x[0] >= a - 1e-6 and x[1] <= b + 1e-6], CAP_CHUNK) for a, b in segs]
+        laid = [tighten(p, CAP_CHUNK) for p in per]
     else:
         segs = None
     # chunk placement on the take's clock
@@ -520,8 +596,8 @@ def main():
                 d, has_voice, place = build_picture_led(sc, tmp, cap, fonts, out)
                 extra = f"  chunks at {place}"
             else:
-                d, has_voice = build_voice_led(sc, tmp, cap, out)
-                extra = ""
+                d, has_voice, cues = build_voice_led(sc, tmp, cap, out)
+                extra = f"  cues at {cues}"
             total += d
             print(f"scene {sc:2d}: {d:6.1f} s  {'voice' if has_voice else 'NO VOICE (timed from words)'}{extra}")
     print(f"total of these scenes: {total / 60:.1f} min")

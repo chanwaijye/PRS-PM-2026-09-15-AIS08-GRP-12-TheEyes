@@ -516,18 +516,24 @@ three true facts under the new one.
 
 ## 7. Edit and export
 
-- **Tools.** This desktop has OBS and nothing else: no `ffmpeg`, no editor, no
-  `sqlite3` command (`sudo apt install ffmpeg kdenlive sqlite3`). The edit can
-  equally be done on the laptop; then the footage has to be on it, or in the
-  cloud, before 11 Oct.
+- **Tools.** `ffmpeg` and `sqlite3` are installed since 17 Oct; the edit is a
+  script, not an editor. The narration goes in `runs/video/voice/sceneNN.*`, one
+  file a scene, then:
+  `~/venvs/the-eyes-tts/bin/python scripts/transcribe_narration.py` (Whisper word
+  times to `runs/video/voice/words.json`; its printed transcripts are the check
+  for a skipped or misread line), then
+  `python3 scripts/build_video.py --fonts DIR --final` (DIR holds the deck's
+  fonts). Each picture change lands on the first word of its cue sentence, and
+  scenes 1 and 6 are cut into the script's chunks at those words. Built 27 Oct
+  from the recorded voice: 14:34, −15.7 LUFS.
 - **Conversion.** The replay files are MJPG in AVI so that a render is
   reproducible (`VIZ_PLAN.md` §8). For the editor:
   `ffmpeg -i x.avi -c:v libx264 -crf 18 -pix_fmt yuv420p x.mp4`.
 - **Frame.** 1920×1080 at 30 fps. The console is 1696×1024 and goes in at its
   own size. Its text is small on a full frame, so when the narration names a
   panel, the picture moves in on that panel.
-- **Voice.** Recorded scene by scene, the picture cut to the voice. Scene 6 is
-  the other way round: the voice follows the take.
+- **Voice.** Recorded scene by scene, the picture cut to the voice. Scenes 1
+  and 6 are the other way round: the voice follows the take.
 - **Sync of phone and screen** in the live scenes: the two taps of beat 0.
 - **Retiming the live console files.** Each holds one frame for each processed
   pair in a file stamped 30 fps. Give every frame the time of its pair,
