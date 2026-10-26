@@ -15,7 +15,7 @@
 #   data/real_v1/                            the real-frame detector set: train, val, test, labels
 #   data/synth50k_v2_sample/                 300 frames of the 50,000-frame synthetic set
 #   data/scored_scene_example/               one scored recording, whole, so a replay can be run
-# Everything else (all recordings, the full synthetic set) is behind the link in data/DATA.md.
+# data/DATA.md describes these, and what is not shipped (all other recordings, the full synthetic set).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$PWD
@@ -49,8 +49,16 @@ while IFS= read -r db; do
 done < <(find runs/scored -name metrics.sqlite; ls -d runs/runtime/*_demo_* 2>/dev/null | sed 's|$|/metrics.sqlite|' | while read -r f; do [[ -f $f ]] && echo "$f"; done)
 
 if ! $LEAN; then
-  # the real-frame set, linked so it is not copied twice; zip stores what a link points to
-  ln -s "$REAL" "$D/data/real_v1"
+  # the real-frame set: its frames and labels linked so they are not copied twice (zip stores
+  # what a link points to); its lists and dataset files rewritten to name paths inside the
+  # folder. With no `path:` a dataset file's own folder is the root, and a list entry starting
+  # ./ is read from the list's folder.
+  mkdir -p "$D/data/real_v1"
+  ln -s "$REAL/images" "$REAL/labels" "$D/data/real_v1/"
+  cp "$REAL/manifest.csv" "$D/data/real_v1/"
+  for f in "$REAL"/*.txt; do sed "s|^$REAL/|./|" "$f" > "$D/data/real_v1/$(basename "$f")"; done
+  for f in "$REAL"/*.yaml; do sed '/^path: /d' "$f" > "$D/data/real_v1/$(basename "$f")"; done
+  if grep -rq "$REAL" "$D/data/real_v1"/*.txt "$D/data/real_v1"/*.yaml; then echo "real_v1: an absolute path is left" >&2; exit 1; fi
   # 250 training and 50 validation frames of the synthetic set, each with its label
   for split in train:250 val:50; do
     s=${split%%:*}; n=${split##*:}
@@ -62,7 +70,7 @@ if ! $LEAN; then
     done
   done
   cp "$SYNTH/generation.log" "$D/data/synth50k_v2_sample/"
-  sed 's|^path: .*|path: .|' "$SYNTH/data.yaml" > "$D/data/synth50k_v2_sample/data.yaml"
+  sed '/^path: /d' "$SYNTH/data.yaml" > "$D/data/synth50k_v2_sample/data.yaml"
   # one scored recording, whole: its stills, calibration and the session it replays
   mkdir -p "$D/data/scored_scene_example"
   ln -s "$ROOT/$EXAMPLE" "$D/data/scored_scene_example/$(basename "$(dirname "$EXAMPLE")")_$(basename "$EXAMPLE")"

@@ -79,3 +79,6 @@ venv/
 
 # The module brief (NUS copyright): kept locally, never committed
 requirement/
+# the submission ZIP and its staging folder (scripts/make_submission.sh)
+submission/
+.submission_stage.*/

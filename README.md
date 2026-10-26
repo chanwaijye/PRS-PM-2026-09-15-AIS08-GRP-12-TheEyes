@@ -60,9 +60,24 @@ All AI-generated outputs are reviewed, tested and validated by the author. Full 
 
 ## SECTION 4 : VIDEO OF SYSTEM MODELLING & USE CASE DEMO
 
-> Video will be uploaded by the final submission deadline (31 Oct 2026).
+**Video (14:34):** `ProjectReport/PRS-PM-2026-AIS08-GRP-12-TheEyes-Video.mp4`, in the submission ZIP. It is not in git: at 129 MB it is over GitHub's file size limit.
 
-**Project video presentation (10–15 min)** — problem framing, system architecture, live perception demo, occlusion ablation result, sim-to-real findings, and evaluation methodology.
+| Time | Scene |
+| --- | --- |
+| 0:00 | One camera loses the cube — live |
+| 0:29 | Title |
+| 0:59 | Why one camera is not enough |
+| 1:51 | The rig |
+| 2:42 | The pipeline |
+| 4:28 | Live on the rig — one continuous take, the table filmed by a phone at the same moment |
+| 6:50 | How it is measured |
+| 8:11 | The result: a hidden object is still found |
+| 9:39 | When fusion believed the wrong camera |
+| 11:11 | Objects that are not there |
+| 12:29 | What it still gets wrong |
+| 13:47 | Close |
+
+Live footage is labelled LIVE and every replay of a recorded scene REPLAY. The narration is the author's; its script is `ProjectReport/presentation/video_script.txt`, with the source of every number it speaks. The edit is a script, `scripts/build_video.py` (`docs/VIDEO_PLAN.md` §7).
 
 ---
 
@@ -145,6 +160,8 @@ scripts/predicate_accuracy.py                   # predicate precision and recall
 * **Proposal:** `ProjectReport/PRS-PM-2026-AIS08-GRP-12-TheEyes-Proposal.pdf`
 * **Interim report:** `ProjectReport/PRS-PM-2026-AIS08-GRP-12-TheEyes-InterimReport-DRAFT.pdf`
 * **First Presentation:** `ProjectReport/PRS-PM-2026-AIS08-GRP-12-TheEyes-FirstPresentation.pptx`
+* **Final Presentation:** `ProjectReport/PRS-PM-2026-AIS08-GRP-12-TheEyes-FinalPresentation.pptx` (PDF beside it)
+* **Video:** `ProjectReport/PRS-PM-2026-AIS08-GRP-12-TheEyes-Video.mp4` (in the ZIP; Section 4)
 
 **Report Sections:**
 
@@ -208,6 +225,8 @@ config/            camera serials, extrinsics, fusion, predicate tolerances, mes
 assets/            detector models, meshes, marker trays, print files, photos
 scripts/           capture day, evaluation, report figures, PDF rendering
 docs/              protocols, plans, decision records, saved results
+data/              in the submission ZIP: result logs, the real-frame detector set, a sample
+                   of the synthetic set, one whole recording (data/DATA.md)
 CLAUDE.md          project context for AI-assisted development
 AGENTS.md          module ownership and acceptance criteria
 INTERFACES.md      data contracts between modules
