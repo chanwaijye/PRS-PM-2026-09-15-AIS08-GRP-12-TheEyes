@@ -76,17 +76,23 @@ card.
 - The calibration the scene was recorded and measured under, and its
   `notes.yaml`.
 
-To replay it, use the configuration it was processed with. From the
-repository root, after the build of `README.md` §5:
+To replay and score it, use the configuration it was processed with. From
+the repository root, after the build of `README.md` §5 and with the pose
+server running (§5, step 6):
 
 ```bash
 S=data/scored_scene_example/20261005_t4_cube_over
-C=data/results/scored/20261005/t4_cube_over/config_recording
-build/runtime/the_eyes_run replay $S/session --pose foundationpose --config-dir $C --db /tmp/t4.sqlite
-build/runtime/ablation_from_log /tmp/t4.sqlite --config-dir $C
+R=data/results/scored/20261005/t4_cube_over
+build/runtime/the_eyes_run replay $S/session --pose foundationpose \
+    --config-dir $R/config_recording --repo-root . --db /tmp/t4.sqlite
+build/runtime/gt_from_trays $S/gt_stills /tmp/t4.sqlite --stills --config $R/config_stills
+build/runtime/ablation_from_log /tmp/t4.sqlite --config-dir $R/config_recording --repo-root .
 ```
 
-`--pose mock` instead runs without the pose server.
+The last command prints the scene's ablation table; it matches
+`$R/ablation.log` row for row (checked from the unpacked ZIP, 27 Oct). With
+`--pose mock` the replay runs without the pose server, but its poses are not
+measurements and the table means nothing.
 
 ## Not in the ZIP
 
