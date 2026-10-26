@@ -10,7 +10,7 @@
 | Group ID / Cohort | Group 12 / AIS08 |
 | Team Members | Chan Wai Jye (A0340644J) |
 | Submission Type | Solo submission — AI-assisted development (Appendix E) |
-| Status | **Draft 2, 17 October 2026.** Every figure comes from a recorded run; the few items still open are marked `[VERIFY]` |
+| Status | **Final, 27 October 2026.** Every figure comes from a recorded run |
 | Repository | <https://github.com/chanwaijye/PRS-PM-2026-09-15-AIS08-GRP-12-TheEyes> |
 | Companion documents | Proposal (15 Sep 2026), Interim Report (6 Sep 2026), video, slides, individual report |
 
@@ -879,7 +879,7 @@ scripts/pose_error.py                                    # §9.6
 
 ## Appendix D — Individual Project Report
 
-Submitted separately as required. `[VERIFY]` file name.
+Submitted separately as required: `PRS-PM-2026-AIS08-GRP-12-TheEyes-individual-project-report.pdf`.
 
 ## Appendix E — AI Usage Disclosure
 
@@ -898,7 +898,7 @@ Submitted separately as required. `[VERIFY]` file name.
 - I ran the rig and every capture.
 - I checked every reported figure against its run.
 
-Claims that could not yet be checked carry a `[VERIFY]` marker until they are.
+While the report was drafted, a claim not yet checked carried a `[VERIFY]` marker; none is left.
 
 **"From first principles"** means the fusion and scene-graph modules use no fusion, filtering, pose-averaging or scene-graph library (Eigen for linear algebra only). It does not mean I typed the code.
 
