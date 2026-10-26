@@ -79,7 +79,8 @@ fi
 for x in "$D"/data/* "$D"; do du -shL "$x" | sed "s|$STAGE/||"; done
 if $DRY; then echo "dry run: no ZIP written"; exit 0; fi
 mkdir -p "$OUT"
-Z=$OUT/$NAME$($LEAN && echo _lean).zip
+Z=$OUT/$NAME.zip
+$LEAN && Z=$OUT/${NAME}_lean.zip
 rm -f -- "$Z"
 (cd "$STAGE" && zip -q -r -9 "$Z" "$NAME")
 ls -la "$Z"
