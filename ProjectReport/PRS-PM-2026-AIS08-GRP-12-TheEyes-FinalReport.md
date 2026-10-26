@@ -28,8 +28,8 @@ The proposal fixed the main experiment before any data was seen: an **occlusion 
 | How accurate is the fused pose? | **2.76 mm ADD-S [2.39, 3.12]** over all 16 scenes; recall within a tenth of the object's diameter 0.98 [0.95, 1.00] |
 | Is fused more accurate than the better single camera? | **Not resolvable on this rig:** −0.36 mm [−0.83, 0.08], below the 2–4 mm depth-noise floor |
 | Does the gating policy beat a plain average of the two views? | **Yes:** −9.81 mm [−16.96, −3.75], beyond the floor. The negative outcome stated in the proposal did not happen |
-| How good is the detector on real frames? | mAP@0.5:0.95 **0.670** trained on synthetic data alone; **0.934** after fine-tuning on 360 real frames |
-| Does the depth channel earn its place? | Not on synthetic data (+0.00076). **On real frames it does:** 0.501 → 0.670, and the cube's AP@0.5 goes from 0.099 to 0.905 |
+| How good is the detector on real frames? | mAP&#64;0.5:0.95 **0.670** trained on synthetic data alone; **0.934** after fine-tuning on 360 real frames |
+| Does the depth channel earn its place? | Not on synthetic data (+0.00076). **On real frames it does:** 0.501 → 0.670, and the cube's AP&#64;0.5 goes from 0.099 to 0.905 |
 | Are the symbolic facts right? | `on`, `clear`, `in`: precision ≥ 0.994, recall 1.000. `occluded_from`: recall 1.000, precision 0.557 |
 
 Two findings shaped the system more than any parameter. First, **the pose estimator's own score does not say which view is right**: a half-hidden camera placed the bottle at the occluder's distance with a score of 0.99, while the clear camera was right with 0.85. Fusion now decides between two disagreeing views by checking each pose against both depth images. That fixed the two scenes where it failed (fused error 90 → 3.2 mm and 34 → 3.1 mm) and changed no other scene. Second, **objects that are not there are best removed by reasoning about the scene, not by thresholds**: false detections outscored true ones, but every false object floated or sat under the table. A support check in the scene graph removed 2,770 of 2,771 false object-frames and lost none of the 2,100 real ones.
@@ -496,25 +496,25 @@ Depth noise is 2–4 mm at the mounted distances (§7.2). The two cameras follow
 
 ### 9.2 Detection
 
-**On synthetic validation** (9,988 frames), the shipped RGB-D model reaches mAP@0.5:0.95 **0.957**. mAP@0.5 is not used to compare models: it saturated at 0.994 after one epoch on the first dataset, and moves 0.006 across an 8× change in training data.
+**On synthetic validation** (9,988 frames), the shipped RGB-D model reaches mAP&#64;0.5:0.95 **0.957**. mAP&#64;0.5 is not used to compare models: it saturated at 0.994 after one epoch on the first dataset, and moves 0.006 across an 8× change in training data.
 
 **On real frames** (the 16 scored scenes, 960 frames, 1,200 boxes):
 
-| Model | mAP@0.5 | mAP@0.5:0.95 | Precision | Recall | Cube AP@0.5 | Cube recall |
+| Model | mAP&#64;0.5 | mAP&#64;0.5:0.95 | Precision | Recall | Cube AP&#64;0.5 | Cube recall |
 |---|---|---|---|---|---|---|
 | RGB only, synthetic data | 0.664 | 0.501 | 0.662 | 0.625 | 0.099 | 0.12 |
 | **RGB-D, synthetic data** | 0.941 | 0.670 | 0.719 | 0.889 | 0.905 | 0.79 |
 | **RGB-D, fine-tuned on real layouts (shipped)** | **0.994** | **0.934** | **0.983** | **0.978** | 0.995 | 1.00 |
 
-Per class, the fine-tuned model's mAP@0.5:0.95 is: bottle 0.915, cube 0.894, bowl 0.995.
+Per class, the fine-tuned model's mAP&#64;0.5:0.95 is: bottle 0.915, cube 0.894, bowl 0.995.
 
 ![Figure 5](figures/fig_detector_real.png)
 
 *Figure 5. The three detectors on the real frames of the 16 scored scenes (the table above). Depth is what finds the cube; fine-tuning on 360 real frames tightens the boxes and lifts precision.*
 
-- **The modality ablation reverses on real frames.** On synthetic validation, depth added +0.00076 mAP@0.5:0.95, which is nothing (Interim Report §4.4). On real frames, the same two models differ by **+0.169 mAP@0.5:0.95**, and depth is what finds the cube: AP@0.5 0.099 without it, 0.905 with it. The interim report kept the early-fusion stem for exactly this case, real depth on real frames, and the result bears that out.
-- **Dataset size** (synthetic validation, same split): 5,001 / 20,006 / 40,012 training frames give mAP@0.5:0.95 0.925 / 0.947 / 0.957. Recall saturates at 20k; box precision does not.
-- **Fine-tuning.** The fine-tune started from the shipped weights. Each epoch used the 360 real frames three times, with 2,000 synthetic frames beside them. The validation layouts saturated at once, training stopped at epoch 17, and the kept weights are the validation's best, from epoch 2. They were not chosen on the test scenes: the last epoch scores 0.937 there. Synthetic validation drops only 0.957 → 0.945. By tier, mAP@0.5:0.95 is T1 0.945, T2 0.964, half-hidden T3 0.727, the open camera of T4 0.974. On the four dim scenes it is 0.921.
+- **The modality ablation reverses on real frames.** On synthetic validation, depth added +0.00076 mAP&#64;0.5:0.95, which is nothing (Interim Report §4.4). On real frames, the same two models differ by **+0.169 mAP&#64;0.5:0.95**, and depth is what finds the cube: AP&#64;0.5 0.099 without it, 0.905 with it. The interim report kept the early-fusion stem for exactly this case, real depth on real frames, and the result bears that out.
+- **Dataset size** (synthetic validation, same split): 5,001 / 20,006 / 40,012 training frames give mAP&#64;0.5:0.95 0.925 / 0.947 / 0.957. Recall saturates at 20k; box precision does not.
+- **Fine-tuning.** The fine-tune started from the shipped weights. Each epoch used the 360 real frames three times, with 2,000 synthetic frames beside them. The validation layouts saturated at once, training stopped at epoch 17, and the kept weights are the validation's best, from epoch 2. They were not chosen on the test scenes: the last epoch scores 0.937 there. Synthetic validation drops only 0.957 → 0.945. By tier, mAP&#64;0.5:0.95 is T1 0.945, T2 0.964, half-hidden T3 0.727, the open camera of T4 0.974. On the four dim scenes it is 0.921.
 - **Detector precision is what reaches the facts.** Replaying all 22 scenes with each model, false objects reported in the scene graph fall from **731 to 0**. Per-view pose estimates fall from 27,684 to 19,872, because every false detection costs a pose registration.
 
 ### 9.3 Single-view pose accuracy
@@ -712,15 +712,15 @@ On the RTX 5070 Ti, live, as submitted: the fine-tuned detector with the re-regi
 
 | | Synthetic validation | Real, 16 scenes | Gap |
 |---|---|---|---|
-| mAP@0.5 (synthetic-only RGB-D) | 0.994 | 0.941 | −0.053 |
-| mAP@0.5:0.95 (synthetic-only RGB-D) | 0.957 | 0.670 | **−0.287** |
-| mAP@0.5:0.95 after fine-tuning on 360 real frames | 0.945 | 0.934 | −0.011 |
+| mAP&#64;0.5 (synthetic-only RGB-D) | 0.994 | 0.941 | −0.053 |
+| mAP&#64;0.5:0.95 (synthetic-only RGB-D) | 0.957 | 0.670 | **−0.287** |
+| mAP&#64;0.5:0.95 after fine-tuning on 360 real frames | 0.945 | 0.934 | −0.011 |
 
 ![Figure 11](figures/fig_sim2real.png)
 
 *Figure 11. (a) More synthetic data still helps on synthetic validation. (b) The model trained on all of it still loses 0.287 on real frames; fine-tuning on 360 real frames closes most of that gap. The RGB-only model's gap is the largest.*
 
-- **The gap is in the box, not in the finding.** The detector trained on synthetic data still finds the objects (recall 0.889). Its boxes are loose (the bottle's mAP@0.5:0.95 is 0.455), and it takes things that are not there for objects (precision 0.719: the grey tray as a bowl, and other false objects).
+- **The gap is in the box, not in the finding.** The detector trained on synthetic data still finds the objects (recall 0.889). Its boxes are loose (the bottle's mAP&#64;0.5:0.95 is 0.455), and it takes things that are not there for objects (precision 0.719: the grey tray as a bowl, and other false objects).
 - **The input gap is light.** On 9 September, only 1% of the training images' pixels were darker than 132 (of 255); 82–93% of the real cameras' pixels were. The camera cannot close this: past about 300 exposure units it drops below 30 fps. Lamps closed it partly. The brightness floor (§6.3) handles the rest.
 - **360 real frames close most of it.** The fine-tuned model loses 0.012 on synthetic validation and gains 0.264 on real frames.
 
@@ -730,8 +730,8 @@ Because all three objects are printed in their render colours, this gap is a sta
 
 | Metric (proposal §7) | Status | Value |
 |---|---|---|
-| Detection mAP@0.5:0.95, per class, recall | **Measured** | Real: 0.934 (bottle 0.915, cube 0.894, bowl 0.995), recall 0.978. Synthetic: 0.957 |
-| Modality ablation, RGB vs RGB-D | **Measured** | Synthetic +0.00076; real **+0.169** (0.501 → 0.670), cube AP@0.5 0.099 → 0.905 |
+| Detection mAP&#64;0.5:0.95, per class, recall | **Measured** | Real: 0.934 (bottle 0.915, cube 0.894, bowl 0.995), recall 0.978. Synthetic: 0.957 |
+| Modality ablation, RGB vs RGB-D | **Measured** | Synthetic +0.00076; real **+0.169** (0.501 → 0.670), cube AP&#64;0.5 0.099 → 0.905 |
 | Dataset-size ablation | **Measured** | 0.925 / 0.947 / 0.957 at 5k / 20k / 40k |
 | Single-view ADD-S < 10% of diameter | **Met, unoccluded** | T1 recall 1.00 in both cameras; fails for a half-hidden view (§9.3) |
 | Rotation and translation error | **Measured** | §9.6. ADD not reported, for the reason given there |
@@ -819,7 +819,7 @@ The proposal was submitted on 15 September 2026: `ProjectReport/PRS-PM-2026-AIS0
 
 | Course | Techniques in *The Eyes* |
 |---|---|
-| Problem Solving Using Pattern Recognition (PSUPR) | Problem framing (closed-set detection, tiers of occlusion); evaluation design fixed before the data (eight arms, scene-level bootstrap, sensor floor); metric choice (mAP@0.5:0.95 over a saturated mAP@0.5; ADD-S and rotation error modulo symmetry); labels generated from measured ground truth |
+| Problem Solving Using Pattern Recognition (PSUPR) | Problem framing (closed-set detection, tiers of occlusion); evaluation design fixed before the data (eight arms, scene-level bootstrap, sensor floor); metric choice (mAP&#64;0.5:0.95 over a saturated mAP&#64;0.5; ADD-S and rotation error modulo symmetry); labels generated from measured ground truth |
 | Pattern Recognition and Machine Learning Systems (PRMLS) | Transfer learning of a CNN detector with a widened input stem; modality and dataset-size ablations; synthetic-to-real fine-tuning; transformer pose estimation; ensemble fusion of two estimators with gating; ONNX Runtime deployment in C++ |
 | Intelligent Sensing and Sense Making (ISSM) | Dual RGB-D sensing, calibration and session re-registration; depth-noise characterisation; depth evidence for and against each pose; error-state EKF; relational predicates and the support check |
 
