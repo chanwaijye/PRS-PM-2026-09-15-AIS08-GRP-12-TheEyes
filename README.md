@@ -56,6 +56,8 @@ The multi-view fusion module and the scene-graph bridge are written from first p
 
 All AI-generated outputs are reviewed, tested and validated by the author. Full AI usage disclosure in Appendix E of the project report.
 
+**Third-party assets:** the `mustard_bottle` and `bowl` meshes and textures in `assets/meshes/` are objects 006 and 024 of the YCB Object and Model Set (<https://www.ycbbenchmarks.com/>; B. Calli, A. Singh, A. Walsman, S. Srinivasa, P. Abbeel and A. M. Dollar, "The YCB object and model set: Towards common benchmarks for manipulation research", ICAR 2015). For this project each is re-centred on its bounding box (`training/prepare_meshes.py`); the bottle was taken from FoundationPose's demo data, which uses the same YCB model. The `red_cube` mesh was made for this project.
+
 ---
 
 ## SECTION 4 : VIDEO OF SYSTEM MODELLING & USE CASE DEMO
